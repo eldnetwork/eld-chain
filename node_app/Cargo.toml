@@ -46,7 +46,7 @@ ed25519-dalek = { version = "2.1.1", features = ["pem", "pkcs8"] }
 lz4 = "1.24.0"
 tower = { version = "0.4", features = ["util", "limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 patricia_tree = "0.10.1"
 trie-db = "=0.31.0"
 memory-db = "0.32"
