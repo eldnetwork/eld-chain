@@ -97,7 +97,7 @@ Layout on the host:
 
 Nodes 2–4 use the same filenames as node 1. Named Docker volumes (`deploy_eld-data-*`, `deploy_tendermint-data-*`) are created on the first `up`. They are not part of the scp.
 
-The one-time copy uses the local working tree, which may be ahead of any release. The first Actions deploy replaces public configs with the files from the chosen release tag and leaves the key files in place.
+The one-time copy uses the local working tree, which may be ahead of any release. The first Actions deploy replaces public configs with the files from the chosen release tag and leaves the key files in place. Bootstrap sets `wallets.json`, `p2p_keypair.json`, `node_key.json`, and `priv_validator_key.json` to mode `600`.
 
 ## Publish a tagged release to EC2
 
@@ -113,7 +113,7 @@ git push origin v0.0.42
 4. Wait until the `image` workflow for that tag is green.
 5. Run **deploy-ec2** from the Actions tab. Set `app_tag` to that release tag. Leave `tendermint_tag` empty to use the `TENDERMINT_VERSION_TAG_GHCR` variable, or set a tag explicitly.
 
-The job checks out that tag, copies compose and public node configs, rewrites `/opt/eld-chain/.env`, pulls the images, and recreates containers. Volumes and key files stay.
+The job checks out that tag, copies compose and public node configs, rewrites `/opt/eld-chain/.env`, pulls the images, and recreates containers. Volumes and key files stay. If a Tendermint data volume has no `priv_validator_state.json`, that deploy runs `tendermint unsafe_reset_all` for that node only. Later deploys do not. The job fails unless all eight services are running and node 1 answers Tendermint RPC on port 26657.
 
 ## Env vars
 
@@ -145,7 +145,7 @@ Compose reads this file. The deploy workflow rewrites it on every run. Do not pu
 
 ### GitHub Environment `testnet`
 
-Create the environment and put these on it. The workflow will not run until the environment exists.
+Create the GitHub Environment named `testnet` before the first run. The job does not start without it. Put these secrets and the variable on that environment. An environment value overrides a repository value of the same name.
 
 | Name | Kind | Example | Role |
 |---|---|---|---|

@@ -88,7 +88,15 @@ REMOTE="${EC2_USER}@${EC2_HOST}"
 
 "${SSH[@]}" "$REMOTE" "mkdir -p '${ROOT}/nodes' '${ROOT}/wallets'"
 "${SCP[@]}" -r "${STAGE}/." "${REMOTE}:${ROOT}/"
-"${SSH[@]}" "$REMOTE" "chmod +x '${ROOT}/deploy-release.sh'"
+"${SSH[@]}" "$REMOTE" "bash -s" <<EOF
+set -euo pipefail
+chmod +x '${ROOT}/deploy-release.sh'
+chmod 600 \
+  '${ROOT}/wallets/wallets.json' \
+  '${ROOT}'/nodes/*/app/p2p_keypair.json \
+  '${ROOT}'/nodes/*/tendermint/node_key.json \
+  '${ROOT}'/nodes/*/tendermint/priv_validator_key.json
+EOF
 
 echo "Copied bootstrap files to ${REMOTE}:${ROOT}"
 if [[ ! -f "${STAGE}/.env" ]]; then
