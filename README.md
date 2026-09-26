@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/eldnetwork/eld-chain)](https://github.com/eldnetwork/eld-chain/releases/latest)
 [![Stars](https://img.shields.io/github/stars/eldnetwork/eld-chain)](https://github.com/eldnetwork/eld-chain/stargazers)
 
-Eld is an L1 for ephemeral, content-addressed storage: data is addressed, kept only for a TTL, then expires by protocol.
+Eld is an L1 for ephemeral, content-addressed storage: data is accessed by content-address key, kept only for a TTL, then expires by protocol.
 
 This repository is the chain implementation — protocol types (eld-common), off-chain client (eld-client), and the Tendermint ABCI node (eld-node). It is not the website, docs site, or explorer.
 
