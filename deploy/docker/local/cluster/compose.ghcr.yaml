@@ -5,7 +5,7 @@ x-app-log: &app-log
   RUST_LOG: eld_node=info,eld_common=info,eld_client=info,abci=warn
 
 x-app-eld: &app-eld
-  image: ghcr.io/eldnetwork/eld-chain:sha-c4c6b1c
+  image: ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR}
   pull_policy: always
   restart: unless-stopped
   logging:

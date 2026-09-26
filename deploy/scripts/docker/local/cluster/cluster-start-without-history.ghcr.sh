@@ -14,7 +14,7 @@ compose() {
   docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" "$@"
 }
 
-echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:sha-c4c6b1c and ghcr.io/eldnetwork/eld-tendermint:${TENDERMINT_VERSION_TAG_GHCR}"
+echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ghcr.io/eldnetwork/eld-tendermint:${TENDERMINT_VERSION_TAG_GHCR}"
 compose down --volumes --remove-orphans
 
 for i in 1 2 3 4; do
