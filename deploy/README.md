@@ -11,7 +11,7 @@ Local development infrastructure for [`eld-chain`](../README.md): CI scripts, Do
 | [`docker/Dockerfile.release`](docker/Dockerfile.release) | GHCR release image (`linux/amd64`, `linux/arm64`) |
 | [`docker/local/cluster/`](docker/local/cluster/) | Four `eld-app` + four Tendermint pairs. Checked-in config is `nodes/N/{app,tendermint}` |
 | [`docker/local/single/`](docker/local/single/) | One app + one Tendermint. Own one-validator Tendermint config; app files and keys from cluster node 1 |
-| [`docker/remote/cluster/`](docker/remote/cluster/) | Same four pairs on one host, images pulled from ECR |
+| [`docker/remote/cluster/`](docker/remote/cluster/) | Same four pairs on one host. [`compose.yaml`](docker/remote/cluster/compose.yaml) pulls from ECR. [`compose.ghcr.yaml`](docker/remote/cluster/compose.ghcr.yaml) pulls from GHCR on EC2 |
 | [`.env.example`](.env.example) | Template for image tags and external paths used by build scripts |
 
 Image builds and CI stay in [`scripts/`](scripts/). Start and stop scripts live next to the stack they run: [`scripts/docker/local/cluster/`](scripts/docker/local/cluster/) and [`scripts/docker/local/single/`](scripts/docker/local/single/). Supported runtime is Docker Compose (single node or 4-node).
@@ -132,3 +132,7 @@ Same three actions as the cluster, against the single Compose project (`eld-sing
 ```sh
 ./deploy/scripts/docker/local/single/single-start-without-history.ghcr.sh
 ```
+
+## EC2 release
+
+A tag push publishes the GHCR image and does not deploy. Local image tags stay in `deploy/.env` and are not the EC2 tag. One-time host setup, the manual release deploy, and the env var tables are in [`../deploy.md`](../deploy.md).

@@ -1,0 +1,121 @@
+name: deploy-ec2
+
+# Manual only. A tag push publishes the image in image.yml and does not deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      app_tag:
+        description: Published eld-chain release tag (for example v0.0.1)
+        required: true
+        type: string
+      tendermint_tag:
+        description: eld-tendermint GHCR tag. Empty uses vars.TENDERMINT_VERSION_TAG_GHCR.
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: testnet
+    steps:
+      - name: Require a published release with a built image
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TAG: ${{ inputs.app_tag }}
+          TM_TAG_INPUT: ${{ inputs.tendermint_tag }}
+          TM_TAG_VAR: ${{ vars.TENDERMINT_VERSION_TAG_GHCR }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$APP_TAG" =~ ^v[0-9A-Za-z._+-]+$ ]]; then
+            echo "app_tag must be a release tag such as v0.0.1" >&2
+            exit 1
+          fi
+          if ! release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${APP_TAG}")"; then
+            echo "no GitHub Release for ${APP_TAG}" >&2
+            exit 1
+          fi
+          draft="$(jq -r '.draft' <<<"$release")"
+          tag_name="$(jq -r '.tag_name' <<<"$release")"
+          if [[ "$draft" != "false" || "$tag_name" != "$APP_TAG" ]]; then
+            echo "${APP_TAG} is not a published release" >&2
+            exit 1
+          fi
+          runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/image.yml/runs" \
+            -f branch="$APP_TAG" -f event=push -f status=success -F per_page=1)"
+          count="$(jq -r '.total_count' <<<"$runs")"
+          if [[ "$count" == "null" || "$count" -lt 1 ]]; then
+            echo "image workflow has not succeeded for ${APP_TAG}" >&2
+            exit 1
+          fi
+          tm_tag="$TM_TAG_INPUT"
+          if [[ -z "$tm_tag" ]]; then
+            tm_tag="$TM_TAG_VAR"
+          fi
+          if [[ -z "$tm_tag" || ! "$tm_tag" =~ ^[0-9A-Za-z._+-]+$ ]]; then
+            echo "tendermint tag is empty or invalid" >&2
+            exit 1
+          fi
+          echo "app_tag=${APP_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tm_tag=${tm_tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.app_tag }}
+
+      - name: Upload release files
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          source: "deploy/docker/remote/cluster/compose.ghcr.yaml,deploy/docker/local/cluster/nodes,deploy/scripts/docker/remote/cluster/deploy-release.sh,deploy/scripts/docker/remote/cluster/rsync-excludes"
+          target: /tmp/eld-release
+          overwrite: true
+
+      - name: Apply release on EC2
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          APP_TAG: ${{ steps.meta.outputs.app_tag }}
+          TM_TAG: ${{ steps.meta.outputs.tm_tag }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          envs: APP_TAG,TM_TAG,GHCR_TOKEN,GHCR_USERNAME
+          script: |
+            set -euo pipefail
+            ROOT=/opt/eld-chain
+            SRC=/tmp/eld-release
+            test -f "$SRC/deploy/docker/remote/cluster/compose.ghcr.yaml"
+            test -d "$SRC/deploy/docker/local/cluster/nodes"
+            command -v rsync >/dev/null
+            mkdir -p "$ROOT/nodes" "$ROOT/wallets"
+            cp "$SRC/deploy/docker/remote/cluster/compose.ghcr.yaml" "$ROOT/compose.ghcr.yaml"
+            cp "$SRC/deploy/scripts/docker/remote/cluster/deploy-release.sh" "$ROOT/deploy-release.sh"
+            chmod +x "$ROOT/deploy-release.sh"
+            rsync -a --checksum \
+              --exclude-from="$SRC/deploy/scripts/docker/remote/cluster/rsync-excludes" \
+              "$SRC/deploy/docker/local/cluster/nodes/" "$ROOT/nodes/"
+            cat > "$ROOT/.env" <<EOF
+            ELD_DEPLOY_ROOT=$ROOT
+            NODE_APP_VERSION_TAG_GHCR=${APP_TAG}
+            TENDERMINT_VERSION_TAG_GHCR=${TM_TAG}
+            ELD_CHAIN_IMAGE=ghcr.io/eldnetwork/eld-chain:${APP_TAG}
+            ELD_TENDERMINT_IMAGE=ghcr.io/eldnetwork/eld-tendermint:${TM_TAG}
+            EOF
+            export ELD_DEPLOY_ROOT="$ROOT"
+            export GHCR_TOKEN GHCR_USERNAME
+            "$ROOT/deploy-release.sh"

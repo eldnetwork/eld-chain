@@ -1,0 +1,5 @@
+wallets.json
+p2p_keypair.json
+node_key.json
+priv_validator_key.json
+addrbook.json
