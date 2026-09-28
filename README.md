@@ -100,6 +100,7 @@ A later canonical transaction encoding would be a breaking change.
 | File | Purpose |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR workflow, layout, CI |
+| [CHANGELOG.md](CHANGELOG.md) | Workspace release notes (git tags / GHCR) |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting, wallet hygiene |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
 | [deploy/README.md](deploy/README.md) | Local four-node Docker Compose and CI scripts |
