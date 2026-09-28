@@ -28,7 +28,7 @@ fn fail(err: EldError) -> ! {
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
     let setup = get_client_setup_from_arg(&args.config)?;
-    let node_url = setup.config.get_node_url()?;
+    setup.config.get_node_url()?;
     let cli = Arc::new(ChainClient::with_wallets(
         setup.config,
         setup.fee_config,
@@ -59,9 +59,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             wallet_name,
             amount,
         } => commands::tx::unstake(&cli, wallet_name, amount).await,
-        SubCommand::ViewActiveValidators {} => {
-            commands::epoch::view_active_validators(&cli, &node_url).await
-        }
+        SubCommand::ViewActiveValidators {} => commands::epoch::view_active_validators(&cli).await,
         SubCommand::ViewEpoch {} => commands::epoch::view_epoch(&cli).await,
         SubCommand::GetNamespace { namespace_slug } => {
             commands::namespace::get_namespace(&cli, namespace_slug).await

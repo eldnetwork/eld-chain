@@ -1,12 +1,9 @@
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 
-pub(crate) async fn view_active_validators(
-    cli: &ChainClient,
-    node_url: &str,
-) -> Result<(), EldError> {
+pub(crate) async fn view_active_validators(cli: &ChainClient) -> Result<(), EldError> {
     let validators = cli.view_active_validators().await?;
-    let text = crate::output::active_validators(cli, node_url, validators).await;
+    let text = crate::output::active_validators(cli, validators).await;
     crate::output::print_result(&text);
     Ok(())
 }

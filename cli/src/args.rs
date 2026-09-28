@@ -5,7 +5,12 @@ use eld_common::tx::validate_post_message_content_type;
 use eld_common::Address;
 
 #[derive(Parser, Debug)]
-#[command(author = "ELD LABS", version, about = "Eld Cli")]
+#[command(
+    name = "eld-cli",
+    author,
+    version,
+    about = "Command-line client for an Eld node"
+)]
 pub struct Arguments {
     #[command(subcommand)]
     pub(crate) cmd: SubCommand,
@@ -17,7 +22,7 @@ pub struct Arguments {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum SubCommand {
-    /// Create Wallet (A Wallet contains a keypair for signing and verifying transactions)
+    /// Create a local signing wallet.
     CreateWallet {
         #[arg()]
         // the name of the wallet
@@ -25,18 +30,18 @@ pub(crate) enum SubCommand {
     },
     /// List wallets stored locally
     ListWallets {},
-    /// Fetch wallet by name
+    /// Show one local wallet.
     GetWallet {
         // Wallet name
         name: String,
     },
-    /// Remove a wallet.  Warning: removes private key
+    /// Delete a local wallet and its private key.
     RemoveWallet {
         #[arg()]
         // name of wallet to be removed
         name: String,
     },
-    /// Do a Transfer
+    /// Sign and commit a transfer from a local wallet.
     #[command(
         after_help = "Example:\n  eld-cli transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000"
     )]
@@ -51,14 +56,13 @@ pub(crate) enum SubCommand {
         #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
         amount: u128,
     },
-    /// Request tokens from the faucet
-    /// Example: cargo run request-faucet 0x1234567890abcdef1234567890abcdef12345678
+    /// Request tokens from the dev faucet.
     RequestFaucet {
         /// Address that receives the faucet tokens.
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
         address: String,
     },
-    /// Get Account (Account is a read only view of a wallet, fetched from a node)
+    /// Read an account balance and nonce.
     #[command(
         after_help = "Example:\n  eld-cli get-account 0x1234567890abcdef1234567890abcdef12345678"
     )]
@@ -67,14 +71,15 @@ pub(crate) enum SubCommand {
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
         address: String,
     },
+    /// Read a staking account.
     GetStakeAccount {
         /// Staking account address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
         address: String,
     },
-    /// Get ABCI Info
+    /// Read Tendermint ABCI info.
     GetAbciInfo {},
-    /// Stake tokens
+    /// Stake tokens from a local wallet.
     Stake {
         #[arg()]
         // wallet which will sign and be debited
@@ -84,7 +89,7 @@ pub(crate) enum SubCommand {
         amount: u128,
     },
 
-    /// Unstake tokens
+    /// Unstake tokens back to a local wallet.
     Unstake {
         #[arg()]
         // wallet which will sign and receive funds
@@ -93,17 +98,16 @@ pub(crate) enum SubCommand {
         #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
         amount: u128,
     },
+    /// List validators in the current epoch.
     ViewActiveValidators {},
-    /// View comprehensive epoch information including active validators
+    /// Show epoch metadata and the validator set.
     ViewEpoch {},
-    /// Look up a namespace slug in the on-chain registry (app REST API).
-    /// Example: cargo run -- get-namespace peter
+    /// Look up a namespace slug.
     GetNamespace {
         #[arg()]
         namespace_slug: String,
     },
-    /// Register a custom namespace scope on-chain (`AddNamespace` tx), then poll until visible via REST.
-    /// Example: cargo run -- add-namespace wallet1 peter
+    /// Register a namespace.
     AddNamespace {
         #[arg()]
         wallet_name: String,
@@ -113,7 +117,7 @@ pub(crate) enum SubCommand {
         #[arg(long, default_value_t = 1, value_parser = parse_amount)]
         registration_fee: u128,
     },
-    /// Post a pinboard message (user-signed blob + node broadcasts PostMessage tx)
+    /// Post a pinboard message.
     #[command(
         after_help = "Example:\n  eld-cli post-pinboard-message my-wallet ./message.txt --content-type text/plain"
     )]
@@ -125,8 +129,7 @@ pub(crate) enum SubCommand {
         /// MIME type for the message body (`text/plain`, `application/json`, or `image/png`).
         #[arg(long = "content-type", value_parser = parse_content_type)]
         content_type: String,
-        /// Post lifetime in blocks (TTL). Pinboard queries hide the body after `committed_height + ttl`.
-        /// If `ttl` is `0`, it defaults to `1000` blocks.
+        /// Post lifetime in blocks. Queries hide the body after the commit height plus this value.
         #[arg(long, default_value_t = 1000)]
         expires_height: u64,
         #[arg(long, default_value = "Public", value_parser = parse_visibility)]
@@ -147,19 +150,19 @@ pub(crate) enum SubCommand {
         #[arg(long)]
         namespace: Option<String>,
     },
-    /// Query a CADO by its path
+    /// Read a CADO by path.
     GetCado {
         #[arg()]
         // CADO path (ELD root prefixes: `eld_common::constants::cado::PATH_PREFIX_*` + segments)
         path: String,
     },
-    /// List CADO paths matching a search string
+    /// List CADO paths that match a prefix.
     ListCados {
         #[arg()]
         // search string (prefix under `eld_common::constants::cado`, e.g. `PATH_PREFIX_ELD_ROOT_SCOPE`)
         search_string: String,
     },
-    /// Pinboard: get a single post by wallet + message_id
+    /// Fetch one pinboard post.
     PinboardGetPost {
         /// Wallet address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
@@ -167,7 +170,7 @@ pub(crate) enum SubCommand {
         #[arg()]
         message_id: String,
     },
-    /// Pinboard: list posts by tag (paged)
+    /// List pinboard posts by tag.
     PinboardListByTag {
         #[arg()]
         tag: String,
@@ -176,7 +179,7 @@ pub(crate) enum SubCommand {
         #[arg(long, default_value_t = 100)]
         page_size: usize,
     },
-    /// Pinboard: list posts by wallet (paged)
+    /// List pinboard posts by wallet.
     PinboardListByWallet {
         /// Wallet address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]

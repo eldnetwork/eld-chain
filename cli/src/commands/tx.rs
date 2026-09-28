@@ -24,8 +24,7 @@ pub(crate) async fn stake(
     amount: u128,
 ) -> Result<(), EldError> {
     let submitted = cli.stake(wallet_name, amount).await?;
-    let body = crate::output::submitted_tx("Stake", &submitted);
-    crate::output::print_result(&format!("next_nonce: {}\n{body}", submitted.nonce));
+    crate::output::print_result(&crate::output::submitted_tx("Stake", &submitted));
     Ok(())
 }
 

@@ -7,7 +7,6 @@ use eld_client::api::rest::{NamespaceRegisteredResponse, PostMessageSubmitRespon
 use eld_client::facade::ChainClient;
 use eld_client::facade::NamespaceLookup;
 use eld_client::facade::SubmittedTx;
-use eld_client::logging::{SanitizedLog, SanitizedLoggable};
 use eld_common::account::Account;
 use eld_common::constants::cado::{
     PATH_PREFIX_ACCOUNT, PATH_PREFIX_ACCOUNT_CONTENT, PATH_PREFIX_APP_STATE_SNAPSHOT,
@@ -108,67 +107,67 @@ pub(crate) fn faucet_ok(body: &str) -> String {
 }
 
 pub(crate) fn account(account: &Account) -> String {
-    format!("Account found:\n{}", account.sanitized_log())
+    format!(
+        "address: {}\nbalance: {}\nnonce: {}",
+        account.address().hex_with_prefix(),
+        account.balance(),
+        account.nonce()
+    )
 }
 
 pub(crate) fn staking_account(address: &str, account: &StakingAccount) -> String {
     format!(
-        "address: {address}\nstaking_account: {}",
-        account.sanitized_log()
+        "address: {address}\nstake_balance: {}\noriginator: {}",
+        account.stake_balance, account.originator
     )
 }
 
 pub(crate) async fn active_validators(
     cli: &ChainClient,
-    node_url: &str,
     validators: Option<ActiveValidatorsInfo>,
 ) -> String {
     let mut text = Text::new();
-    text.line(format!("Fetching active validators from {node_url}..."));
     match validators {
         Some(active_validators) => {
             if active_validators.validators.is_empty() {
-                text.line("No active validators found in the current epoch");
+                text.line("No active validators in the current epoch");
                 return text.finish();
             }
 
             text.line(format!(
-                "Current Epoch: {}",
+                "Current epoch: {}",
                 active_validators.current_epoch
             ));
-            text.line(format!("Total Stake: {}", active_validators.total_stake));
+            text.line(format!("Total stake: {}", active_validators.total_stake));
             text.blank();
             text.line(format!(
-                "Active Validators (sorted by voting power): {}",
+                "Active validators: {}",
                 active_validators.validators.len()
             ));
 
             for (i, validator) in active_validators.validators.iter().enumerate() {
                 text.blank();
-                text.line(format!("Validator #{}", i + 1));
-                text.line(format!(
-                    "  Address: {}",
-                    SanitizedLog::as_address(validator.address)
-                ));
-                text.line(format!("  Stake (Voting Power): {}", validator.stake));
+                text.line(format!("Validator {}", i + 1));
+                text.line(format!("  address: {}", validator.address));
+                text.line(format!("  stake: {}", validator.stake));
 
                 let balance = match cli
                     .get_account_by_address(validator.address.to_string())
                     .await
                 {
                     Ok(Some(account)) => account.balance().to_string(),
-                    Ok(None) => "Account not found".to_string(),
-                    Err(e) => format!("Error fetching account: {e}"),
+                    Ok(None) => "account not found".to_string(),
+                    Err(e) => format!("error: {e}"),
                 };
-                text.line(format!("  Liquid Balance: {balance}"));
+                text.line(format!("  balance: {balance}"));
                 text.line(format!(
-                    "  Public Key: {}",
-                    SanitizedLog::as_public_key(hex::encode(&validator.public_key))
+                    "  public_key: {}",
+                    hex::encode(&validator.public_key)
                 ));
             }
         }
         None => {
-            text.line("No active validators information available");
+            text.line("No active validator information");
         }
     }
     text.finish()
@@ -176,59 +175,48 @@ pub(crate) async fn active_validators(
 
 pub(crate) fn epoch(epoch_info: &EpochInfo, active_validators: &ActiveValidatorsInfo) -> String {
     let mut text = Text::new();
-    text.line("╔══════════════════════════════════════════╗");
-    text.line("║             EPOCH INFORMATION            ║");
-    text.line("╚══════════════════════════════════════════╝");
-    text.line(format!("  Current Epoch: {}", epoch_info.current_epoch));
-    text.line(format!("  Current Block: {}", epoch_info.current_block));
+    text.line("Epoch");
+    text.line(format!("  current_epoch: {}", epoch_info.current_epoch));
+    text.line(format!("  current_block: {}", epoch_info.current_block));
     text.line(format!(
-        "  Blocks Until Next Epoch: {}",
+        "  blocks_until_next_epoch: {}",
         epoch_info.blocks_until_next_epoch
     ));
     text.blank();
 
-    text.line("╔══════════════════════════════════════════╗");
     text.line(format!(
-        "║      ACTIVE VALIDATORS (EPOCH {})      ║",
+        "Active validators (epoch {})",
         epoch_info.current_epoch
     ));
-    text.line("╚══════════════════════════════════════════╝");
-    text.line(format!("  Total Stake: {}", active_validators.total_stake));
+    text.line(format!("  total_stake: {}", active_validators.total_stake));
     text.line(format!(
-        "  Validators per Epoch: {}",
+        "  validators_per_epoch: {}",
         epoch_info.validators_per_epoch
     ));
     text.blank();
 
     for (i, validator) in active_validators.validators.iter().enumerate() {
         let address_display = validator.address.to_string();
-        let prefix_len = address_display.len().min(12);
-        text.line(format!(
-            "  Validator #{} - {}",
-            i + 1,
-            &address_display[0..prefix_len]
-        ));
-        text.line(format!("  ├─ Address: {address_display}"));
+        text.line(format!("Validator {}", i + 1));
+        text.line(format!("  address: {address_display}"));
         let percentage = validator
             .stake
             .ratio(active_validators.total_stake)
             .map(|r| r * 100.0)
             .unwrap_or(0.0);
         text.line(format!(
-            "  ├─ Stake: {} ({percentage:.2}% of total)",
+            "  stake: {} ({percentage:.2}% of total)",
             validator.stake
         ));
-        let pk_hex = hex::encode(&validator.public_key);
-        let pk_prefix_len = pk_hex.len().min(16);
-        text.line(format!("  └─ Public Key: {}...", &pk_hex[0..pk_prefix_len]));
+        text.line(format!(
+            "  public_key: {}",
+            hex::encode(&validator.public_key)
+        ));
         text.blank();
     }
 
-    text.line("╔══════════════════════════════════════════╗");
-    text.line("║               EPOCH TIMER                ║");
-    text.line("╚══════════════════════════════════════════╝");
     text.line(format!(
-        "  Next validator rotation in {} blocks",
+        "Next validator rotation in {} blocks",
         epoch_info.blocks_until_next_epoch
     ));
 
@@ -288,37 +276,32 @@ pub(crate) fn pinboard_submit(resp: &PostMessageSubmitResponse) -> String {
 
 pub(crate) fn pinboard_post(path: &str, v: &Value) -> String {
     let mut text = Text::new();
-    text.line(format!("Pinboard REST response for {path}:"));
+    text.line(format!("Pinboard post {path}:"));
     text.line(v.to_string());
 
     if let Some(message_b64) = v.get("message_b64").and_then(|m| m.as_str()) {
         match BASE64_STANDARD.decode(message_b64.as_bytes()) {
             Ok(decoded) => match String::from_utf8(decoded.clone()) {
                 Ok(message) => {
-                    text.line("Pinboard decoded message:");
+                    text.line("Message:");
                     text.line(message);
                 }
-                Err(_) => text.line(format!(
-                    "Pinboard decoded message (hex): 0x{}",
-                    hex::encode(decoded)
-                )),
+                Err(_) => text.line(format!("Message (hex): 0x{}", hex::encode(decoded))),
             },
-            Err(e) => text.line(format!("Failed to decode pinboard message_b64: {e}")),
+            Err(e) => text.line(format!("Failed to decode message: {e}")),
         }
     } else {
         let blob_status = v
             .get("blob_status")
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
-        text.line(format!(
-            "Pinboard REST response did not include message_b64 (blob_status={blob_status})"
-        ));
+        text.line(format!("No message body (blob_status={blob_status})"));
     }
     text.finish()
 }
 
 pub(crate) fn pinboard_list(path: &str, v: &Value) -> String {
-    format!("Pinboard response for {path}:\n{v}")
+    format!("Pinboard posts {path}:\n{v}")
 }
 
 pub(crate) fn list_cados(search_string: &str, paths: &[String]) -> String {
@@ -354,7 +337,7 @@ pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
     };
 
     let mut text = Text::new();
-    text.line("CADO query response:");
+    text.line(format!("CADO {path}"));
     text.blank();
     text.line(format!("CADO Type: {cado_type}"));
 
@@ -500,9 +483,6 @@ pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
                 text.line(format!("* Timestamp: \t{timestamp} (Unix)"));
             }
         }
-
-        text.line("Trie snapshot found and can be restored on node startup");
-        text.line("Use './start_app_with_db_data.sh' to restore from this snapshot");
     } else if let Ok(str_data) = String::from_utf8(data_bytes.clone()) {
         text.line("Data (as string):");
         text.line(format!("* {str_data}"));
@@ -542,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn account_formatter_prints_sanitized_account() {
+    fn account_formatter_prints_address_balance_and_nonce() {
         let account = Account::new(
             Address::parse_hex_str(ADDRESS).unwrap(),
             Coin::new(1000).unwrap(),
@@ -550,7 +530,7 @@ mod tests {
         );
         assert_eq!(
             super::account(&account),
-            "Account found:\nAccount { address: 0x1234...5678, balance: 0.001000 units, nonce: 3 }"
+            "address: 0x1234567890abcdef1234567890abcdef12345678\nbalance: 0.001000\nnonce: 3"
         );
     }
 
