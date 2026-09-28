@@ -3,8 +3,7 @@
 //! See `TYPE_DESIGN.md` at the workspace root for ID representation conventions.
 
 use crate::error::EldError;
-use crate::hex_encoding::decode_fixed_hex;
-use hex;
+use crate::hex_encoding::{decode_fixed_hex, encode_hex_0x};
 use serde::de::{Error as SerdeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -52,7 +51,7 @@ impl ContentId {
     /// Canonical string: `0x` + lowercase hex (64 digits).
     #[must_use]
     pub fn hex_with_prefix(&self) -> String {
-        format!("0x{}", hex::encode(self.bytes))
+        encode_hex_0x(&self.bytes)
     }
 }
 
@@ -66,7 +65,7 @@ impl FromStr for ContentId {
 
 impl fmt::Display for ContentId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{}", hex::encode(self.bytes))
+        f.write_str(&self.hex_with_prefix())
     }
 }
 

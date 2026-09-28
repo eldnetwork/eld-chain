@@ -1,8 +1,8 @@
-//! Shared hex parse rules for ID types.
+//! Shared hex parse and emit for ID types.
 //!
 //! Input accepts an optional `0x` / `0X` prefix and case-insensitive hex digits.
-//! Canonical *output* (Display / serde) is defined by each type so existing clients
-//! keep seeing the same wire form they already depend on.
+//! Output is [`encode_hex`] (lowercase, no prefix) or [`encode_hex_0x`]. Each type
+//! picks one so existing clients keep the wire form they already depend on.
 
 use crate::error::EldError;
 
@@ -52,6 +52,18 @@ pub(crate) fn decode_fixed_hex<const N: usize>(s: &str, field: &str) -> Result<[
     Ok(bytes)
 }
 
+/// Lowercase hex with no prefix.
+#[must_use]
+pub(crate) fn encode_hex(bytes: &[u8]) -> String {
+    hex::encode(bytes)
+}
+
+/// `0x` plus [`encode_hex`].
+#[must_use]
+pub(crate) fn encode_hex_0x(bytes: &[u8]) -> String {
+    format!("0x{}", encode_hex(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,7 +87,22 @@ mod tests {
         let bare = decode_fixed_hex::<32>(SAMPLE32, "id").expect("bare");
         assert_eq!(prefixed, bare);
         assert_eq!(upper_prefix, bare);
-        assert_eq!(hex::encode(bare), SAMPLE32);
+        assert_eq!(encode_hex(&bare), SAMPLE32);
+    }
+
+    #[test]
+    fn encode_hex_matches_lowercase_hex_encode() {
+        let bytes = decode_fixed_hex::<32>(SAMPLE32, "id").expect("sample");
+        assert_eq!(encode_hex(&bytes), hex::encode(bytes));
+        assert_eq!(encode_hex(&bytes), SAMPLE32);
+    }
+
+    #[test]
+    fn encode_hex_0x_prefixes_encode_hex() {
+        let bytes = decode_fixed_hex::<20>(SAMPLE20, "address").expect("sample");
+        let bare = encode_hex(&bytes);
+        assert_eq!(encode_hex_0x(&bytes), format!("0x{bare}"));
+        assert_eq!(encode_hex_0x(&bytes), format!("0x{}", hex::encode(bytes)));
     }
 
     #[test]

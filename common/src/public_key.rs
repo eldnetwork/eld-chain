@@ -1,7 +1,7 @@
 //! Canonical Ed25519 verifying key for on-chain capacity-validator registry entries.
 
 use crate::error::EldError;
-use crate::hex_encoding::decode_fixed_hex;
+use crate::hex_encoding::{decode_fixed_hex, encode_hex};
 use crate::tx::TxPublicKey;
 use ed25519_dalek::VerifyingKey;
 use serde::de::{Error, Visitor};
@@ -26,7 +26,7 @@ impl PublicKey {
     pub fn new(bytes: [u8; 32]) -> Result<Self, EldError> {
         VerifyingKey::from_bytes(&bytes).map_err(|e| EldError::ValidationError {
             field: "public_key".to_string(),
-            value: hex::encode(bytes),
+            value: encode_hex(&bytes),
             details: format!("invalid ed25519 public_key: {e}"),
         })?;
         Ok(Self { bytes })
@@ -41,6 +41,12 @@ impl PublicKey {
     /// Raw verifying key bytes.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.bytes
+    }
+
+    /// Lowercase hex without `0x` (64 digits). Same form as [`fmt::Display`] and serde.
+    #[must_use]
+    pub fn to_hex(&self) -> String {
+        encode_hex(&self.bytes)
     }
 
     /// Returns the Ed25519 verifying key.
@@ -58,13 +64,13 @@ impl Hash for PublicKey {
 
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PublicKey({})", hex::encode(self.bytes))
+        write!(f, "PublicKey({})", self.to_hex())
     }
 }
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.bytes))
+        f.write_str(&self.to_hex())
     }
 }
 
@@ -73,7 +79,7 @@ impl Serialize for PublicKey {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&hex::encode(self.bytes))
+        serializer.serialize_str(&self.to_hex())
     }
 }
 
@@ -157,7 +163,7 @@ mod tests {
     fn serde_round_trip_hex_string() {
         let pk = PublicKey::from(signing_key(3).verifying_key());
         let json = serde_json::to_string(&pk).expect("serialize");
-        assert_eq!(json, format!("\"{}\"", hex::encode(pk.as_bytes())));
+        assert_eq!(json, format!("\"{}\"", pk.to_hex()));
         let restored: PublicKey = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(pk, restored);
     }

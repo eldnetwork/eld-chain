@@ -1,8 +1,7 @@
 use crate::error::EldError;
-use crate::hex_encoding::decode_fixed_hex;
+use crate::hex_encoding::{decode_fixed_hex, encode_hex, encode_hex_0x};
 use crate::public_key::PublicKey;
 use ed25519_dalek::VerifyingKey;
-use hex;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
@@ -32,11 +31,11 @@ impl Address {
 
     // New hex() method
     pub fn hex(&self) -> String {
-        hex::encode(self.value)
+        encode_hex(&self.value)
     }
 
     pub fn hex_with_prefix(&self) -> String {
-        format!("0x{}", hex::encode(self.value))
+        encode_hex_0x(&self.value)
     }
 
     /// Canonical wire form (`0x` + lowercase hex).
@@ -71,23 +70,9 @@ impl Address {
     }
 
     pub fn verify_derives_from_pubkey_hex(&self, pubkey_hex: &str) -> Result<(), EldError> {
-        let public_key_bytes = hex::decode(pubkey_hex).map_err(|e| EldError::ValidationError {
-            field: "public_key".to_string(),
-            value: pubkey_hex.to_string(),
-            details: format!("Invalid public key hex format: {e}"),
-        })?;
+        let public_key = PublicKey::from_hex(pubkey_hex)?;
 
-        let public_key: [u8; PublicKey::LEN] =
-            public_key_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| EldError::ValidationError {
-                    field: "public_key".to_string(),
-                    value: pubkey_hex.to_string(),
-                    details: format!("Public key must be exactly {} bytes", PublicKey::LEN),
-                })?;
-
-        if self.is_from_public_key(&public_key) {
+        if self.is_from_public_key(public_key.as_bytes()) {
             Ok(())
         } else {
             Err(EldError::ValidationError {
@@ -409,10 +394,16 @@ mod tests {
         rng.fill_bytes(&mut secret_bytes);
         let signing_key = SigningKey::from_bytes(&secret_bytes);
         let verifying_key = signing_key.verifying_key();
-        let pubkey_hex = hex::encode(verifying_key.to_bytes());
+        let pubkey_hex = PublicKey::from(&verifying_key).to_hex();
         let address = Address::from_public_key(&verifying_key).expect("Address from pubk");
 
         assert!(address.verify_derives_from_pubkey_hex(&pubkey_hex).is_ok());
+        assert!(address
+            .verify_derives_from_pubkey_hex(&format!("0x{pubkey_hex}"))
+            .is_ok());
+        assert!(address
+            .verify_derives_from_pubkey_hex(&format!("0X{pubkey_hex}"))
+            .is_ok());
         assert!(address
             .verify_derives_from_pubkey_hex(
                 "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"

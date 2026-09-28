@@ -6,8 +6,7 @@
 //! See `TYPE_DESIGN.md` for ID representation and edge-stability conventions.
 
 use crate::error::EldError;
-use crate::hex_encoding::decode_fixed_hex;
-use hex;
+use crate::hex_encoding::{decode_fixed_hex, encode_hex};
 use serde::de::{Error as SerdeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -52,7 +51,7 @@ impl CapacityMerkleRoot {
     /// Lowercase hex without `0x` (64 digits), matching capacity edge string form.
     #[must_use]
     pub fn to_hex(&self) -> String {
-        hex::encode(self.bytes)
+        encode_hex(&self.bytes)
     }
 }
 

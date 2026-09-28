@@ -4,7 +4,7 @@ Domain types store raw bytes. String form is for JSON, logs, and CLI input. Cano
 
 **Parse (all of these types):** accept an optional `0x` / `0X` prefix and case-insensitive hex digits of the exact byte length. Do not require a prefix on HTTP, tx JSON, CLI, or serde input — clients in testing send both forms.
 
-**Display / serde serialize:** keep the historical wire form so existing clients do not break. Prefix on output is a per-type compatibility choice, not a second parse rule.
+**Display / serde serialize:** keep the historical wire form so existing clients do not break. Prefix on output is a per-type compatibility choice, not a second parse rule. Both string forms are produced only by `encode_hex` / `encode_hex_0x` in `hex_encoding.rs`.
 
 | Type | Size | Parse | Canonical display / serde |
 |---|---|---|---|
