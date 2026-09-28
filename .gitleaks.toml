@@ -23,4 +23,5 @@ paths = [
   '''(^|/)deploy/docker/local/single/tendermint/node_key\.json$''',
   '''(^|/)deploy/docker/local/single/tendermint/priv_validator_key\.json$''',
   '''(^|/)deploy/docker/local/single/tendermint/addrbook\.json$''',
+  '''(^|/)cli/wallets/''',
 ]

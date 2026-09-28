@@ -17,6 +17,16 @@ wallets/
 **/wallets.json
 config/*.json
 !config/*.json.example
+
+# Local CLI working files copied from the sibling CLI (not committed)
+cli/config/*.json
+cli/data/
+cli/metadata/
+cli/mock/
+cli/test_content.txt
+cli/example_image_535KB.png
+scripts/submit_metadata_tx.sh
+scripts/query_metadata.sh
 _dev-docs/
 .cursor/
 

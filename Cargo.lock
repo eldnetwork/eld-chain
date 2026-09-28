@@ -1063,6 +1063,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "eld-cli"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "bincode",
+ "clap",
+ "eld-client",
+ "eld-common",
+ "hex",
+ "serde_json",
+ "tendermint",
+ "tendermint-rpc",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "eld-client"
 version = "0.0.1"
 dependencies = [
