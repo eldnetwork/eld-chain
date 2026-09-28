@@ -21,6 +21,32 @@ This repository is the chain implementation — protocol types (eld-common), off
 
 Testnet is live; crate versions here are unpublished (publish = false) and protocol constants are local-dev values, not mainnet economics.
 
+## Quick start
+
+**Build and test the workspace**:
+
+### Configure nodes
+
+To run a local node (Docker Compose). 
+
+Set env vars:
+```
+cp deploy/.env.example deploy/.env   # set TENDERMINT_DIR and image tags
+```
+Next, create local wallets + Tendermint/P2P keys (gitignored). See `deploy/README.md`.
+
+### Run nodes
+Using published images, single tendermint + node-app pair, fresh genesis
+```
+./deploy/scripts/docker/local/single/single-start-without-history.ghcr.sh
+```
+
+eld-app-1 is then on `REST 9001` and Tendermint-1 `RPC 26657`. 
+Stop with `./deploy/scripts/docker/local/single/single-stop.sh`. 
+
+To build images locally or run the 4-node cluster, use the scripts mentioned in `deploy/README.md`.
+
+
 ## This repository
 
 Protocol types (`eld-common`), off-chain client helpers (`eld-client`), and the ABCI node application (`eld-node`) for the Eld blockchain.
