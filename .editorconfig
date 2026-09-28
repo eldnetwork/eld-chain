@@ -1,0 +1,35 @@
+# https://editorconfig.org
+root = true
+
+# 2 spaces: Markdown, YAML, and shell (including extensionless scripts).
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.rs]
+indent_size = 4
+
+# Cargo.toml, deny.toml, and .cargo/audit.toml use 4. .gitleaks.toml is 2.
+[*.toml]
+indent_size = 4
+
+# App config and client config.json.example use 4. Tendermint genesis.json is 2.
+[*.json]
+indent_size = 4
+
+[*.json.example]
+indent_size = 4
+
+# RUN continuations in deploy/docker/Dockerfile* are 4 spaces.
+[Dockerfile*]
+indent_size = 4
+
+[*.{png,jpg,jpeg,gif,webp,ico,bin}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

@@ -1,0 +1,37 @@
+# Default: normalize text to LF in the repo; convert on checkout only if needed.
+* text=auto eol=lf
+
+# Rust
+*.rs text
+
+# Do not count the lockfile toward the language bar.
+Cargo.lock linguist-generated
+
+# Config / markup
+*.toml text
+*.json text
+*.example text
+*.yml text
+*.yaml text
+*.md text
+
+# Shell and Docker. deploy/scripts/** covers extensionless scripts.
+*.sh text eol=lf
+deploy/scripts/** text eol=lf
+Dockerfile* text
+.dockerignore text
+
+# Git / GitHub
+.gitignore text
+.gitattributes text
+.editorconfig text
+.github/CODEOWNERS text
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.bin binary
