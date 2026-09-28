@@ -2,7 +2,7 @@
 
 All notable changes to `eld-client` are documented here.
 
-## [0.1.0] - 2026-03-21
+## [0.0.1] - 2026-09-26
 
 First experimental release as a library crate inside `eld-chain` (not published to crates.io).
 

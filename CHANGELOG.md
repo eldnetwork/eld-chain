@@ -3,14 +3,17 @@
 All notable changes to **eld-chain** (this workspace: `eld-common`, `eld-client`, `eld-node`) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for **git tags and GHCR images**.
-Crate versions in `Cargo.toml` are still `0.1.0` and unpublished (`publish = false`).
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Git tags, GHCR image tags, and `Cargo.toml` versions use the same number.
+Crates are unpublished (`publish = false`).
 
 ## [Unreleased]
 
 ### Added
 
 ### Changed
+
+- Crate versions are `0.0.1`, the same number as git tag `v0.0.1`.
 
 ### Fixed
 
