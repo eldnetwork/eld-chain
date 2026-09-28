@@ -6,11 +6,13 @@ pub(crate) async fn view_active_validators(
     node_url: &str,
 ) -> Result<(), EldError> {
     let validators = cli.view_active_validators().await?;
-    crate::output::active_validators(cli, node_url, validators).await
+    let text = crate::output::active_validators(cli, node_url, validators).await;
+    crate::output::print_result(&text);
+    Ok(())
 }
 
 pub(crate) async fn view_epoch(cli: &ChainClient) -> Result<(), EldError> {
     let (epoch_info, validators) = cli.view_epoch().await?;
-    crate::output::epoch(&epoch_info, &validators);
+    crate::output::print_result(&crate::output::epoch(&epoch_info, &validators));
     Ok(())
 }

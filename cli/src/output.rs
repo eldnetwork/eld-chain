@@ -1,4 +1,4 @@
-//! Human-facing CLI output previously printed inside `eld-client`.
+//! Human-facing CLI text. Callers print the returned strings on stdout.
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -13,320 +13,334 @@ use eld_common::constants::cado::{
     PATH_PREFIX_ACCOUNT, PATH_PREFIX_ACCOUNT_CONTENT, PATH_PREFIX_APP_STATE_SNAPSHOT,
     PATH_PREFIX_CADO_MAP, PATH_PREFIX_STAKING_ACCOUNT,
 };
-use eld_common::error::EldError;
+use eld_common::error::{EldError, ErrorBuilder};
 use eld_common::staking_account::StakingAccount;
 use eld_common::tx::Tx;
 use eld_common::validator::{ActiveValidatorsInfo, EpochInfo};
 use eld_common::wallet::Wallet;
 use serde_json::Value;
-use tracing::{info, warn};
 
-pub fn log_deliver_tx_events(response: &Value) {
-    for event in deliver_tx_events(response) {
-        info!("\nEvent Type: {}", event.event_type);
-        for (key, value) in event.attributes {
-            info!("{key}: {value}");
-        }
+struct Text {
+    lines: Vec<String>,
+}
+
+impl Text {
+    fn new() -> Self {
+        Self { lines: Vec::new() }
+    }
+
+    fn line(&mut self, line: impl Into<String>) {
+        self.lines.push(line.into());
+    }
+
+    fn blank(&mut self) {
+        self.lines.push(String::new());
+    }
+
+    fn finish(self) -> String {
+        self.lines.join("\n")
     }
 }
 
-pub fn created_wallet(wallet: &Wallet) {
-    info!(wallet_name = %wallet.name, "Created wallet");
-    info!("{}", wallet.terminal_display());
+pub(crate) fn print_result(text: &str) {
+    let text = text.trim_end_matches('\n');
+    if text.is_empty() {
+        return;
+    }
+    println!("{text}");
 }
 
-pub fn list_wallets(wallets: &[Wallet]) {
-    info!("Listing wallets");
-    info!("Wallets:\n");
+pub(crate) fn created_wallet(wallet: &Wallet) -> String {
+    wallet.terminal_display()
+}
+
+pub(crate) fn list_wallets(wallets: &[Wallet]) -> String {
     if wallets.is_empty() {
-        info!("No wallets found");
-        info!("No wallets found. Create one with 'create-wallet <name>'");
-    } else {
-        info!(wallet_count = wallets.len(), "Retrieved wallets");
-        for wallet in wallets {
-            info!("{}", wallet.terminal_display());
+        return "No wallets found. Create one with 'create-wallet <name>'".to_string();
+    }
+    let mut text = Text::new();
+    text.line("Wallets:");
+    for wallet in wallets {
+        text.line(wallet.terminal_display());
+    }
+    text.finish()
+}
+
+pub(crate) fn display_wallet(wallet: &Wallet) -> String {
+    wallet.terminal_display()
+}
+
+pub(crate) fn removed_wallet(name: &str) -> String {
+    format!("Removed wallet '{name}'")
+}
+
+pub(crate) fn submitted_tx(kind: &str, submitted: &SubmittedTx) -> String {
+    let mut text = Text::new();
+    text.line(format!("{kind} transaction committed"));
+    text.line(format!("tx_hash: {}", submitted.tx_hash));
+    text.line(format!("fee: {}", submitted.fee.amount()));
+    text.line(format!("nonce: {}", submitted.nonce.value()));
+    for event in deliver_tx_events(&submitted.response) {
+        text.blank();
+        text.line(format!("Event Type: {}", event.event_type));
+        for (key, value) in event.attributes {
+            text.line(format!("{key}: {value}"));
         }
     }
+    text.finish()
 }
 
-pub fn display_wallet(name: &str, wallet: Option<&Wallet>) {
-    if let Some(wallet) = wallet {
-        info!(wallet_name = %name, "Displaying wallet");
-        info!("{}", wallet.terminal_display());
-    } else {
-        warn!(wallet_name = %name, "Couldn't find wallet for display");
-        warn!("Couldn't find wallet");
-    }
-}
-
-pub fn removed_wallet(name: &str, removed: bool) {
-    if !removed {
-        warn!(wallet_name = %name, "Wallet not found for removal");
-        warn!("Wallet with name '{name}' not found");
-    }
-}
-
-pub fn submitted_tx(kind: &str, submitted: &SubmittedTx) {
-    info!(
-        tx_hash = %submitted.tx_hash,
-        fee = %submitted.fee.amount(),
-        nonce = submitted.nonce.value(),
-        "{kind} transaction committed"
-    );
-    log_deliver_tx_events(&submitted.response);
-}
-
-pub fn faucet_ok(body: &str) {
+pub(crate) fn faucet_ok(body: &str) -> String {
     match serde_json::from_str::<Value>(body) {
         Ok(value) => {
-            let success = value.get("success").and_then(|v| v.as_bool());
             let message = value
                 .get("message")
                 .and_then(|v| v.as_str())
                 .unwrap_or("(no message)");
-            info!(?success, message, "Faucet request succeeded");
+            match value.get("success").and_then(|v| v.as_bool()) {
+                Some(success) => {
+                    format!("Faucet request succeeded\nsuccess: {success}\nmessage: {message}")
+                }
+                None => format!("Faucet request succeeded\nmessage: {message}"),
+            }
         }
-        Err(_) => info!("Faucet request succeeded"),
+        Err(_) => "Faucet request succeeded".to_string(),
     }
 }
 
-pub fn account(address: &str, account: Option<&Account>) {
-    match account {
-        Some(account) => {
-            info!("Account found:");
-            info!("{}", account.sanitized_log());
-        }
-        None => {
-            warn!(
-                "No account found for address: {}",
-                SanitizedLog::as_address(address)
-            );
-        }
-    }
+pub(crate) fn account(account: &Account) -> String {
+    format!("Account found:\n{}", account.sanitized_log())
 }
 
-pub fn staking_account(address: &str, account: &eld_common::staking_account::StakingAccount) {
-    info!(address = %address, "Retrieved staking account");
-    info!("staking_account: {}", account.sanitized_log());
+pub(crate) fn staking_account(address: &str, account: &StakingAccount) -> String {
+    format!(
+        "address: {address}\nstaking_account: {}",
+        account.sanitized_log()
+    )
 }
 
-pub fn all_transactions(txs: &[Tx]) {
-    info!("Transactions:\n");
+pub(crate) fn all_transactions(txs: &[Tx]) -> String {
+    let mut text = Text::new();
+    text.line("Transactions:");
     for tx in txs {
-        info!("tx: {}", SanitizedLog::new(tx.clone()));
+        text.line(format!("tx: {}", SanitizedLog::new(tx.clone())));
     }
+    text.finish()
 }
 
-pub async fn active_validators(
+pub(crate) async fn active_validators(
     cli: &ChainClient,
     node_url: &str,
     validators: Option<ActiveValidatorsInfo>,
-) -> Result<(), EldError> {
-    info!("Fetching active validators from {node_url}...");
+) -> String {
+    let mut text = Text::new();
+    text.line(format!("Fetching active validators from {node_url}..."));
     match validators {
         Some(active_validators) => {
             if active_validators.validators.is_empty() {
-                info!("No active validators found in the current epoch");
-                return Ok(());
+                text.line("No active validators found in the current epoch");
+                return text.finish();
             }
 
-            info!("Current Epoch: {}", active_validators.current_epoch);
-            info!("Total Stake: {}", active_validators.total_stake);
-            info!(
-                "\nActive Validators (sorted by voting power): {}",
+            text.line(format!(
+                "Current Epoch: {}",
+                active_validators.current_epoch
+            ));
+            text.line(format!("Total Stake: {}", active_validators.total_stake));
+            text.blank();
+            text.line(format!(
+                "Active Validators (sorted by voting power): {}",
                 active_validators.validators.len()
-            );
+            ));
 
             for (i, validator) in active_validators.validators.iter().enumerate() {
-                info!("\nValidator #{}", i + 1);
-                info!("  Address: {}", SanitizedLog::as_address(validator.address));
-                info!("  Stake (Voting Power): {}", validator.stake);
+                text.blank();
+                text.line(format!("Validator #{}", i + 1));
+                text.line(format!(
+                    "  Address: {}",
+                    SanitizedLog::as_address(validator.address)
+                ));
+                text.line(format!("  Stake (Voting Power): {}", validator.stake));
 
-                match cli
+                let balance = match cli
                     .get_account_by_address(validator.address.to_string())
                     .await
                 {
-                    Ok(Some(account)) => {
-                        info!("  Liquid Balance: {}", account.balance());
-                    }
-                    Ok(None) => {
-                        info!("  Liquid Balance: Account not found");
-                    }
-                    Err(e) => {
-                        warn!("  Liquid Balance: Error fetching account: {}", e);
-                    }
-                }
-
-                info!(
+                    Ok(Some(account)) => account.balance().to_string(),
+                    Ok(None) => "Account not found".to_string(),
+                    Err(e) => format!("Error fetching account: {e}"),
+                };
+                text.line(format!("  Liquid Balance: {balance}"));
+                text.line(format!(
                     "  Public Key: {}",
                     SanitizedLog::as_public_key(hex::encode(&validator.public_key))
-                );
+                ));
             }
-            Ok(())
         }
         None => {
-            info!("No active validators information available");
-            Ok(())
+            text.line("No active validators information available");
         }
     }
+    text.finish()
 }
 
-pub fn epoch(epoch_info: &EpochInfo, active_validators: &ActiveValidatorsInfo) {
-    info!("╔══════════════════════════════════════════╗");
-    info!("║             EPOCH INFORMATION            ║");
-    info!("╚══════════════════════════════════════════╝");
-    info!("  Current Epoch: {}", epoch_info.current_epoch);
-    info!("  Current Block: {}", epoch_info.current_block);
-    info!(
+pub(crate) fn epoch(epoch_info: &EpochInfo, active_validators: &ActiveValidatorsInfo) -> String {
+    let mut text = Text::new();
+    text.line("╔══════════════════════════════════════════╗");
+    text.line("║             EPOCH INFORMATION            ║");
+    text.line("╚══════════════════════════════════════════╝");
+    text.line(format!("  Current Epoch: {}", epoch_info.current_epoch));
+    text.line(format!("  Current Block: {}", epoch_info.current_block));
+    text.line(format!(
         "  Blocks Until Next Epoch: {}",
         epoch_info.blocks_until_next_epoch
-    );
-    info!("");
+    ));
+    text.blank();
 
-    info!("╔══════════════════════════════════════════╗");
-    info!(
+    text.line("╔══════════════════════════════════════════╗");
+    text.line(format!(
         "║      ACTIVE VALIDATORS (EPOCH {})      ║",
         epoch_info.current_epoch
-    );
-    info!("╚══════════════════════════════════════════╝");
-    info!("  Total Stake: {}", active_validators.total_stake);
-    info!(
+    ));
+    text.line("╚══════════════════════════════════════════╝");
+    text.line(format!("  Total Stake: {}", active_validators.total_stake));
+    text.line(format!(
         "  Validators per Epoch: {}",
         epoch_info.validators_per_epoch
-    );
-    info!("");
+    ));
+    text.blank();
 
     for (i, validator) in active_validators.validators.iter().enumerate() {
         let address_display = validator.address.to_string();
         let prefix_len = address_display.len().min(12);
-        info!(
+        text.line(format!(
             "  Validator #{} - {}",
             i + 1,
             &address_display[0..prefix_len]
-        );
-        info!("  ├─ Address: {}", address_display);
+        ));
+        text.line(format!("  ├─ Address: {address_display}"));
         let percentage = validator
             .stake
             .ratio(active_validators.total_stake)
             .map(|r| r * 100.0)
             .unwrap_or(0.0);
-        info!(
-            "  ├─ Stake: {} ({:.2}% of total)",
-            validator.stake, percentage
-        );
+        text.line(format!(
+            "  ├─ Stake: {} ({percentage:.2}% of total)",
+            validator.stake
+        ));
         let pk_hex = hex::encode(&validator.public_key);
         let pk_prefix_len = pk_hex.len().min(16);
-        info!("  └─ Public Key: {}...", &pk_hex[0..pk_prefix_len]);
-        info!("");
+        text.line(format!("  └─ Public Key: {}...", &pk_hex[0..pk_prefix_len]));
+        text.blank();
     }
 
-    info!("╔══════════════════════════════════════════╗");
-    info!("║               EPOCH TIMER                ║");
-    info!("╚══════════════════════════════════════════╝");
-    info!(
+    text.line("╔══════════════════════════════════════════╗");
+    text.line("║               EPOCH TIMER                ║");
+    text.line("╚══════════════════════════════════════════╝");
+    text.line(format!(
         "  Next validator rotation in {} blocks",
         epoch_info.blocks_until_next_epoch
-    );
+    ));
 
     let progress = ((epoch_info.blocks_per_epoch - epoch_info.blocks_until_next_epoch) as f64
         / epoch_info.blocks_per_epoch as f64)
         * 100.0;
-
     let bar_width = 50;
     let filled_width = (progress / 100.0 * bar_width as f64) as usize;
-
-    info!("  [");
+    let mut bar = String::from("  [");
     for i in 0..bar_width {
         if i < filled_width {
-            info!("█");
+            bar.push('█');
         } else {
-            info!("░");
+            bar.push('░');
         }
     }
-    info!("] {:.1}%", progress);
+    bar.push_str(&format!("] {progress:.1}%"));
+    text.line(bar);
+    text.finish()
 }
 
-pub fn namespace_lookup(lookup: &NamespaceLookup) {
+pub(crate) fn namespace_lookup(lookup: &NamespaceLookup) -> String {
     match &lookup.registered {
         Some(resp) => print_registered(resp),
-        None => {
-            println!("registered: false");
-            println!("namespace_slug: {}", lookup.canonical_slug);
-        }
+        None => format!(
+            "registered: false\nnamespace_slug: {}",
+            lookup.canonical_slug
+        ),
     }
 }
 
-pub fn print_registered(resp: &NamespaceRegisteredResponse) {
-    info!(
-        namespace_slug = %resp.namespace_slug,
-        owner = %resp.owner,
-        registered_height = resp.registered_height,
-        registry_path = %resp.registry_path,
-        "Namespace registered"
-    );
-    println!("registered: {}", resp.registered);
-    println!("namespace_slug: {}", resp.namespace_slug);
-    println!("scope: {}", resp.scope);
-    println!("owner: {}", resp.owner);
-    println!("registered_height: {}", resp.registered_height);
-    println!("registry_path: {}", resp.registry_path);
+pub(crate) fn print_registered(resp: &NamespaceRegisteredResponse) -> String {
+    format!(
+        "registered: {}\nnamespace_slug: {}\nscope: {}\nowner: {}\nregistered_height: {}\nregistry_path: {}",
+        resp.registered,
+        resp.namespace_slug,
+        resp.scope,
+        resp.owner,
+        resp.registered_height,
+        resp.registry_path
+    )
 }
 
-pub fn pinboard_submit(resp: &PostMessageSubmitResponse) {
-    info!(
-        message_id = %resp.message_id,
-        tx_hash = %resp.tx_hash,
-        "Pinboard message accepted by node"
-    );
-    println!("status: {}", resp.status);
-    println!("message_id: {}", resp.message_id);
-    println!("content_key: {}", resp.content_key);
-    println!("tx_hash: {}", resp.tx_hash);
-    println!("origin_validator: {}", resp.origin_validator);
-    println!("received_timestamp: {}", resp.received_timestamp);
+pub(crate) fn pinboard_submit(resp: &PostMessageSubmitResponse) -> String {
+    let mut text = Text::new();
+    text.line(format!("status: {}", resp.status));
+    text.line(format!("message_id: {}", resp.message_id));
+    text.line(format!("content_key: {}", resp.content_key));
+    text.line(format!("tx_hash: {}", resp.tx_hash));
+    text.line(format!("origin_validator: {}", resp.origin_validator));
+    text.line(format!("received_timestamp: {}", resp.received_timestamp));
     if let Some(content_path) = &resp.content_path {
-        println!("content_path: {content_path}");
+        text.line(format!("content_path: {content_path}"));
     }
+    text.finish()
 }
 
-pub fn pinboard_post(path: &str, v: &Value) {
-    info!("Pinboard REST response for {}:\n{}", path, v);
+pub(crate) fn pinboard_post(path: &str, v: &Value) -> String {
+    let mut text = Text::new();
+    text.line(format!("Pinboard REST response for {path}:"));
+    text.line(v.to_string());
 
     if let Some(message_b64) = v.get("message_b64").and_then(|m| m.as_str()) {
         match BASE64_STANDARD.decode(message_b64.as_bytes()) {
             Ok(decoded) => match String::from_utf8(decoded.clone()) {
-                Ok(text) => info!("Pinboard decoded message:\n{}", text),
-                Err(_) => {
-                    info!("Pinboard decoded message (hex): 0x{}", hex::encode(decoded))
+                Ok(message) => {
+                    text.line("Pinboard decoded message:");
+                    text.line(message);
                 }
+                Err(_) => text.line(format!(
+                    "Pinboard decoded message (hex): 0x{}",
+                    hex::encode(decoded)
+                )),
             },
-            Err(e) => warn!("Failed to decode pinboard message_b64: {}", e),
+            Err(e) => text.line(format!("Failed to decode pinboard message_b64: {e}")),
         }
     } else {
         let blob_status = v
             .get("blob_status")
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
-        warn!(
-            "Pinboard REST response did not include message_b64 (blob_status={})",
-            blob_status
-        );
+        text.line(format!(
+            "Pinboard REST response did not include message_b64 (blob_status={blob_status})"
+        ));
     }
+    text.finish()
 }
 
-pub fn pinboard_list(path: &str, v: &Value) {
-    info!("Pinboard response for {}:\n{}", path, v);
+pub(crate) fn pinboard_list(path: &str, v: &Value) -> String {
+    format!("Pinboard response for {path}:\n{v}")
 }
 
-pub fn list_cados(search_string: &str, paths: &[String]) {
-    info!(
-        "Found {} CADO paths matching '{}':",
-        paths.len(),
-        search_string
-    );
+pub(crate) fn list_cados(search_string: &str, paths: &[String]) -> String {
+    let mut text = Text::new();
+    text.line(format!(
+        "Found {} CADO paths matching '{search_string}':",
+        paths.len()
+    ));
     for (i, path) in paths.iter().enumerate() {
-        info!("{}. {}", i + 1, path);
+        text.line(format!("{}. {path}", i + 1));
     }
+    text.finish()
 }
 
 fn json_bytes(values: &[Value]) -> Vec<u8> {
@@ -336,8 +350,7 @@ fn json_bytes(values: &[Value]) -> Vec<u8> {
         .collect()
 }
 
-pub fn cado(path: &str, response: &Value) {
-    info!("CADO query response:");
+pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
     let cado = if let Some(mutable) = response.get("Mutable") {
         Some(("Mutable", mutable))
     } else {
@@ -347,127 +360,145 @@ pub fn cado(path: &str, response: &Value) {
     };
 
     let Some((cado_type, cado)) = cado else {
-        info!("No CADO found at path: {}", path);
-        return;
+        return Err(ErrorBuilder::not_found_error("CADO", path));
     };
 
-    info!("\nCADO Type: {}", cado_type);
+    let mut text = Text::new();
+    text.line("CADO query response:");
+    text.blank();
+    text.line(format!("CADO Type: {cado_type}"));
 
     if let Some(metadata) = cado.get("metadata") {
-        info!("\nMetadata:");
-        info!(
+        text.blank();
+        text.line("Metadata:");
+        text.line(format!(
             "  Type:\t\t {}",
             metadata.get("type_").unwrap_or(&serde_json::Value::Null)
-        );
-        info!(
+        ));
+        text.line(format!(
             "  Owner:\t {}",
             metadata.get("owner").unwrap_or(&serde_json::Value::Null)
-        );
+        ));
     }
 
     if let Some(hash) = cado.get("hash") {
         if let Some(hash_array) = hash.as_array() {
-            info!("\nHash:\t\t 0x{}", hex::encode(json_bytes(hash_array)));
+            text.blank();
+            text.line(format!(
+                "Hash:\t\t 0x{}",
+                hex::encode(json_bytes(hash_array))
+            ));
         }
     }
 
     if cado_type == "Mutable" {
         if let Some(latest_hash) = cado.get("latest_hash") {
             if let Some(hash_array) = latest_hash.as_array() {
-                info!("Latest Hash:\t 0x{}", hex::encode(json_bytes(hash_array)));
+                text.line(format!(
+                    "Latest Hash:\t 0x{}",
+                    hex::encode(json_bytes(hash_array))
+                ));
             }
         }
     }
 
     let Some(data) = cado.get("data").and_then(|d| d.as_array()) else {
-        return;
+        return Ok(text.finish());
     };
     let data_bytes = json_bytes(data);
 
     if path.starts_with(PATH_PREFIX_STAKING_ACCOUNT) {
         match StakingAccount::deserialize_bin(&data_bytes) {
             Ok(account) => {
-                info!("\nAccount Details:");
-                info!("  Originator:\t {}", account.originator);
-                info!("  Balance:\t {}", account.stake_balance);
+                text.blank();
+                text.line("Account Details:");
+                text.line(format!("  Originator:\t {}", account.originator));
+                text.line(format!("  Balance:\t {}", account.stake_balance));
             }
             Err(e) => {
-                info!("\nFailed to parse account data: {}", e);
-                info!("Raw data (hex):");
-                info!("  0x{}", hex::encode(data_bytes));
+                text.blank();
+                text.line(format!("Failed to parse account data: {e}"));
+                text.line("Raw data (hex):");
+                text.line(format!("  0x{}", hex::encode(data_bytes)));
             }
         }
     } else if path.starts_with(PATH_PREFIX_ACCOUNT) || path.starts_with(PATH_PREFIX_CADO_MAP) {
         match Account::deserialize_bin(&data_bytes) {
             Ok(account) => {
-                info!("\nAccount Details:");
-                info!("  Address: {}", account.address());
-                info!("  Balance: {}", account.balance());
-                info!("  Nonce: {}", account.nonce());
+                text.blank();
+                text.line("Account Details:");
+                text.line(format!("  Address: {}", account.address()));
+                text.line(format!("  Balance: {}", account.balance()));
+                text.line(format!("  Nonce: {}", account.nonce()));
             }
             Err(e) => {
-                info!("\nFailed to parse account data: {}", e);
-                info!("Raw data (hex):");
-                info!("  0x{}", hex::encode(data_bytes));
+                text.blank();
+                text.line(format!("Failed to parse account data: {e}"));
+                text.line("Raw data (hex):");
+                text.line(format!("  0x{}", hex::encode(data_bytes)));
             }
         }
     } else if path.starts_with(PATH_PREFIX_ACCOUNT_CONTENT) {
         match bincode::deserialize::<Vec<String>>(&data_bytes) {
             Ok(manifest_ids) => {
-                info!("\nAccount Content Summary:");
-                info!(
+                text.blank();
+                text.line("Account Content Summary:");
+                text.line(format!(
                     "  Address:\t {}",
                     path.split('/').next_back().unwrap_or("unknown")
-                );
-                info!("  Total Content Manifests:\t {}", manifest_ids.len());
-
+                ));
+                text.line(format!(
+                    "  Total Content Manifests:\t {}",
+                    manifest_ids.len()
+                ));
                 if manifest_ids.is_empty() {
-                    info!("  No content manifests found");
+                    text.line("  No content manifests found");
                 } else {
-                    info!("  Content Manifest IDs:");
+                    text.line("  Content Manifest IDs:");
                     for (index, manifest_id) in manifest_ids.iter().enumerate() {
-                        info!("     {}. {}", index + 1, manifest_id);
+                        text.line(format!("     {}. {manifest_id}", index + 1));
                     }
                 }
             }
             Err(e) => {
-                info!("\nFailed to parse account content data: {}", e);
-                info!("Raw data (hex):");
-                info!("  0x{}", hex::encode(data_bytes));
+                text.blank();
+                text.line(format!("Failed to parse account content data: {e}"));
+                text.line("Raw data (hex):");
+                text.line(format!("  0x{}", hex::encode(data_bytes)));
             }
         }
     } else if path.starts_with(PATH_PREFIX_APP_STATE_SNAPSHOT) {
-        info!("App State Snapshot Details:\n");
-        info!("* Snapshot Path: \t{}", path);
-        info!(
+        text.line("App State Snapshot Details:");
+        text.line(format!("* Snapshot Path: \t{path}"));
+        text.line(format!(
             "* Total Size: \t{} bytes ({:.2} KB)",
             data_bytes.len(),
             data_bytes.len() as f64 / 1024.0
-        );
+        ));
 
         if data_bytes.len() >= 8 {
             let block_height_bytes = &data_bytes[0..8];
             if let Ok(block_height_array) = block_height_bytes.try_into() {
                 let block_height = i64::from_le_bytes(block_height_array);
-                info!("* Block Height: \t{}", block_height);
+                text.line(format!("* Block Height: \t{block_height}"));
             }
         }
 
         if data_bytes.len() >= 40 {
             let root_hash = &data_bytes[8..40];
-            info!("* Root Hash: \t0x{}", hex::encode(root_hash));
+            text.line(format!("* Root Hash: \t0x{}", hex::encode(root_hash)));
         }
 
         if data_bytes.len() >= 48 {
             let node_count_bytes = &data_bytes[40..48];
             if let Ok(node_count_array) = node_count_bytes.try_into() {
                 let node_count = usize::from_le_bytes(node_count_array);
-                info!("* Node Count: \t{}", node_count);
+                text.line(format!("* Node Count: \t{node_count}"));
                 if node_count > 0 {
-                    info!(
+                    text.line(format!(
                         "* Avg bytes/node: \t{:.2}",
                         data_bytes.len() as f64 / node_count as f64
-                    );
+                    ));
                 }
             }
         }
@@ -476,17 +507,19 @@ pub fn cado(path: &str, response: &Value) {
             let timestamp_bytes = &data_bytes[48..56];
             if let Ok(timestamp_array) = timestamp_bytes.try_into() {
                 let timestamp = u64::from_le_bytes(timestamp_array);
-                info!("* Timestamp: \t{} (Unix)", timestamp);
+                text.line(format!("* Timestamp: \t{timestamp} (Unix)"));
             }
         }
 
-        info!("Trie snapshot found and can be restored on node startup");
-        info!("Use './start_app_with_db_data.sh' to restore from this snapshot");
+        text.line("Trie snapshot found and can be restored on node startup");
+        text.line("Use './start_app_with_db_data.sh' to restore from this snapshot");
     } else if let Ok(str_data) = String::from_utf8(data_bytes.clone()) {
-        info!("Data (as string):");
-        info!("* {}", str_data);
+        text.line("Data (as string):");
+        text.line(format!("* {str_data}"));
     } else {
-        info!("Data (as hex):");
-        info!("* 0x{}", hex::encode(data_bytes));
+        text.line("Data (as hex):");
+        text.line(format!("* 0x{}", hex::encode(data_bytes)));
     }
+
+    Ok(text.finish())
 }

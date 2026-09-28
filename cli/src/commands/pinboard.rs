@@ -7,7 +7,7 @@ pub(crate) async fn post_message(
     params: PinboardMessageParams,
 ) -> Result<(), EldError> {
     let resp = cli.post_pinboard_message(params).await?;
-    crate::output::pinboard_submit(&resp);
+    crate::output::print_result(&crate::output::pinboard_submit(&resp));
     Ok(())
 }
 
@@ -18,7 +18,7 @@ pub(crate) async fn get_post(
 ) -> Result<(), EldError> {
     let path = pinboard_post_path(&wallet, &message_id);
     let value = cli.pinboard_get_post(wallet, message_id).await?;
-    crate::output::pinboard_post(&path, &value);
+    crate::output::print_result(&crate::output::pinboard_post(&path, &value));
     Ok(())
 }
 
@@ -30,7 +30,7 @@ pub(crate) async fn list_by_tag(
 ) -> Result<(), EldError> {
     let path = pinboard_tag_path(&tag, page, page_size);
     let value = cli.pinboard_list_by_tag(tag, page, page_size).await?;
-    crate::output::pinboard_list(&path, &value);
+    crate::output::print_result(&crate::output::pinboard_list(&path, &value));
     Ok(())
 }
 
@@ -42,7 +42,7 @@ pub(crate) async fn list_by_wallet(
 ) -> Result<(), EldError> {
     let path = pinboard_wallet_path(&wallet, page, page_size);
     let value = cli.pinboard_list_by_wallet(wallet, page, page_size).await?;
-    crate::output::pinboard_list(&path, &value);
+    crate::output::print_result(&crate::output::pinboard_list(&path, &value));
     Ok(())
 }
 

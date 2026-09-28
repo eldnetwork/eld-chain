@@ -11,8 +11,22 @@ use eld_common::error::EldError;
 use std::sync::Arc;
 
 #[tokio::main]
-pub async fn main() -> Result<(), EldError> {
+async fn main() {
     let args = Arguments::parse();
+    if let Err(err) = logging::init_default_logging() {
+        fail(err);
+    }
+    if let Err(err) = dispatch(args).await {
+        fail(err);
+    }
+}
+
+fn fail(err: EldError) -> ! {
+    eprintln!("{err}");
+    std::process::exit(1);
+}
+
+async fn dispatch(args: Arguments) -> Result<(), EldError> {
     let setup = get_client_setup_from_arg(&args.config)?;
     let node_url = setup.config.get_node_url()?;
     let cli = Arc::new(ChainClient::with_wallets(
@@ -21,11 +35,7 @@ pub async fn main() -> Result<(), EldError> {
         WALLETS_PATH,
     )?);
 
-    logging::init_default_logging()?;
-
-    logging::print_name();
-
-    let result: Result<(), EldError> = match args.cmd {
+    match args.cmd {
         SubCommand::CreateWallet { name } => commands::wallet::create_wallet(&cli, name).await,
         SubCommand::ListWallets {} => commands::wallet::list_wallets(&cli).await,
         SubCommand::GetWallet { name } => commands::wallet::get_wallet(&cli, name).await,
@@ -109,7 +119,5 @@ pub async fn main() -> Result<(), EldError> {
             page,
             page_size,
         } => commands::pinboard::list_by_wallet(&cli, wallet, page, page_size).await,
-    };
-
-    result
+    }
 }

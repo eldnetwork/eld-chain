@@ -6,7 +6,7 @@ pub(crate) async fn get_namespace(
     namespace_slug: String,
 ) -> Result<(), EldError> {
     let lookup = cli.get_namespace(namespace_slug).await?;
-    crate::output::namespace_lookup(&lookup);
+    crate::output::print_result(&crate::output::namespace_lookup(&lookup));
     Ok(())
 }
 
@@ -19,6 +19,6 @@ pub(crate) async fn add_namespace(
     let resp = cli
         .add_namespace(wallet_name, namespace_slug, registration_fee)
         .await?;
-    crate::output::print_registered(&resp);
+    crate::output::print_result(&crate::output::print_registered(&resp));
     Ok(())
 }
