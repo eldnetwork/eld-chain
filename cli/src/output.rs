@@ -513,3 +513,129 @@ pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
 
     Ok(text.finish())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+    use eld_client::api::rest::PostMessageSubmitResponse;
+    use eld_client::facade::TxHash;
+    use eld_common::coin::Coin;
+    use eld_common::nonce::Nonce;
+    use eld_common::Address;
+    const ADDRESS: &str = "0x1234567890abcdef1234567890abcdef12345678";
+
+    fn fixture_wallet() -> Wallet {
+        Wallet::from_signing_key("alice".to_string(), SigningKey::from_bytes(&[7; 32]))
+    }
+
+    #[test]
+    fn wallet_formatter_prints_name_address_and_public_key() {
+        let wallet = fixture_wallet();
+        let expected = format!(
+            "Wallet {{ name: alice, address: {}, public_key: {} }}",
+            wallet.address.hex_with_prefix(),
+            hex::encode(wallet.public_key)
+        );
+        assert_eq!(created_wallet(&wallet), expected);
+        assert_eq!(display_wallet(&wallet), expected);
+    }
+
+    #[test]
+    fn account_formatter_prints_sanitized_account() {
+        let account = Account::new(
+            Address::parse_hex_str(ADDRESS).unwrap(),
+            Coin::new(1000).unwrap(),
+            Nonce::new(3),
+        );
+        assert_eq!(
+            super::account(&account),
+            "Account found:\nAccount { address: 0x1234...5678, balance: 0.001000 units, nonce: 3 }"
+        );
+    }
+
+    #[test]
+    fn submitted_tx_formatter_prints_commit_and_events() {
+        let tx_hash = TxHash::Sha256([0xab; 32]);
+        let submitted = SubmittedTx {
+            tx_hash,
+            response: serde_json::json!({
+                "result": {
+                    "deliver_tx": {
+                        "events": [{
+                            "type": "transfer",
+                            "attributes": [{ "key": "c2VuZGVy", "value": "b2s=" }]
+                        }]
+                    }
+                }
+            }),
+            signed_tx_json: String::new(),
+            fee: Coin::new(1000).unwrap(),
+            nonce: Nonce::new(7),
+        };
+        let expected = format!(
+            "Transfer transaction committed\ntx_hash: {tx_hash}\nfee: 1000\nnonce: 7\n\nEvent Type: transfer\nsender: ok"
+        );
+        assert_eq!(submitted_tx("Transfer", &submitted), expected);
+    }
+
+    #[test]
+    fn namespace_formatter_prints_registered_and_missing() {
+        let missing = NamespaceLookup {
+            canonical_slug: "peter".to_string(),
+            registered: None,
+        };
+        assert_eq!(
+            namespace_lookup(&missing),
+            "registered: false\nnamespace_slug: peter"
+        );
+
+        let registered = NamespaceRegisteredResponse {
+            registered: true,
+            namespace_slug: "peter".to_string(),
+            scope: "@peter".to_string(),
+            owner: ADDRESS.to_string(),
+            registered_height: 9,
+            registry_path: "/ns/peter".to_string(),
+        };
+        assert_eq!(
+            namespace_lookup(&NamespaceLookup {
+                canonical_slug: "peter".to_string(),
+                registered: Some(registered),
+            }),
+            "registered: true\nnamespace_slug: peter\nscope: @peter\nowner: 0x1234567890abcdef1234567890abcdef12345678\nregistered_height: 9\nregistry_path: /ns/peter"
+        );
+    }
+
+    #[test]
+    fn pinboard_submit_formatter_prints_accept_fields() {
+        let response = PostMessageSubmitResponse::submitted(
+            "mid".to_string(),
+            "ckey".to_string(),
+            "thash".to_string(),
+            "validator".to_string(),
+            42,
+            Some("/@peter/mid".to_string()),
+        );
+        assert_eq!(
+            pinboard_submit(&response),
+            "status: submitted\nmessage_id: mid\ncontent_key: ckey\ntx_hash: thash\norigin_validator: validator\nreceived_timestamp: 42\ncontent_path: /@peter/mid"
+        );
+    }
+
+    #[test]
+    fn not_found_error_string() {
+        assert_eq!(
+            ErrorBuilder::not_found_error("Wallet", "alice").to_string(),
+            "Wallet not found: alice"
+        );
+        assert_eq!(
+            ErrorBuilder::not_found_error("Account", ADDRESS).to_string(),
+            "Account not found: 0x1234567890abcdef1234567890abcdef12345678"
+        );
+        assert_eq!(
+            ErrorBuilder::not_found_error("CADO", "/eld/account/x").to_string(),
+            "CADO not found: /eld/account/x"
+        );
+    }
+}

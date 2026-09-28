@@ -1069,6 +1069,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode",
  "clap",
+ "ed25519-dalek",
  "eld-client",
  "eld-common",
  "hex",

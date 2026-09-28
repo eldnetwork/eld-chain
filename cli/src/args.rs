@@ -215,3 +215,79 @@ fn parse_visibility(raw: &str) -> Result<String, EldError> {
     }
     Ok(trimmed.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ADDRESS: &str = "0x1234567890abcdef1234567890abcdef12345678";
+
+    #[test]
+    fn parses_transfer_address_and_amount() {
+        let args = Arguments::try_parse_from([
+            "eld-cli",
+            "transfer",
+            "my-wallet",
+            "0X1234567890ABCDEF1234567890ABCDEF12345678",
+            "1000",
+        ])
+        .unwrap();
+
+        let SubCommand::Transfer {
+            wallet_name,
+            recipient,
+            amount,
+        } = args.cmd
+        else {
+            panic!("expected transfer");
+        };
+        assert_eq!(wallet_name, "my-wallet");
+        assert_eq!(recipient, ADDRESS);
+        assert_eq!(amount, 1000);
+    }
+
+    #[test]
+    fn rejects_bad_address() {
+        let err =
+            Arguments::try_parse_from(["eld-cli", "get-account", "not-an-address"]).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("not-an-address"), "{message}");
+        assert!(message.contains("address"), "{message}");
+    }
+
+    #[test]
+    fn rejects_bad_content_type() {
+        let err = Arguments::try_parse_from([
+            "eld-cli",
+            "post-pinboard-message",
+            "my-wallet",
+            "./message.txt",
+            "--content-type",
+            "text/html",
+        ])
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("text/html"), "{message}");
+        assert!(message.contains("unsupported mime type"), "{message}");
+    }
+
+    #[test]
+    fn rejects_empty_visibility() {
+        let err = Arguments::try_parse_from([
+            "eld-cli",
+            "post-pinboard-message",
+            "my-wallet",
+            "./message.txt",
+            "--content-type",
+            "text/plain",
+            "--visibility",
+            " ",
+        ])
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("visibility must not be empty"),
+            "{message}"
+        );
+    }
+}
