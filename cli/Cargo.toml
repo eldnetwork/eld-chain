@@ -17,7 +17,7 @@ name = "eld-cli"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.5.27", features = ["derive"] }
+clap = { workspace = true, features = ["derive", "cargo", "wrap_help", "env", "string"] }
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

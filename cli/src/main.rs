@@ -37,7 +37,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
 
     match args.cmd {
         SubCommand::CreateWallet { name } => commands::wallet::create_wallet(&cli, name).await,
-        SubCommand::ListWallets {} => commands::wallet::list_wallets(&cli).await,
+        SubCommand::ListWallets => commands::wallet::list_wallets(&cli).await,
         SubCommand::GetWallet { name } => commands::wallet::get_wallet(&cli, name).await,
         SubCommand::RemoveWallet { name } => commands::wallet::remove_wallet(&cli, name).await,
         SubCommand::Transfer {
@@ -46,7 +46,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             amount,
         } => commands::tx::transfer(&cli, wallet_name, recipient, amount).await,
         SubCommand::RequestFaucet { address } => commands::tx::request_faucet(&cli, address).await,
-        SubCommand::GetAbciInfo {} => commands::account::get_abci_info(&cli).await,
+        SubCommand::GetAbciInfo => commands::account::get_abci_info(&cli).await,
         SubCommand::GetAccount { address } => commands::account::get_account(&cli, address).await,
         SubCommand::GetStakeAccount { address } => {
             commands::account::get_stake_account(&cli, address).await
@@ -59,8 +59,8 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             wallet_name,
             amount,
         } => commands::tx::unstake(&cli, wallet_name, amount).await,
-        SubCommand::ViewActiveValidators {} => commands::epoch::view_active_validators(&cli).await,
-        SubCommand::ViewEpoch {} => commands::epoch::view_epoch(&cli).await,
+        SubCommand::ViewActiveValidators => commands::epoch::view_active_validators(&cli).await,
+        SubCommand::ViewEpoch => commands::epoch::view_epoch(&cli).await,
         SubCommand::GetNamespace { namespace_slug } => {
             commands::namespace::get_namespace(&cli, namespace_slug).await
         }

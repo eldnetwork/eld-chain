@@ -5,18 +5,17 @@ use eld_common::tx::validate_post_message_content_type;
 use eld_common::Address;
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "eld-cli",
-    author,
-    version,
-    about = "Command-line client for an Eld node"
-)]
+#[command(name = "eld-cli", author, version, about)]
 pub struct Arguments {
     #[command(subcommand)]
     pub(crate) cmd: SubCommand,
 
     /// Config file to use (default: config/config.json)
-    #[arg(long = "cli-config", default_value = "config/config.json")]
+    #[arg(
+        long = "cli-config",
+        env = "ELD_CLI_CONFIG",
+        default_value = "config/config.json"
+    )]
     pub(crate) config: String,
 }
 
@@ -24,21 +23,21 @@ pub struct Arguments {
 pub(crate) enum SubCommand {
     /// Create a local signing wallet.
     CreateWallet {
+        /// Name of the wallet.
         #[arg()]
-        // the name of the wallet
         name: String,
     },
     /// List wallets stored locally
-    ListWallets {},
+    ListWallets,
     /// Show one local wallet.
     GetWallet {
-        // Wallet name
+        /// Wallet name.
         name: String,
     },
     /// Delete a local wallet and its private key.
     RemoveWallet {
+        /// Name of the wallet to remove.
         #[arg()]
-        // name of wallet to be removed
         name: String,
     },
     /// Sign and commit a transfer from a local wallet.
@@ -46,8 +45,8 @@ pub(crate) enum SubCommand {
         after_help = "Example:\n  eld-cli transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000"
     )]
     Transfer {
+        /// Wallet that signs and is debited.
         #[arg()]
-        // wallet which will sign and be debited
         wallet_name: String,
         /// Recipient address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
@@ -78,11 +77,11 @@ pub(crate) enum SubCommand {
         address: String,
     },
     /// Read Tendermint ABCI info.
-    GetAbciInfo {},
+    GetAbciInfo,
     /// Stake tokens from a local wallet.
     Stake {
+        /// Wallet that signs and is debited.
         #[arg()]
-        // wallet which will sign and be debited
         wallet_name: String,
         /// Amount in base units.
         #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
@@ -91,26 +90,29 @@ pub(crate) enum SubCommand {
 
     /// Unstake tokens back to a local wallet.
     Unstake {
+        /// Wallet that signs and receives the unstaked tokens.
         #[arg()]
-        // wallet which will sign and receive funds
         wallet_name: String,
         /// Amount in base units.
         #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
         amount: u128,
     },
     /// List validators in the current epoch.
-    ViewActiveValidators {},
+    ViewActiveValidators,
     /// Show epoch metadata and the validator set.
-    ViewEpoch {},
+    ViewEpoch,
     /// Look up a namespace slug.
     GetNamespace {
+        /// Namespace slug.
         #[arg()]
         namespace_slug: String,
     },
     /// Register a namespace.
     AddNamespace {
+        /// Wallet that signs and pays the registration fee.
         #[arg()]
         wallet_name: String,
+        /// Namespace slug to register.
         #[arg()]
         namespace_slug: String,
         /// Fee paid to register the namespace (must be greater than zero).
@@ -122,8 +124,10 @@ pub(crate) enum SubCommand {
         after_help = "Example:\n  eld-cli post-pinboard-message my-wallet ./message.txt --content-type text/plain"
     )]
     PostPinboardMessage {
+        /// Wallet that signs the post.
         #[arg()]
         wallet_name: String,
+        /// Path to the message body file.
         #[arg()]
         file_path: String,
         /// MIME type for the message body (`text/plain`, `application/json`, or `image/png`).
@@ -132,13 +136,16 @@ pub(crate) enum SubCommand {
         /// Post lifetime in blocks. Queries hide the body after the commit height plus this value.
         #[arg(long, default_value_t = 1000)]
         expires_height: u64,
+        /// Who can read the post.
         #[arg(long, default_value = "Public", value_parser = parse_visibility)]
         visibility: String,
+        /// Optional topic label.
         #[arg(long)]
         topic: Option<String>,
         /// Filter tags (max 4, each max 64 UTF-8 bytes); repeat flag. Address-shaped tags are normalized to 0x + lowercase hex.
         #[arg(long = "tag", action = clap::ArgAction::Append)]
         tags: Vec<String>,
+        /// Fee in base units paid with the post.
         #[arg(
             long,
             default_value_t = 1000,
@@ -152,14 +159,14 @@ pub(crate) enum SubCommand {
     },
     /// Read a CADO by path.
     GetCado {
+        /// CADO path, for example `/@eld/account/0x1234…`.
         #[arg()]
-        // CADO path (ELD root prefixes: `eld_common::constants::cado::PATH_PREFIX_*` + segments)
         path: String,
     },
     /// List CADO paths that match a prefix.
     ListCados {
+        /// Path prefix to match, for example `/@eld/` or `/@eld/account/`.
         #[arg()]
-        // search string (prefix under `eld_common::constants::cado`, e.g. `PATH_PREFIX_ELD_ROOT_SCOPE`)
         search_string: String,
     },
     /// Fetch one pinboard post.
@@ -167,15 +174,19 @@ pub(crate) enum SubCommand {
         /// Wallet address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
         wallet: String,
+        /// Message id of the post.
         #[arg()]
         message_id: String,
     },
     /// List pinboard posts by tag.
     PinboardListByTag {
+        /// Tag to match.
         #[arg()]
         tag: String,
+        /// Zero-based page index.
         #[arg(long, default_value_t = 0)]
         page: usize,
+        /// Number of posts per page.
         #[arg(long, default_value_t = 100)]
         page_size: usize,
     },
@@ -184,8 +195,10 @@ pub(crate) enum SubCommand {
         /// Wallet address (`0x` and 40 hex digits).
         #[arg(value_name = "ADDRESS", value_parser = parse_address)]
         wallet: String,
+        /// Zero-based page index.
         #[arg(long, default_value_t = 0)]
         page: usize,
+        /// Number of posts per page.
         #[arg(long, default_value_t = 100)]
         page_size: usize,
     },
