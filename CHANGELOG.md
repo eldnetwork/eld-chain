@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **eld-chain** (this workspace: `eld-common`, `eld-client`, `eld-node`) are documented here.
+All notable changes to **eld-chain** (this workspace: `eld-common`, `eld-client`, `eld-cli`, `eld-node`) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -10,6 +10,8 @@ Crates are unpublished (`publish = false`).
 ## [Unreleased]
 
 ### Added
+
+- `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 
 ### Changed
 

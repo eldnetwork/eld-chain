@@ -74,9 +74,6 @@ pub(crate) enum SubCommand {
     },
     /// Get ABCI Info
     GetAbciInfo {},
-    /// Lists all transactions for the chain. For testing. Will be removed.
-    // todo: remove
-    ListAllTransactions {},
     /// Stake tokens
     Stake {
         #[arg()]

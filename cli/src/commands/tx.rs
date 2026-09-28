@@ -18,12 +18,6 @@ pub(crate) async fn request_faucet(cli: &ChainClient, address: String) -> Result
     Ok(())
 }
 
-pub(crate) async fn list_all_transactions(cli: &ChainClient) -> Result<(), EldError> {
-    let txs = cli.list_all_transactions().await?;
-    crate::output::print_result(&crate::output::all_transactions(&txs));
-    Ok(())
-}
-
 pub(crate) async fn stake(
     cli: &ChainClient,
     wallet_name: String,

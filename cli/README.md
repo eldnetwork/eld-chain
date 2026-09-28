@@ -1,87 +1,63 @@
-# Eld CLI
+# eld-cli
 
-The Eld CLI is a command-line interface for interacting with the Eld network. Command parsing lives in `src/main.rs`; network, wallet, and transaction logic is provided by [`eld_common`](../../../eld-chain/common) (path dependency on the sibling `eld-chain` repo).
+`eld-cli` is the command-line client for an Eld node. It is a binary (`publish = false`), not a library.
+
+Parsing and printing live in this crate. Network calls, wallet files, and transaction signing go through [`eld-client`](../client/README.md) (`ChainClient`). Protocol types live in [`eld-common`](../common/README.md).
+
+Results are printed on stdout. Failures are printed on stderr and the process exits 1. Tracing is off unless `RUST_LOG` is set (`RUST_LOG=eld_cli=info`).
+
+Package name: `eld-cli`. Binary: `eld-cli`.
 
 ## Setup
 
-From this directory:
+From the workspace root:
 
-```bash
-cargo build
-cargo run -- --help
+```sh
+cargo run -p eld-cli -- --help
 ```
 
-The crate depends only on `clap`, `tokio`, `tracing`, and `eld_common`. Build with a sibling checkout of `eld-chain` so `../../../eld-chain/common` resolves.
+The process reads two files from the working directory:
 
-## Wallets
+| Path | Purpose |
+|---|---|
+| `config/config.json` | Tendermint RPC, app REST, and faucet endpoints. Copy [`config/config.json.example`](config/config.json.example). |
+| `config/consensus_config.json` | `chain_id` and `fee_config` used when signing. Same file the node loads. |
+| `wallets/wallets.json` | Local Ed25519 keys. Gitignored. Never commit this file. |
 
-Local key material is stored under `wallets/` (default: `wallets/wallets.json`). That directory is **gitignored** — never commit wallet files. Create wallets with `create-wallet` or copy your own file locally.
+`--cli-config` replaces `config/config.json`. It does not change the consensus or wallet paths.
 
-## Configuration
+Optional `node_url`, `app_url`, and `faucet_url` in the client config override host and port when set.
 
-The CLI supports different configuration files for connecting to different environments:
+## Commands
 
-- **Default (local):** `config/config.json` — local node at `127.0.0.1`
-- **Public testnet (HTTPS):** `config/config-urls-example.json` — `*.eld.network` RPC/API/faucet URLs
-- **Custom:** pass any local JSON file with `--cli-config`
-
-Non-local ops configs (e.g. `config-remote*.json` with host IPs) are **not** committed. Keep those files only on your machine under `config/` if you need them.
-
-To specify which config file to use:
-
-```bash
-# Use default local config (config/config.json)
-cargo run -- get-account 0x123...
-
-# Use public testnet URLs (HTTPS)
-cargo run -- --cli-config config/config-urls-example.json get-account 0x123...
-
-# Use a private/local config file (not in git)
-cargo run -- --cli-config config/my-deployment.json get-account 0x123...
+```sh
+eld-cli --help
 ```
 
-Optional `node_url`, `app_url`, and `faucet_url` in the config override host/port derivation when set. See `config/config-urls-example.json`.
+| Command | Role |
+|---|---|
+| `create-wallet` | Create a local signing wallet |
+| `list-wallets` | List wallets in `wallets/wallets.json` |
+| `get-wallet` | Show one local wallet |
+| `remove-wallet` | Delete a local wallet and its private key |
+| `transfer` | Sign and commit a transfer |
+| `request-faucet` | Ask the dev faucet for tokens |
+| `get-account` | Read an account balance and nonce |
+| `get-stake-account` | Read a staking account |
+| `get-abci-info` | Read Tendermint ABCI info |
+| `stake` / `unstake` | Stake or unstake from a local wallet |
+| `view-active-validators` | List validators in the current epoch |
+| `view-epoch` | Epoch metadata and validator set |
+| `get-namespace` / `add-namespace` | Look up or register a namespace |
+| `post-pinboard-message` | Post a pinboard message |
+| `pinboard-get-post` | Fetch one pinboard post |
+| `pinboard-list-by-tag` / `pinboard-list-by-wallet` | Page pinboard posts |
+| `get-cado` / `list-cados` | Read one CADO, or list paths |
 
-## Content Upload
-
-### Standard Upload (Two-Step Process)
-
-Upload content first, then submit transaction separately:
-
-```bash
-cargo run upload-content wallet1 ./mock/mock-content-data-4.json mock-content-4 "application/json"
+```sh
+eld-cli transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
+eld-cli --cli-config config/config.json get-account 0x1234567890abcdef1234567890abcdef12345678
+eld-cli post-pinboard-message my-wallet ./message.txt --content-type text/plain
 ```
 
-### Atomic Upload with Transaction (Single-Step Process)
-
-Upload content and transaction together atomically. This ensures that content is only stored if the transaction is valid and will be submitted:
-
-```bash
-cargo run upload-content-with-tx wallet1 ./mock/mock-content-data-4.json mock-content-4 "application/json"
-```
-
-**Note**: The `upload-content-with-tx` command prepares the transaction with the content metadata, signs it, and uploads both together. The node validates the transaction before saving content, ensuring atomicity. This prevents disk space attacks where users upload content without paying.
-
-**Implementation Status**: The endpoint is currently being implemented. The CLI command is ready, but the node endpoint will return an error until full implementation is complete.
-
-### Test content sync
-
-cargo run upload-content wallet1 "./mock/mock-content-data-4.json" "mock-key-4" "application/json"
-
-then
-
-# Get content from node 1
-cargo run -- --cli-config config/config-docker-compose-multi-fast-node1.json get-content 0x6ddb7450d754a0dc66a1eb93c682eea6c2ce860b16e62453146f43d7c915fa91
-
-# Get content from node 2
-cargo run -- --cli-config config/config-docker-compose-multi-fast-node2.json get-content 0x6ddb7450d754a0dc66a1eb93c682eea6c2ce860b16e62453146f43d7c915fa91
-
-# Get content from node 3
-cargo run -- --cli-config config/config-docker-compose-multi-fast-node3.json get-content 0x6ddb7450d754a0dc66a1eb93c682eea6c2ce860b16e62453146f43d7c915fa91
-
-# Get content from node 4
-cargo run -- --cli-config config/config-docker-compose-multi-fast-node4.json get-content 0x6ddb7450d754a0dc66a1eb93c682eea6c2ce860b16e62453146f43d7c915fa91
-
-# Post Message
-cargo run -- post-pinboard-message wallet1 ./mock/message.txt
-
+Addresses are `0x` plus 40 hex digits. Amounts are base units and must fit in a coin. Pinboard `--content-type` is `text/plain`, `application/json`, or `image/png`.

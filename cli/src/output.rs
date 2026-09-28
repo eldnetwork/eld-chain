@@ -15,7 +15,6 @@ use eld_common::constants::cado::{
 };
 use eld_common::error::{EldError, ErrorBuilder};
 use eld_common::staking_account::StakingAccount;
-use eld_common::tx::Tx;
 use eld_common::validator::{ActiveValidatorsInfo, EpochInfo};
 use eld_common::wallet::Wallet;
 use serde_json::Value;
@@ -117,15 +116,6 @@ pub(crate) fn staking_account(address: &str, account: &StakingAccount) -> String
         "address: {address}\nstaking_account: {}",
         account.sanitized_log()
     )
-}
-
-pub(crate) fn all_transactions(txs: &[Tx]) -> String {
-    let mut text = Text::new();
-    text.line("Transactions:");
-    for tx in txs {
-        text.line(format!("tx: {}", SanitizedLog::new(tx.clone())));
-    }
-    text.finish()
 }
 
 pub(crate) async fn active_validators(

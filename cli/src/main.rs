@@ -51,7 +51,6 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
         SubCommand::GetStakeAccount { address } => {
             commands::account::get_stake_account(&cli, address).await
         }
-        SubCommand::ListAllTransactions {} => commands::tx::list_all_transactions(&cli).await,
         SubCommand::Stake {
             wallet_name,
             amount,

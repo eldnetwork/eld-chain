@@ -10,7 +10,7 @@
 
 Eld is an L1 for ephemeral, content-addressed storage: data is accessed by content-address key, kept only for a TTL, then expires by protocol.
 
-This repository is the chain implementation — protocol types (eld-common), off-chain client (eld-client), and the Tendermint ABCI node (eld-node). It is not the website, docs site, or explorer.
+This repository is the chain implementation — protocol types (eld-common), off-chain client (eld-client), the command-line client (eld-cli), and the Tendermint ABCI node (eld-node). It is not the website, docs site, or explorer.
 
 | Want | Go here |
 | --- | --- |
@@ -49,7 +49,7 @@ To build images locally or run the 4-node cluster, use the scripts mentioned in 
 
 ## This repository
 
-Protocol types (`eld-common`), off-chain client helpers (`eld-client`), and the ABCI node application (`eld-node`) for the Eld blockchain.
+Protocol types (`eld-common`), off-chain client helpers (`eld-client`), the command-line client (`eld-cli`), and the ABCI node application (`eld-node`) for the Eld blockchain.
 
 Library crates ship `LICENSE`, `README.md`, `NOTICE`, and (where relevant) `CHANGELOG.md` and `TYPE_DESIGN.md` so a future crates.io/docs.rs package is self-contained. Crates here are not published yet (`publish = false`).
 
@@ -59,9 +59,10 @@ Library crates ship `LICENSE`, `README.md`, `NOTICE`, and (where relevant) `CHAN
 |---|---|---|
 | [`common/`](common/README.md) | `eld-common` | Protocol types, validation, `Wallet` identity, CADO, capacity, pinboard |
 | [`client/`](client/README.md) | `eld-client` | Tendermint RPC, app REST, faucet HTTP, `ChainClient`, CWD config, wallet files |
+| [`cli/`](cli/README.md) | `eld-cli` | Command-line client over `ChainClient` |
 | [`node_app/`](node_app/README.md) | `eld-node` | ABCI application (Tendermint, RocksDB, libp2p, Axum REST) |
 
-Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo package names may contain hyphens. `eld-node` is a binary crate (`eld-node`), not a library.
+Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo package names may contain hyphens. `eld-cli` and `eld-node` are binary crates, not libraries.
 
 
 ## Architecture
@@ -76,6 +77,8 @@ Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo
 - `config` — CWD JSON (`ClientConfig`, `ClientSetup`); `wallets.json` I/O at the crate root
 
 Config loaders return `Result`; binaries can exit after they see an error.
+
+[`eld-cli`](cli/README.md) is the command-line binary on top of `ChainClient`.
 
 [`eld-node`](node_app/README.md) is the ABCI application. Runtime data (`data/`, `tx_responses/`), wallets, and P2P key files are not shipped in git. Compose mounts them from [`deploy/docker/local/`](deploy/docker/local/).
 
