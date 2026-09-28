@@ -3,7 +3,10 @@ mod commands;
 mod logging;
 mod output;
 
-use args::{Arguments, SubCommand};
+use args::{
+    AccountCommand, Arguments, CadoCommand, ChainCommand, NamespaceCommand, PinboardCommand,
+    SubCommand, TxCommand, WalletCommand,
+};
 use clap::Parser;
 use eld_client::config::{get_client_setup_from_arg, WALLETS_PATH};
 use eld_client::facade::ChainClient;
@@ -36,85 +39,133 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
     )?);
 
     match args.cmd {
-        SubCommand::CreateWallet { name } => commands::wallet::create_wallet(&cli, name).await,
-        SubCommand::ListWallets => commands::wallet::list_wallets(&cli).await,
-        SubCommand::GetWallet { name } => commands::wallet::get_wallet(&cli, name).await,
-        SubCommand::RemoveWallet { name } => commands::wallet::remove_wallet(&cli, name).await,
-        SubCommand::Transfer {
-            wallet_name,
-            recipient,
-            amount,
-        } => commands::tx::transfer(&cli, wallet_name, recipient, amount).await,
-        SubCommand::RequestFaucet { address } => commands::tx::request_faucet(&cli, address).await,
-        SubCommand::GetAbciInfo => commands::account::get_abci_info(&cli).await,
-        SubCommand::GetAccount { address } => commands::account::get_account(&cli, address).await,
-        SubCommand::GetStakeAccount { address } => {
-            commands::account::get_stake_account(&cli, address).await
+        SubCommand::Wallet {
+            cmd: WalletCommand::Create(wallet),
         }
-        SubCommand::Stake {
-            wallet_name,
-            amount,
-        } => commands::tx::stake(&cli, wallet_name, amount).await,
-        SubCommand::Unstake {
-            wallet_name,
-            amount,
-        } => commands::tx::unstake(&cli, wallet_name, amount).await,
-        SubCommand::ViewActiveValidators => commands::epoch::view_active_validators(&cli).await,
-        SubCommand::ViewEpoch => commands::epoch::view_epoch(&cli).await,
-        SubCommand::GetNamespace { namespace_slug } => {
-            commands::namespace::get_namespace(&cli, namespace_slug).await
+        | SubCommand::CreateWallet(wallet) => {
+            commands::wallet::create_wallet(&cli, wallet.name).await
         }
-        SubCommand::AddNamespace {
-            wallet_name,
-            namespace_slug,
-            registration_fee,
-        } => {
-            commands::namespace::add_namespace(&cli, wallet_name, namespace_slug, registration_fee)
-                .await
+        SubCommand::Wallet {
+            cmd: WalletCommand::List,
         }
-        SubCommand::PostPinboardMessage {
-            wallet_name,
-            file_path,
-            content_type,
-            expires_height,
-            visibility,
-            topic,
-            tags,
-            user_fee_amount,
-            namespace,
-        } => {
+        | SubCommand::ListWallets => commands::wallet::list_wallets(&cli).await,
+        SubCommand::Wallet {
+            cmd: WalletCommand::Show(wallet),
+        }
+        | SubCommand::GetWallet(wallet) => commands::wallet::get_wallet(&cli, wallet.name).await,
+        SubCommand::Wallet {
+            cmd: WalletCommand::Remove(wallet),
+        }
+        | SubCommand::RemoveWallet(wallet) => {
+            commands::wallet::remove_wallet(&cli, wallet.name).await
+        }
+        SubCommand::Tx {
+            cmd: TxCommand::Transfer(tx),
+        }
+        | SubCommand::Transfer(tx) => {
+            commands::tx::transfer(&cli, tx.wallet_name, tx.recipient, tx.amount).await
+        }
+        SubCommand::Tx {
+            cmd: TxCommand::Faucet(faucet),
+        }
+        | SubCommand::RequestFaucet(faucet) => {
+            commands::tx::request_faucet(&cli, faucet.address).await
+        }
+        SubCommand::Account {
+            cmd: AccountCommand::Get(account),
+        }
+        | SubCommand::GetAccount(account) => {
+            commands::account::get_account(&cli, account.address).await
+        }
+        SubCommand::Account {
+            cmd: AccountCommand::StakeGet(account),
+        }
+        | SubCommand::GetStakeAccount(account) => {
+            commands::account::get_stake_account(&cli, account.address).await
+        }
+        SubCommand::Chain {
+            cmd: ChainCommand::AbciInfo,
+        }
+        | SubCommand::GetAbciInfo => commands::account::get_abci_info(&cli).await,
+        SubCommand::Tx {
+            cmd: TxCommand::Stake(tx),
+        }
+        | SubCommand::Stake(tx) => commands::tx::stake(&cli, tx.wallet_name, tx.amount).await,
+        SubCommand::Tx {
+            cmd: TxCommand::Unstake(tx),
+        }
+        | SubCommand::Unstake(tx) => commands::tx::unstake(&cli, tx.wallet_name, tx.amount).await,
+        SubCommand::Chain {
+            cmd: ChainCommand::Validators,
+        }
+        | SubCommand::ViewActiveValidators => commands::epoch::view_active_validators(&cli).await,
+        SubCommand::Chain {
+            cmd: ChainCommand::Epoch,
+        }
+        | SubCommand::ViewEpoch => commands::epoch::view_epoch(&cli).await,
+        SubCommand::Namespace {
+            cmd: NamespaceCommand::Get(namespace),
+        }
+        | SubCommand::GetNamespace(namespace) => {
+            commands::namespace::get_namespace(&cli, namespace.namespace_slug).await
+        }
+        SubCommand::Namespace {
+            cmd: NamespaceCommand::Add(namespace),
+        }
+        | SubCommand::AddNamespace(namespace) => {
+            commands::namespace::add_namespace(
+                &cli,
+                namespace.wallet_name,
+                namespace.namespace_slug,
+                namespace.registration_fee,
+            )
+            .await
+        }
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::Post(post),
+        }
+        | SubCommand::PostPinboardMessage(post) => {
             commands::pinboard::post_message(
                 &cli,
                 eld_client::api::rest::PinboardMessageParams {
-                    wallet_name,
-                    file_path,
-                    content_type,
-                    expires_height,
-                    visibility,
-                    topic,
-                    tags,
-                    user_fee_amount,
-                    namespace,
+                    wallet_name: post.wallet_name,
+                    file_path: post.file_path,
+                    content_type: post.content_type,
+                    expires_height: post.expires_height,
+                    visibility: post.visibility,
+                    topic: post.topic,
+                    tags: post.tags,
+                    user_fee_amount: post.user_fee_amount,
+                    namespace: post.namespace,
                 },
             )
             .await
         }
-        SubCommand::GetCado { path } => commands::cado::get_cado(&cli, path).await,
-        SubCommand::ListCados { search_string } => {
-            commands::cado::list_cados(&cli, search_string).await
+        SubCommand::Cado {
+            cmd: CadoCommand::Get(cado),
         }
-        SubCommand::PinboardGetPost { wallet, message_id } => {
-            commands::pinboard::get_post(&cli, wallet, message_id).await
+        | SubCommand::GetCado(cado) => commands::cado::get_cado(&cli, cado.path).await,
+        SubCommand::Cado {
+            cmd: CadoCommand::List(cado),
         }
-        SubCommand::PinboardListByTag {
-            tag,
-            page,
-            page_size,
-        } => commands::pinboard::list_by_tag(&cli, tag, page, page_size).await,
-        SubCommand::PinboardListByWallet {
-            wallet,
-            page,
-            page_size,
-        } => commands::pinboard::list_by_wallet(&cli, wallet, page, page_size).await,
+        | SubCommand::ListCados(cado) => commands::cado::list_cados(&cli, cado.search_string).await,
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::Get(post),
+        }
+        | SubCommand::PinboardGetPost(post) => {
+            commands::pinboard::get_post(&cli, post.wallet, post.message_id).await
+        }
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListTag(post),
+        }
+        | SubCommand::PinboardListByTag(post) => {
+            commands::pinboard::list_by_tag(&cli, post.tag, post.page, post.page_size).await
+        }
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListWallet(post),
+        }
+        | SubCommand::PinboardListByWallet(post) => {
+            commands::pinboard::list_by_wallet(&cli, post.wallet, post.page, post.page_size).await
+        }
     }
 }
