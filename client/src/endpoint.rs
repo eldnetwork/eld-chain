@@ -7,6 +7,16 @@ use url::Url;
 const DEFAULT_SCHEME: &str = "http";
 
 /// Parse and normalize an explicit `http`/`https` base URL (trailing `/`).
+///
+/// # Examples
+///
+/// ```
+/// use eld_client::endpoint::normalize_http_base_url;
+///
+/// let url = normalize_http_base_url("http://127.0.0.1:26657")?;
+/// assert_eq!(url, "http://127.0.0.1:26657/");
+/// # Ok::<(), eld_common::error::EldError>(())
+/// ```
 pub fn normalize_http_base_url(raw: &str) -> Result<String, EldError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

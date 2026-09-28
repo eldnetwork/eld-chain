@@ -24,62 +24,120 @@ pub(crate) fn sanitize_validation_value(field: &str, value: &str) -> String {
     }
 }
 
-/// Main error type for the Eld blockchain system
+/// Main error type for the Eld blockchain system.
 #[derive(Clone)]
 pub enum EldError {
-    /// Network connectivity issues
-    NetworkError { operation: String, details: String },
-    /// Authentication and authorization issues
-    AuthError { operation: String, details: String },
-    /// Data validation issues
-    ValidationError {
-        field: String,
-        value: String,
+    /// Network connectivity issues.
+    NetworkError {
+        /// Operation that failed.
+        operation: String,
+        /// Failure detail.
         details: String,
     },
-    /// Basic validation issues with a single details message
-    BasicValidationError { details: String },
-    /// Resource not found
+    /// Authentication and authorization issues.
+    AuthError {
+        /// Operation that failed.
+        operation: String,
+        /// Failure detail.
+        details: String,
+    },
+    /// Data validation issues.
+    ValidationError {
+        /// Field that failed validation.
+        field: String,
+        /// Submitted value, redacted when it may be secret.
+        value: String,
+        /// Why validation failed.
+        details: String,
+    },
+    /// Basic validation issues with a single details message.
+    BasicValidationError {
+        /// Why validation failed.
+        details: String,
+    },
+    /// Resource not found.
     NotFoundError {
+        /// Kind of resource.
         resource_type: String,
+        /// Identifier that was missing.
         identifier: String,
     },
-    /// Insufficient resources (balance, stake, etc.)
+    /// Insufficient resources (balance, stake, etc.).
     InsufficientResourceError {
+        /// Kind of resource.
         resource_type: String,
+        /// Amount required.
         required: String,
+        /// Amount available.
         available: String,
     },
-    /// Configuration issues
-    ConfigError { file: String, details: String },
-    /// File system operations
+    /// Configuration issues.
+    ConfigError {
+        /// Config file path.
+        file: String,
+        /// Why the config is invalid.
+        details: String,
+    },
+    /// File system operations.
     FileSystemError {
+        /// Operation that failed.
         operation: String,
+        /// Path involved in the failure.
         path: String,
+        /// Failure detail.
         details: String,
     },
-    /// Transaction processing issues
-    TransactionError { tx_type: String, details: String },
-    /// Wallet management issues
+    /// Transaction processing issues.
+    TransactionError {
+        /// Transaction kind.
+        tx_type: String,
+        /// Failure detail.
+        details: String,
+    },
+    /// Wallet management issues.
     WalletError {
+        /// Operation that failed.
         operation: String,
+        /// Wallet name involved.
         wallet_name: String,
+        /// Failure detail.
         details: String,
     },
-    /// Device-related issues
+    /// Device-related issues.
     DeviceError {
+        /// Operation that failed.
         operation: String,
+        /// Device id, when one was supplied.
         device_id: Option<String>,
+        /// Failure detail.
         details: String,
     },
-    /// System initialization issues
-    InitializationError { component: String, details: String },
-    /// Storage and database operations
-    StorageError { operation: String, details: String },
-    /// Coin-related operations
-    CoinError { details: String },
-    /// Fee calculation and validation issues
-    FeeError { operation: String, details: String },
+    /// System initialization issues.
+    InitializationError {
+        /// Component that failed to start.
+        component: String,
+        /// Failure detail.
+        details: String,
+    },
+    /// Storage and database operations.
+    StorageError {
+        /// Operation that failed.
+        operation: String,
+        /// Failure detail.
+        details: String,
+    },
+    /// Coin-related operations.
+    CoinError {
+        /// Failure detail.
+        details: String,
+    },
+    /// Fee calculation and validation issues.
+    FeeError {
+        /// Operation that failed.
+        operation: String,
+        /// Failure detail.
+        details: String,
+    },
 }
 
 impl fmt::Display for EldError {
@@ -341,6 +399,7 @@ impl EldError {
 pub struct ErrorBuilder;
 
 impl ErrorBuilder {
+    /// Network connectivity failure.
     pub fn network_error(operation: &str, details: &str) -> EldError {
         EldError::NetworkError {
             operation: operation.to_string(),
@@ -348,6 +407,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Authentication or authorization failure.
     pub fn auth_error(operation: &str, details: &str) -> EldError {
         EldError::AuthError {
             operation: operation.to_string(),
@@ -355,16 +415,19 @@ impl ErrorBuilder {
         }
     }
 
+    /// Field validation failure. Secret `value`s are redacted.
     pub fn validation_error(field: &str, value: &str, details: &str) -> EldError {
         EldError::make_validation_error(field, value, details)
     }
 
+    /// Validation failure with a single details message.
     pub fn basic_validation_error(details: &str) -> EldError {
         EldError::BasicValidationError {
             details: details.to_string(),
         }
     }
 
+    /// Missing resource.
     pub fn not_found_error(resource_type: &str, identifier: &str) -> EldError {
         EldError::NotFoundError {
             resource_type: resource_type.to_string(),
@@ -372,6 +435,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Balance, stake, or other resource is short of `required`.
     pub fn insufficient_resource_error(
         resource_type: &str,
         required: &str,
@@ -384,6 +448,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Invalid configuration file.
     pub fn config_error(file: &str, details: &str) -> EldError {
         EldError::ConfigError {
             file: file.to_string(),
@@ -391,6 +456,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// File system operation failure.
     pub fn file_system_error(operation: &str, path: &str, details: &str) -> EldError {
         EldError::FileSystemError {
             operation: operation.to_string(),
@@ -399,6 +465,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Transaction processing failure.
     pub fn transaction_error(tx_type: &str, details: &str) -> EldError {
         EldError::TransactionError {
             tx_type: tx_type.to_string(),
@@ -406,6 +473,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Wallet operation failure.
     pub fn wallet_error(operation: &str, wallet_name: &str, details: &str) -> EldError {
         EldError::WalletError {
             operation: operation.to_string(),
@@ -414,6 +482,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Device operation failure.
     pub fn device_error(operation: &str, device_id: Option<&str>, details: &str) -> EldError {
         EldError::DeviceError {
             operation: operation.to_string(),
@@ -422,6 +491,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Component failed to start.
     pub fn initialization_error(component: &str, details: &str) -> EldError {
         EldError::InitializationError {
             component: component.to_string(),
@@ -429,6 +499,7 @@ impl ErrorBuilder {
         }
     }
 
+    /// Storage or database operation failure.
     pub fn storage_error(operation: &str, details: &str) -> EldError {
         EldError::StorageError {
             operation: operation.to_string(),
@@ -436,12 +507,14 @@ impl ErrorBuilder {
         }
     }
 
+    /// Coin arithmetic or parsing failure.
     pub fn coin_error(details: &str) -> EldError {
         EldError::CoinError {
             details: details.to_string(),
         }
     }
 
+    /// Fee calculation or validation failure.
     pub fn fee_error(operation: &str, details: &str) -> EldError {
         EldError::FeeError {
             operation: operation.to_string(),

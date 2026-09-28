@@ -1,3 +1,5 @@
+//! 20-byte account address derived from an Ed25519 verifying key.
+
 use crate::error::EldError;
 use crate::hex_encoding::{decode_fixed_hex, encode_hex, encode_hex_0x};
 use crate::public_key::PublicKey;
@@ -9,6 +11,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+/// 20-byte account address: the leading bytes of SHA-256 over an Ed25519 verifying key.
+///
+/// Canonical text is `0x` plus 40 lowercase hex digits. Parsing also accepts the same
+/// digits without a prefix, in either case.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Default)]
 pub struct Address {
     value: [u8; 20],
@@ -17,23 +23,26 @@ pub struct Address {
 impl Address {
     const LENGTH: usize = 20;
 
+    /// Address from SHA-256 of `public_key`, truncated to 20 bytes.
     pub fn from_public_key(public_key: &VerifyingKey) -> Result<Self, EldError> {
         let pk_bytes = public_key.to_bytes();
         let hash = Sha256::digest(pk_bytes);
         Self::from_slice(&hash[..Self::LENGTH])
     }
 
+    /// Whether this address is the truncation of SHA-256(`other_public_key`).
     pub fn is_from_public_key(&self, other_public_key: &[u8; PublicKey::LEN]) -> bool {
         let hash = Sha256::digest(other_public_key);
         let other = &hash[..Self::LENGTH];
         self.value == other
     }
 
-    // New hex() method
+    /// Lowercase hex without a `0x` prefix.
     pub fn hex(&self) -> String {
         encode_hex(&self.value)
     }
 
+    /// Canonical form: `0x` plus lowercase hex.
     pub fn hex_with_prefix(&self) -> String {
         encode_hex_0x(&self.value)
     }
@@ -48,8 +57,21 @@ impl Address {
     /// Accepts an optional `0x` or `0X` prefix followed by exactly 40 hexadecimal
     /// characters (20 bytes). Hex digits may be upper or lower case.
     ///
-    /// Examples: `"0x1234…"`, `"1234…"` (without prefix). Canonical [`fmt::Display`] /
-    /// serde output stays `0x` + lowercase.
+    /// Canonical [`fmt::Display`] / serde output stays `0x` + lowercase.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::ValidationError`] when `s` is not 20 bytes of hex.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use eld_common::Address;
+    ///
+    /// let address = Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")?;
+    /// assert_eq!(address.hex().len(), 40);
+    /// # Ok::<(), eld_common::error::EldError>(())
+    /// ```
     pub fn parse_hex_str(s: &str) -> Result<Self, EldError> {
         let value = decode_fixed_hex::<{ Self::LENGTH }>(s, "address")?;
         Ok(Address { value })
@@ -65,10 +87,19 @@ impl Address {
         &self.value
     }
 
+    /// Parses `other` as an address and compares it to `self`.
+    ///
+    /// Returns `false` when `other` is not valid address hex.
     pub fn matches_str(&self, other: &str) -> bool {
         Self::parse_hex_str(other).is_ok_and(|candidate| candidate == *self)
     }
 
+    /// Checks that this address derives from a hex-encoded Ed25519 verifying key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::ValidationError`] when `pubkey_hex` is not a verifying key
+    /// or this address was not derived from it.
     pub fn verify_derives_from_pubkey_hex(&self, pubkey_hex: &str) -> Result<(), EldError> {
         let public_key = PublicKey::from_hex(pubkey_hex)?;
 

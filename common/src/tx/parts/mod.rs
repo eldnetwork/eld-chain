@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 pub(crate) mod amount;
 pub(crate) mod hex_array;
 pub(crate) mod keys;

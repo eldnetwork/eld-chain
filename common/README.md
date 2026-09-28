@@ -55,13 +55,12 @@ fn main() -> Result<(), eld_common::error::EldError> {
 
 ## Encoding
 
-v0 uses three codecs on the wire. Full detail is in the workspace [README](../README.md#encoding).
+v0 uses two codecs on the wire. Full detail is in the workspace [README](../README.md#encoding).
 
 | Codec | Used for |
 |---|---|
-| **serde_json** | Transaction signing and mempool/block bytes (UTF-8 hex of signed JSON). HTTP, config, wallets. |
+| **serde_json** | Transaction signing and mempool/block bytes (UTF-8 hex of signed JSON). HTTP, config, wallets. `Coin` amounts are decimal strings. |
 | **bincode** | CADO payload bytes, GossipSub `SyncMsg`, persisted pinboard metadata. |
-| **parity-scale-codec** | `Coin` only (Cardano-adapted legacy type; not an Eld wire format). |
 
 ## Wallets and security
 

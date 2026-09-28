@@ -1,3 +1,5 @@
+//! Signed transaction envelope.
+
 use crate::error::EldError;
 use crate::nonce::Nonce;
 use crate::tx::parts::{HasSender, TxAmount, TxPublicKey, TxSig};
@@ -10,16 +12,25 @@ use ed25519_dalek::{Signer, SigningKey, Verifier};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Signed Eld transaction.
+///
+/// The signature covers `serde_json` of this value with an empty `sig`, then the chain id bytes.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Tx {
+    /// Ed25519 signature over the signing payload.
     pub sig: TxSig,
+    /// Sender account nonce.
     pub nonce: Nonce,
+    /// Typed transaction body.
     pub payload: Payload,
+    /// Sender verifying key.
     pub public_key: TxPublicKey,
+    /// Fee paid by the sender, in base units.
     pub fee: TxAmount,
 }
 
 impl Tx {
+    /// Builds an unsigned transaction (`sig` empty, `fee` zero).
     pub fn new(
         nonce: impl Into<Nonce>,
         payload: Payload,
@@ -34,6 +45,14 @@ impl Tx {
         }
     }
 
+    /// Signs this transaction for `chain_id` and stores the signature on [`Self::sig`].
+    ///
+    /// The signed bytes are JSON of the transaction with an empty signature, followed by
+    /// `chain_id` as UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::TransactionError`] when the transaction cannot be serialized.
     pub fn sign(&mut self, signing_key: &SigningKey, chain_id: &str) -> Result<String, EldError> {
         self.sig = TxSig::empty();
         let json = serde_json::to_string(self).map_err(|e| EldError::TransactionError {
@@ -50,6 +69,14 @@ impl Tx {
         Ok(self.sig.as_str().to_string())
     }
 
+    /// Checks the signature and that the payload sender matches [`Self::public_key`].
+    ///
+    /// Returns `Ok(false)` when the signature or sender address does not match.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError`] when the transaction cannot be serialized or the key or
+    /// signature bytes are invalid.
     pub fn verify(&self, chain_id: &str) -> Result<bool, EldError> {
         // Step 1: Verify the signature using public key
         let tx_to_verify = Tx {
@@ -101,6 +128,11 @@ impl std::fmt::Display for Tx {
     }
 }
 
+/// Checks the user pinboard signature and builds the validator-signed outer [`Tx`].
+///
+/// # Errors
+///
+/// Returns `Err` when the user signature is invalid or the outer transaction cannot be signed.
 pub fn validate_message_and_build_post_message_tx(
     message_bytes: &[u8],
     user_request: &PostMessageUserRequest,

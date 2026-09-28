@@ -20,6 +20,7 @@ pub struct PublicKey {
 }
 
 impl PublicKey {
+    /// Length of an Ed25519 verifying key, in bytes.
     pub const LEN: usize = 32;
 
     /// Builds a public key from exactly 32 bytes, validating Ed25519 curve membership.

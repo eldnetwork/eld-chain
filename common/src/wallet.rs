@@ -1,3 +1,8 @@
+//! Ed25519 signing identity used to build Eld transactions.
+//!
+//! Private-key files are not stored by this crate. [`Wallet::to_json`] is the
+//! persistence shape; the client crate writes `wallets.json`.
+
 use crate::error::EldError;
 use crate::logging::{LogSanitizer, SanitizedLoggable};
 use crate::tx::{PostMessageUserRequest, Tx};
@@ -9,18 +14,25 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use tracing::debug;
 
-// JSON structure for deserialization
+/// On-disk wallet JSON (`wallets.json` entry).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct JsonWallet {
+    /// Wallet name.
     pub name: String,
+    /// Account address hex, without a `0x` prefix.
     pub address: String,
+    /// Ed25519 keypair.
     pub keypair: JsonKeypair,
 }
 
+/// Hex-encoded Ed25519 keypair stored on a [`JsonWallet`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct JsonKeypair {
-    pub public_key: String,  // hex encoded
-    pub private_key: String, // hex encoded
+    /// Verifying key, hex-encoded.
+    pub public_key: String,
+    /// Signing key, hex-encoded.
+    pub private_key: String,
+    /// Key algorithm tag. Eld wallets use `ed25519_keypair`.
     pub keytype: String,
 }
 
@@ -44,15 +56,26 @@ impl fmt::Debug for JsonWallet {
     }
 }
 
+/// Ed25519 signing identity: name, derived address, and keypair.
 #[derive(Clone)]
 pub struct Wallet {
+    /// Wallet name.
     pub name: String,
+    /// Account address derived from the verifying key.
     pub address: Address,
     signing_key: SigningKey,
-    pub public_key: [u8; 32], // Added public_key field
+    /// Raw verifying-key bytes.
+    pub public_key: [u8; 32],
 }
 
 impl Wallet {
+    /// Builds a wallet from an Ed25519 signing key.
+    ///
+    /// The address is the 20-byte hash of the verifying key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if that address cannot be derived. Ed25519 verifying keys in range do not hit this.
     pub fn from_signing_key(name: String, signing_key: SigningKey) -> Self {
         let verifying_key = signing_key.verifying_key();
         let address = Address::from_public_key(&verifying_key)
@@ -65,6 +88,12 @@ impl Wallet {
         }
     }
 
+    /// Builds a wallet from parsed [`JsonWallet`] key material.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::ValidationError`] when the private key, public key, or address
+    /// hex is invalid, or the address does not match the keypair.
     pub fn from_json_wallet(json_wallet: JsonWallet) -> Result<Self, EldError> {
         let private_key_bytes: [u8; 32] = hex::decode(&json_wallet.keypair.private_key)
             .map_err(|e| {
@@ -117,6 +146,12 @@ impl Wallet {
         })
     }
 
+    /// Parses wallet JSON and builds a [`Wallet`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::ValidationError`] when `json_str` is not wallet JSON or the
+    /// key material fails [`Self::from_json_wallet`].
     pub fn from_json_str(json_str: &str) -> Result<Self, EldError> {
         let json_wallet: JsonWallet = serde_json::from_str(json_str).map_err(|e| {
             EldError::make_validation_error(
@@ -146,10 +181,16 @@ impl Wallet {
         self.signing_key.verifying_key()
     }
 
+    /// Signs `tx` for `chain_id` and returns the hex signature.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::TransactionError`] when `tx` cannot be serialized for signing.
     pub fn sign(&self, tx: &mut Tx, chain_id: &str) -> Result<String, EldError> {
         tx.sign(&self.signing_key, chain_id)
     }
 
+    /// Signs `bytes` and returns the hex-encoded Ed25519 signature.
     pub fn sign_bytes(&self, bytes: &[u8]) -> String {
         let signature = self.signing_key.sign(bytes);
         hex::encode(signature.to_bytes())
@@ -163,6 +204,11 @@ impl Wallet {
         crate::capacity_proof::sign_capacity_challenge_response(&self.signing_key, challenge_proof)
     }
 
+    /// Verifies `tx` against `chain_id` using [`Tx::verify`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError`] when the public key or signature bytes are invalid.
     pub fn verify(&self, tx: &Tx, chain_id: &str) -> Result<bool, EldError> {
         tx.verify(chain_id)
     }

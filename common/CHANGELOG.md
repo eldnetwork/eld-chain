@@ -2,6 +2,13 @@
 
 All notable changes to `eld-common` are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Removed the unused SCALE `Encode` / `Decode` impl on `Coin` and the `parity-scale-codec` 1.3 dependency. JSON and bincode still go through serde.
+- Documented `Address`, `Tx`, `Wallet`, and `EldError`, and enabled `missing_docs` for those types and the typed IDs.
+
 ## [0.0.1] - 2026-09-26
 
 First experimental release as a library crate inside `eld-chain` (not published to crates.io).

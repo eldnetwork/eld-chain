@@ -5,12 +5,10 @@
 
 use crate::constants::token::{MAX_COIN, MAX_COIN_DECIMALS};
 use crate::error::EldError;
-use parity_scale_codec::{Decode, Encode, EncodeLike, Error as ScaleError, Input, Output};
 
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 
-use std::prelude::v1::Vec;
 use std::{fmt, ops, result};
 
 /// represets the base unit amount bounded by the maximum / total supply
@@ -326,34 +324,6 @@ impl From<Coin> for u128 {
         c.0
     }
 }
-
-impl Decode for Coin {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, ScaleError> {
-        let num = u128::decode(input)?;
-
-        if num > MAX_COIN {
-            Err(ScaleError::from("Value greater than maximum allowed"))
-        } else {
-            Ok(Coin(num))
-        }
-    }
-}
-
-impl Encode for Coin {
-    fn encode_to<EncOut: Output>(&self, dest: &mut EncOut) {
-        self.0.encode_to(dest)
-    }
-    fn encode(&self) -> Vec<u8> {
-        self.0.encode()
-    }
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        self.0.using_encoded(f)
-    }
-    fn size_hint(&self) -> usize {
-        self.0.size_hint()
-    }
-}
-impl EncodeLike<u128> for Coin {}
 
 /// helper for summing coins in some iterable structure
 pub fn sum_coins(mut coins: impl Iterator<Item = Coin>) -> Result<Coin, EldError> {

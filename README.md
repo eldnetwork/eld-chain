@@ -85,13 +85,12 @@ Hex and ID conventions: [common/TYPE_DESIGN.md](common/TYPE_DESIGN.md) (canonica
 
 ## Encoding
 
-v0 uses three codecs. This is the current client/node map, not a frozen spec.
+v0 uses two codecs. This is the current client/node map, not a frozen spec.
 
 | Codec | Edges |
 |---|---|
-| **serde_json** | Transaction body and Ed25519 signing (`serde_json` of the tx with an empty sig, then append `chain_id`). Mempool and block bytes are UTF-8 hex of that JSON. Same codec for Tendermint / app / faucet HTTP, CLI config, wallets, and on-disk slot maps. |
+| **serde_json** | Transaction body and Ed25519 signing (`serde_json` of the tx with an empty sig, then append `chain_id`). Mempool and block bytes are UTF-8 hex of that JSON. Same codec for Tendermint / app / faucet HTTP, CLI config, wallets, and on-disk slot maps. `Coin` amounts are decimal strings on this path. |
 | **bincode** | CADO payload bytes (`Account`, staking accounts, `EpochRecord`, `NamespaceRecord`, CADO envelope). The node also uses bincode for GossipSub `SyncMsg` and persisted pinboard metadata. |
-| **parity-scale-codec** | `Coin` only, leftover from the Cardano-adapted type. Not an Eld wire format; JSON and bincode go through serde. |
 
 A later canonical transaction encoding would be a breaking change.
 

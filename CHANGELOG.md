@@ -14,6 +14,7 @@ Crates are unpublished (`publish = false`).
 ### Changed
 
 - Crate versions are `0.0.1`, the same number as git tag `v0.0.1`.
+- `Coin` no longer implements SCALE. Amounts stay on serde (JSON decimal strings and bincode). `eld-common` warns on missing docs for `Address`, `Tx`, `Wallet`, the typed IDs, and `EldError`.
 
 ### Fixed
 

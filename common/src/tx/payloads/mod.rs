@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 pub(crate) mod add_namespace;
 pub(crate) mod post_message;
 pub(crate) mod register_capacity;

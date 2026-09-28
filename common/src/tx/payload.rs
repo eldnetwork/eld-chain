@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use crate::tx::parts::{HasAmount, HasSender};
 use crate::tx::payloads::{
     AddNamespaceTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx, UnregisterCapacityTx,
