@@ -12,13 +12,6 @@ pub(crate) async fn view_active_validators(
     api.get_active_validators().await
 }
 
-pub(crate) async fn view_epoch_info(client: &ChainClient) -> Result<EpochInfo, EldError> {
-    let api = AbciHttpApi::new(client.config.get_node_url()?)?;
-    api.get_epoch_info()
-        .await?
-        .ok_or_else(|| ErrorBuilder::not_found_error("EpochInfo", "current"))
-}
-
 pub(crate) async fn view_epoch(
     client: &ChainClient,
 ) -> Result<(EpochInfo, ActiveValidatorsInfo), EldError> {

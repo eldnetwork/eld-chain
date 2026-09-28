@@ -13,13 +13,12 @@ use eld_common::constants::cado::{
     PATH_PREFIX_ACCOUNT, PATH_PREFIX_ACCOUNT_CONTENT, PATH_PREFIX_APP_STATE_SNAPSHOT,
     PATH_PREFIX_CADO_MAP, PATH_PREFIX_STAKING_ACCOUNT,
 };
-use eld_common::error::{EldError, ErrorBuilder};
+use eld_common::error::EldError;
 use eld_common::staking_account::StakingAccount;
 use eld_common::tx::Tx;
 use eld_common::validator::{ActiveValidatorsInfo, EpochInfo};
 use eld_common::wallet::Wallet;
 use serde_json::Value;
-use tendermint::abci::EventAttribute;
 use tracing::{info, warn};
 
 pub fn log_deliver_tx_events(response: &Value) {
@@ -118,50 +117,6 @@ pub fn all_transactions(txs: &[Tx]) {
     }
 }
 
-fn decode_event_attribute(attribute: EventAttribute) -> Result<(String, String), EldError> {
-    let key_str = attribute
-        .key_str()
-        .map_err(|e| ErrorBuilder::validation_error("event_attribute_key", "", &e.to_string()))?;
-    let decoded_key_bytes = BASE64_STANDARD.decode(key_str).map_err(|e| {
-        ErrorBuilder::validation_error("event_attribute_key", key_str, &e.to_string())
-    })?;
-    let key = String::from_utf8(decoded_key_bytes).map_err(|e| {
-        ErrorBuilder::validation_error("event_attribute_key", key_str, &e.to_string())
-    })?;
-
-    let value_str = attribute
-        .value_str()
-        .map_err(|e| ErrorBuilder::validation_error("event_attribute_value", "", &e.to_string()))?;
-    let decoded_value_bytes = BASE64_STANDARD.decode(value_str).map_err(|e| {
-        ErrorBuilder::validation_error("event_attribute_value", value_str, &e.to_string())
-    })?;
-    let value = String::from_utf8(decoded_value_bytes).map_err(|e| {
-        ErrorBuilder::validation_error("event_attribute_value", value_str, &e.to_string())
-    })?;
-    Ok((key, value))
-}
-
-pub fn account_transactions(
-    txs: Vec<tendermint_rpc::endpoint::tx::Response>,
-) -> Result<(), EldError> {
-    info!("\nTxs:\n");
-    for tx_response in txs {
-        info!(
-            "tx hash: {}",
-            SanitizedLog::as_hash(tx_response.hash.to_string())
-        );
-        for event in tx_response.tx_result.events {
-            info!("event kind: {}", event.kind);
-            for attribute in event.attributes {
-                let (key, value) = decode_event_attribute(attribute)?;
-                info!("{key}:{value}");
-            }
-        }
-        info!("\n");
-    }
-    Ok(())
-}
-
 pub async fn active_validators(
     cli: &ChainClient,
     node_url: &str,
@@ -214,17 +169,6 @@ pub async fn active_validators(
             Ok(())
         }
     }
-}
-
-pub fn epoch_info(epoch_info: &EpochInfo) {
-    info!("Current Epoch: {}", epoch_info.current_epoch);
-    info!("Current Block: {}", epoch_info.current_block);
-    info!("Blocks Per Epoch: {}", epoch_info.blocks_per_epoch);
-    info!("Validators Per Epoch: {}", epoch_info.validators_per_epoch);
-    info!(
-        "Blocks Until Next Epoch: {}",
-        epoch_info.blocks_until_next_epoch
-    );
 }
 
 pub fn epoch(epoch_info: &EpochInfo, active_validators: &ActiveValidatorsInfo) {

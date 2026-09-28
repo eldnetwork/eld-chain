@@ -1073,8 +1073,6 @@ dependencies = [
  "eld-common",
  "hex",
  "serde_json",
- "tendermint",
- "tendermint-rpc",
  "tokio",
  "tracing",
  "tracing-subscriber",

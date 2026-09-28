@@ -1,4 +1,4 @@
-//! Tendermint RPC / ABCI query client (`abci_query`, tx search, broadcast).
+//! Tendermint RPC / ABCI query client (`abci_query`, blocks, broadcast).
 
 mod http;
 pub mod query;

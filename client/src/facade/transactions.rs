@@ -92,14 +92,6 @@ pub(crate) async fn list_all_transactions(client: &ChainClient) -> Result<Vec<Tx
     Ok(txs)
 }
 
-pub(crate) async fn list_transactions(
-    client: &ChainClient,
-    addr: String,
-) -> Result<Vec<tendermint_rpc::endpoint::tx::Response>, EldError> {
-    let api = AbciHttpApi::new(client.config.get_node_url()?)?;
-    api.get_transactions_for_account(addr).await
-}
-
 pub(crate) async fn stake(
     client: &ChainClient,
     wallet_name: String,

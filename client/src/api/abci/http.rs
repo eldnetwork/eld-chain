@@ -11,12 +11,10 @@ use eld_common::validator::{ActiveValidatorsInfo, CapacityValidatorsInfo, EpochI
 use serde_json;
 use std::convert::From;
 use std::fmt;
-use std::str::FromStr;
 use tendermint::block::Height;
 use tendermint::AppHash;
 use tendermint_rpc::endpoint::block::Response;
-use tendermint_rpc::query::Query;
-use tendermint_rpc::{Client, HttpClient, Order};
+use tendermint_rpc::{Client, HttpClient};
 
 /// HTTP client for Tendermint RPC and Eld ABCI queries (`abci_query`, blocks, tx search).
 pub struct AbciHttpApi {
@@ -273,46 +271,6 @@ impl AbciHttpApi {
             .map_err(|e| EldError::NetworkError {
                 operation: "get_tx_by_hash".to_string(),
                 details: format!("Failed to get transaction {hash}: {e}"),
-            })
-    }
-
-    pub async fn get_transactions_for_account(
-        &self,
-        address: String,
-    ) -> Result<Vec<tendermint_rpc::endpoint::tx::Response>, EldError> {
-        // No 'OR' queries allowed by api so we do multiple queries
-        let queries = [
-            format!("Transfer.recipient='{address}'"),
-            format!("Transfer.sender='{address}'"),
-            format!("AddMetadata.sender='{address}'"),
-            format!("Stake.sender='{address}'"),
-            format!("Unstake.sender='{address}'"),
-        ];
-        let mut txs = Vec::new();
-        for query in queries {
-            txs.append(&mut self.query_node(&query).await?.txs);
-        }
-        Ok(txs)
-    }
-
-    pub async fn query_node(
-        &self,
-        query_str: &str,
-    ) -> Result<tendermint_rpc::endpoint::tx_search::Response, EldError> {
-        let q = Query::from_str(query_str).map_err(|e| EldError::ValidationError {
-            field: "query_string".to_string(),
-            value: query_str.to_string(),
-            details: format!("Failed to parse query string: {e}"),
-        })?;
-        let prove = false; // don't include proofs
-        let page = 1;
-        let per_page = 30;
-        self.client
-            .tx_search(q, prove, page, per_page, Order::Ascending)
-            .await
-            .map_err(|e| EldError::NetworkError {
-                operation: "query_node".to_string(),
-                details: format!("Query failed for '{query_str}': {e}"),
             })
     }
 

@@ -101,12 +101,6 @@ enum SubCommand {
     /// Lists all transactions for the chain. For testing. Will be removed.
     // todo: remove
     ListAllTransactions {},
-    /// Lists all transactions for the default account
-    ListTransactions {
-        #[arg()]
-        // list transactions
-        addr: String,
-    },
     /// Stake tokens
     Stake {
         #[arg()]
@@ -127,8 +121,6 @@ enum SubCommand {
         amount: u128,
     },
     ViewActiveValidators {},
-    /// View current epoch information
-    ViewEpochInfo {},
     /// View comprehensive epoch information including active validators
     ViewEpoch {},
     /// Look up a namespace slug in the on-chain registry (app REST API).
@@ -290,10 +282,6 @@ pub async fn main() -> Result<(), EldError> {
             display::all_transactions(&txs);
             Ok(())
         }
-        SubCommand::ListTransactions { addr } => {
-            let txs = cli.list_transactions(addr).await?;
-            display::account_transactions(txs)
-        }
         SubCommand::Stake {
             wallet_name,
             amount,
@@ -316,11 +304,6 @@ pub async fn main() -> Result<(), EldError> {
         SubCommand::ViewActiveValidators {} => {
             let validators = cli.view_active_validators().await?;
             display::active_validators(&cli, &node_url, validators).await
-        }
-        SubCommand::ViewEpochInfo {} => {
-            let epoch_info = cli.view_epoch_info().await?;
-            display::epoch_info(&epoch_info);
-            Ok(())
         }
         SubCommand::ViewEpoch {} => {
             let (epoch_info, validators) = cli.view_epoch().await?;

@@ -287,14 +287,6 @@ impl ChainClient {
         crate::facade::list_all_transactions(self).await
     }
 
-    /// Tendermint tx search results for transactions involving `addr`.
-    pub async fn list_transactions(
-        &self,
-        addr: String,
-    ) -> Result<Vec<tendermint_rpc::endpoint::tx::Response>, EldError> {
-        crate::facade::list_transactions(self, addr).await
-    }
-
     /// Stake `amount` from `wallet_name` into the staking module.
     pub async fn stake(&self, wallet_name: String, amount: u128) -> Result<SubmittedTx, EldError> {
         crate::facade::stake(self, wallet_name, amount).await
@@ -312,11 +304,6 @@ impl ChainClient {
     /// Active validator set for the current epoch.
     pub async fn view_active_validators(&self) -> Result<Option<ActiveValidatorsInfo>, EldError> {
         crate::facade::view_active_validators(self).await
-    }
-
-    /// Current epoch metadata.
-    pub async fn view_epoch_info(&self) -> Result<EpochInfo, EldError> {
-        crate::facade::view_epoch_info(self).await
     }
 
     /// Epoch info plus active validators in one call.

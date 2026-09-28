@@ -27,8 +27,6 @@ serde_json.workspace = true
 hex.workspace = true
 base64.workspace = true
 bincode.workspace = true
-tendermint-rpc.workspace = true
-tendermint.workspace = true
 
 [lints]
 workspace = true
