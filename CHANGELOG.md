@@ -14,6 +14,7 @@ Crates are unpublished (`publish = false`).
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`, `completions`). The old flat verbs stay as hidden aliases.
 - `eld-cli` flags `--output text|json`, `--home`, `--wallets`, `--consensus-config`, `--yes`, and `--dry-run`. Shell completions print to stdout.
+- Tag `eld-cli-v*` (for example `eld-cli-v0.0.1`) builds `eld-cli` for Linux and macOS and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 
 ### Changed
 

@@ -19,6 +19,15 @@ cargo install --path cli --locked
 cargo run -p eld-cli -- --help
 ```
 
+A tag `eld-cli-v*` (for example `eld-cli-v0.0.1`) builds release binaries and attaches them to a draft GitHub Release. The tarballs are public after that draft is published. Linux assets are `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`; those binaries need `libssl.so.3` (Debian and Ubuntu). macOS is `aarch64-apple-darwin`, and that binary is unsigned. Each release includes `sha256sums.txt`.
+
+```sh
+tag=eld-cli-v0.0.1
+asset="${tag}-x86_64-unknown-linux-gnu.tar.gz"
+curl -fsSL -O "https://github.com/eldnetwork/eld-chain/releases/download/${tag}/${asset}"
+tar -xzf "$asset"
+```
+
 ## Setup
 
 Start a node with the Docker scripts in the [root README](../README.md). The single-node script publishes Tendermint RPC on `26657` and app REST on `9001`.
