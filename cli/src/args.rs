@@ -447,6 +447,7 @@ fn parse_visibility(raw: &str) -> Result<String, EldError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     const ADDRESS: &str = "0x1234567890abcdef1234567890abcdef12345678";
 
@@ -537,6 +538,39 @@ mod tests {
             message.contains("visibility must not be empty"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn help_snapshots_root_and_wallet() {
+        assert_eq!(
+            rendered_help(None),
+            include_str!("../tests/snapshots/help_root.txt")
+        );
+        assert_eq!(
+            rendered_help(Some("wallet")),
+            include_str!("../tests/snapshots/help_wallet.txt")
+        );
+    }
+
+    fn rendered_help(subcommand: Option<&str>) -> String {
+        let mut cmd = Arguments::command()
+            .term_width(100)
+            .color(clap::ColorChoice::Never)
+            .styles(clap::builder::Styles::plain());
+        if let Some(name) = subcommand {
+            cmd = cmd
+                .find_subcommand(name)
+                .unwrap_or_else(|| panic!("missing subcommand {name}"))
+                .clone()
+                .term_width(100)
+                .color(clap::ColorChoice::Never)
+                .styles(clap::builder::Styles::plain());
+        }
+        let mut text = cmd.render_help().to_string();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text
     }
 
     #[test]

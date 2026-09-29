@@ -1,0 +1,13 @@
+Local signing keys
+
+Usage: wallet <COMMAND>
+
+Commands:
+  create  Create a local signing wallet
+  list    List wallets stored locally
+  show    Show one local wallet
+  remove  Delete a local wallet and its private key
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

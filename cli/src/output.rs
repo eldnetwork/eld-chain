@@ -1012,14 +1012,17 @@ mod tests {
         assert_eq!(created_wallet(&wallet), expected);
         assert_eq!(display_wallet(&wallet), expected);
         let listed = list_wallets(std::slice::from_ref(&wallet));
-        assert!(!expected.contains("private"), "{expected}");
-        assert!(!listed.contains("private"), "{listed}");
-        assert!(!expected.contains(&hex::encode([7u8; 32])), "{expected}");
         let json = serde_json::to_string(&super::wallet_json(&wallet)).unwrap();
         let parsed: Value = serde_json::from_str(&json).unwrap();
-        assert!(parsed.get("name").is_some());
-        assert!(!json.contains("private"), "{json}");
-        assert!(!json.contains(&hex::encode([7u8; 32])), "{json}");
+        assert_eq!(parsed["name"], "alice");
+        assert_eq!(parsed["address"], wallet.address.hex_with_prefix());
+        assert_eq!(parsed["public_key"], hex::encode(wallet.public_key));
+        let seed_hex = hex::encode([7u8; 32]);
+        for text in [&expected, &listed, &json] {
+            assert!(!text.contains("private"), "{text}");
+            assert!(!text.contains("secret"), "{text}");
+            assert!(!text.contains(&seed_hex), "{text}");
+        }
     }
 
     #[test]
@@ -1085,6 +1088,10 @@ mod tests {
             super::account(&account),
             "address: 0x1234567890abcdef1234567890abcdef12345678\nbalance: 0.001000\nnonce: 3"
         );
+        let json = serde_json::to_value(&account).unwrap();
+        assert_eq!(json["address"], ADDRESS);
+        assert_eq!(json["balance"], "1000");
+        assert_eq!(json["nonce"], 3);
     }
 
     #[test]
@@ -1110,6 +1117,15 @@ mod tests {
             "Transfer transaction committed\ntx_hash: {tx_hash}\nfee: 1000\nnonce: 7\n\nevent_type: transfer\nsender: ok"
         );
         assert_eq!(submitted_tx("Transfer", &submitted), expected);
+        let json = serde_json::to_value(super::submitted_tx_json("Transfer", &submitted)).unwrap();
+        assert_eq!(json["kind"], "Transfer");
+        assert_eq!(json["tx_hash"], tx_hash.to_string());
+        assert_eq!(json["fee"], 1000);
+        assert_eq!(json["nonce"], 7);
+        assert_eq!(json["events"][0]["event_type"], "transfer");
+        assert_eq!(json["events"][0]["attributes"][0]["key"], "sender");
+        assert_eq!(json["events"][0]["attributes"][0]["value"], "ok");
+        assert!(json.get("signed_tx_json").is_none(), "{json}");
     }
 
     #[test]
@@ -1122,6 +1138,13 @@ mod tests {
             namespace_lookup(&missing),
             "registered: false\nnamespace_slug: peter"
         );
+        let missing_json = serde_json::to_value(super::MissingNamespaceJson {
+            registered: false,
+            namespace_slug: missing.canonical_slug.clone(),
+        })
+        .unwrap();
+        assert_eq!(missing_json["registered"], false);
+        assert_eq!(missing_json["namespace_slug"], "peter");
 
         let registered = NamespaceRegisteredResponse {
             registered: true,
@@ -1134,10 +1157,17 @@ mod tests {
         assert_eq!(
             namespace_lookup(&NamespaceLookup {
                 canonical_slug: "peter".to_string(),
-                registered: Some(registered),
+                registered: Some(registered.clone()),
             }),
             "registered: true\nnamespace_slug: peter\nscope: @peter\nowner: 0x1234567890abcdef1234567890abcdef12345678\nregistered_height: 9\nregistry_path: /ns/peter"
         );
+        let registered_json = serde_json::to_value(&registered).unwrap();
+        assert_eq!(registered_json["registered"], true);
+        assert_eq!(registered_json["namespace_slug"], "peter");
+        assert_eq!(registered_json["scope"], "@peter");
+        assert_eq!(registered_json["owner"], ADDRESS);
+        assert_eq!(registered_json["registered_height"], 9);
+        assert_eq!(registered_json["registry_path"], "/ns/peter");
     }
 
     #[test]
@@ -1154,6 +1184,14 @@ mod tests {
             pinboard_submit(&response),
             "status: submitted\nmessage_id: mid\ncontent_key: ckey\ntx_hash: thash\norigin_validator: validator\nreceived_timestamp: 42\ncontent_path: /@peter/mid"
         );
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["status"], "submitted");
+        assert_eq!(json["message_id"], "mid");
+        assert_eq!(json["content_key"], "ckey");
+        assert_eq!(json["tx_hash"], "thash");
+        assert_eq!(json["origin_validator"], "validator");
+        assert_eq!(json["received_timestamp"], 42);
+        assert_eq!(json["content_path"], "/@peter/mid");
     }
 
     #[test]
