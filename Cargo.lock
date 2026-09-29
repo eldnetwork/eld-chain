@@ -1075,6 +1075,7 @@ dependencies = [
  "eld-common",
  "hex",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

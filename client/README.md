@@ -107,7 +107,7 @@ Fee settings for signing live in `config/consensus_config.json` (`ClientSetup` /
 
 ## Wallets and security
 
-Local wallets are **plaintext JSON** files (`wallets/wallets.json` by default) containing hex-encoded Ed25519 **private keys**. There is no encryption at rest.
+Local wallets are **plaintext JSON** files (`wallets/wallets.json` by default) containing hex-encoded Ed25519 **private keys**. There is no encryption at rest. `ChainClient::create_wallet_at`, `list_wallets_at`, `get_wallet_by_name_at`, and `remove_wallet_at` read and write that file without a node config.
 
 - Do **not** commit wallet files or any JSON containing `private_key`.
 - Do **not** log serialized wallets or signed transaction JSON in production.

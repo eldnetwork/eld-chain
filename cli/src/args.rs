@@ -3,6 +3,7 @@ use eld_common::coin::Coin;
 use eld_common::error::EldError;
 use eld_common::tx::validate_post_message_content_type;
 use eld_common::Address;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "eld-cli", author, version, about)]
@@ -10,13 +11,21 @@ pub struct Arguments {
     #[command(subcommand)]
     pub(crate) cmd: SubCommand,
 
-    /// Config file to use (default: config/config.json)
-    #[arg(
-        long = "cli-config",
-        env = "ELD_CLI_CONFIG",
-        default_value = "config/config.json"
-    )]
-    pub(crate) config: String,
+    /// Base directory for config and wallets.
+    #[arg(long, default_value = ".", value_name = "DIR")]
+    pub(crate) home: PathBuf,
+
+    /// Wallet file. Default: `$home/wallets/wallets.json`.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) wallets: Option<PathBuf>,
+
+    /// Consensus config file. Default: `$home/config/consensus_config.json`.
+    #[arg(long = "consensus-config", value_name = "PATH")]
+    pub(crate) consensus_config: Option<PathBuf>,
+
+    /// Client endpoints file. Default: `$home/config/config.json`.
+    #[arg(long = "cli-config", env = "ELD_CLI_CONFIG", value_name = "PATH")]
+    pub(crate) config: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]

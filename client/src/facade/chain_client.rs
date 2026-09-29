@@ -159,15 +159,22 @@ impl ChainClient {
         crate::facade::wallets::create_wallet_with_store_config(name, wallet_store_config).await
     }
 
+    /// Generate a new wallet and write it to `wallet_path` without a node client.
+    pub async fn create_wallet_at(
+        name: String,
+        wallet_path: impl AsRef<Path>,
+    ) -> Result<Wallet, EldError> {
+        let wallet_store_config = Self::wallet_store_config_from_path(wallet_path);
+        crate::facade::wallets::create_wallet_with_store_config(name, &wallet_store_config).await
+    }
+
     /// Generate a new wallet and write to `wallet_path`.
     pub async fn create_wallet_from_path(
         &self,
         name: String,
         wallet_path: impl AsRef<Path>,
     ) -> Result<Wallet, EldError> {
-        let wallet_store_config = Self::wallet_store_config_from_path(wallet_path);
-        self.create_wallet_with_store_config(name, &wallet_store_config)
-            .await
+        Self::create_wallet_at(name, wallet_path).await
     }
 
     /// List wallet names from the bound wallet store.
@@ -183,12 +190,17 @@ impl ChainClient {
         crate::facade::wallets::list_wallets_with_store_config(wallet_store_config).await
     }
 
+    /// List wallets stored at `wallet_path` without a node client.
+    pub async fn list_wallets_at(wallet_path: impl AsRef<Path>) -> Result<Vec<Wallet>, EldError> {
+        WalletStoreConfig::load_wallets_from_path(wallet_path)
+    }
+
     /// List wallets stored at `wallet_path`.
     pub async fn list_wallets_from_path(
         &self,
         wallet_path: impl AsRef<Path>,
     ) -> Result<Vec<Wallet>, EldError> {
-        self.get_wallets_from_path(wallet_path).await
+        Self::list_wallets_at(wallet_path).await
     }
 
     /// Load all wallets from the bound wallet store.
@@ -201,7 +213,7 @@ impl ChainClient {
         &self,
         wallet_path: impl AsRef<Path>,
     ) -> Result<Vec<Wallet>, EldError> {
-        WalletStoreConfig::load_wallets_from_path(wallet_path)
+        Self::list_wallets_at(wallet_path).await
     }
 
     /// Remove a wallet by name from the bound store (`true` if it existed).
@@ -218,15 +230,22 @@ impl ChainClient {
         crate::facade::wallets::remove_wallet_with_store_config(name, wallet_store_config).await
     }
 
+    /// Remove a wallet by name from `wallet_path` without a node client.
+    pub async fn remove_wallet_at(
+        name: String,
+        wallet_path: impl AsRef<Path>,
+    ) -> Result<bool, EldError> {
+        let wallet_store_config = Self::wallet_store_config_from_path(wallet_path);
+        crate::facade::wallets::remove_wallet_with_store_config(name, &wallet_store_config).await
+    }
+
     /// Remove a wallet from `wallet_path`.
     pub async fn remove_wallet_from_path(
         &self,
         name: String,
         wallet_path: impl AsRef<Path>,
     ) -> Result<bool, EldError> {
-        let wallet_store_config = Self::wallet_store_config_from_path(wallet_path);
-        self.remove_wallet_with_store_config(name, &wallet_store_config)
-            .await
+        Self::remove_wallet_at(name, wallet_path).await
     }
 
     /// Look up a wallet by name in the bound store.
@@ -245,14 +264,22 @@ impl ChainClient {
             .await
     }
 
+    /// Look up a wallet by name in `wallet_path` without a node client.
+    pub async fn get_wallet_by_name_at(
+        name: &str,
+        wallet_path: impl AsRef<Path>,
+    ) -> Result<Option<Wallet>, EldError> {
+        let wallets = Self::list_wallets_at(wallet_path).await?;
+        Ok(wallets.into_iter().find(|wallet| wallet.name == name))
+    }
+
     /// Look up a wallet by name in `wallet_path`.
     pub async fn get_wallet_by_name_from_path(
         &self,
         name: String,
         wallet_path: impl AsRef<Path>,
     ) -> Result<Option<Wallet>, EldError> {
-        let wallets = self.get_wallets_from_path(wallet_path).await?;
-        Ok(wallets.into_iter().find(|w| w.name == name))
+        Self::get_wallet_by_name_at(&name, wallet_path).await
     }
 
     /// Hex-encoded `0x` address for a wallet name (used as capacity provider id on nodes).
