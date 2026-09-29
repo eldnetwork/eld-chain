@@ -12,6 +12,8 @@ Crates are unpublished (`publish = false`).
 ### Added
 
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
+- Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`, `completions`). The old flat verbs stay as hidden aliases.
+- `eld-cli` flags `--output text|json`, `--home`, `--wallets`, `--consensus-config`, `--yes`, and `--dry-run`. Shell completions print to stdout.
 
 ### Changed
 

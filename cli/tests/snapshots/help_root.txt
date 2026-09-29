@@ -1,4 +1,4 @@
-Command-line client for an Eld node
+Command-line client for an Eld node: local wallets, signed transactions, and chain queries
 
 Usage: eld-cli [OPTIONS] <COMMAND>
 

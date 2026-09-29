@@ -46,6 +46,21 @@ Stop with `./deploy/scripts/docker/local/single/single-stop.sh`.
 
 To build images locally or run the 4-node cluster, use the scripts mentioned in `deploy/README.md`.
 
+### Talk to a local node
+
+With that node up, talk to it with [`eld-cli`](cli/README.md):
+
+```sh
+mkdir -p config
+cp cli/config/config.json.example config/config.json
+cp cli/config/consensus_config.json config/consensus_config.json
+cargo run -p eld-cli -- wallet create my-wallet
+cargo run -p eld-cli -- tx faucet 0xYourAddress
+cargo run -p eld-cli -- account get 0xYourAddress
+```
+
+`wallet create` prints the address to pass to `tx faucet` and `account get`. Flags, aliases, and exit codes are in [cli/README.md](cli/README.md).
+
 
 ## This repository
 

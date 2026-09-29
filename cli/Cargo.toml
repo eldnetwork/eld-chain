@@ -4,11 +4,11 @@ version = "0.0.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Command-line client for an Eld node"
+description = "Command-line client for an Eld node: local wallets, signed transactions, and chain queries"
 readme = "README.md"
 authors.workspace = true
 repository.workspace = true
-homepage = "https://github.com/eldnetwork/eld-chain"
+homepage = "https://docs.eld.network"
 keywords = ["blockchain", "cli", "tendermint"]
 publish = false
 
