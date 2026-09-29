@@ -1074,6 +1074,7 @@ dependencies = [
  "eld-client",
  "eld-common",
  "hex",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

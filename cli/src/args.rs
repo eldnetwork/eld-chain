@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use eld_common::coin::Coin;
 use eld_common::error::EldError;
 use eld_common::tx::validate_post_message_content_type;
@@ -34,6 +34,16 @@ pub struct Arguments {
     /// Print the intended transfer, stake, unstake, namespace add, or pinboard post and do not broadcast.
     #[arg(long)]
     pub(crate) dry_run: bool,
+
+    /// Output format. `text` is the default. Also read from `ELD_CLI_OUTPUT`.
+    #[arg(long, value_enum, default_value = "text", env = "ELD_CLI_OUTPUT")]
+    pub(crate) output: OutputFormat,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum OutputFormat {
+    Text,
+    Json,
 }
 
 #[derive(Subcommand, Debug)]

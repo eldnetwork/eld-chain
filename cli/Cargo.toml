@@ -23,6 +23,7 @@ eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 hex.workspace = true
 base64.workspace = true
@@ -30,6 +31,7 @@ bincode.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]

@@ -13,6 +13,7 @@ use eld_client::config::{
 };
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
+use output::OutputMode;
 use std::path::{Path, PathBuf};
 
 #[tokio::main]
@@ -87,34 +88,42 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
     let paths = resolve_paths(&args);
     let yes = args.yes;
     let dry_run = args.dry_run;
+    let mode = OutputMode::new(args.output);
     if command_is_offline(&args.cmd) {
-        return dispatch_offline(&paths.wallets, args.cmd, yes).await;
+        return dispatch_offline(&paths.wallets, args.cmd, yes, mode).await;
     }
     let cli = open_chain_client(&paths)?;
-    dispatch_online(&cli, args.cmd, dry_run).await
+    dispatch_online(&cli, args.cmd, dry_run, mode).await
 }
 
-async fn dispatch_offline(wallets: &Path, cmd: SubCommand, yes: bool) -> Result<(), EldError> {
+async fn dispatch_offline(
+    wallets: &Path,
+    cmd: SubCommand,
+    yes: bool,
+    mode: OutputMode,
+) -> Result<(), EldError> {
     match cmd {
         SubCommand::Wallet {
             cmd: WalletCommand::Create(wallet),
         }
         | SubCommand::CreateWallet(wallet) => {
-            commands::wallet::create_wallet(wallets, wallet.name).await
+            commands::wallet::create_wallet(wallets, wallet.name, mode).await
         }
         SubCommand::Wallet {
             cmd: WalletCommand::List,
         }
-        | SubCommand::ListWallets => commands::wallet::list_wallets(wallets).await,
+        | SubCommand::ListWallets => commands::wallet::list_wallets(wallets, mode).await,
         SubCommand::Wallet {
             cmd: WalletCommand::Show(wallet),
         }
-        | SubCommand::GetWallet(wallet) => commands::wallet::get_wallet(wallets, wallet.name).await,
+        | SubCommand::GetWallet(wallet) => {
+            commands::wallet::get_wallet(wallets, wallet.name, mode).await
+        }
         SubCommand::Wallet {
             cmd: WalletCommand::Remove(wallet),
         }
         | SubCommand::RemoveWallet(wallet) => {
-            commands::wallet::remove_wallet(wallets, wallet.name, yes).await
+            commands::wallet::remove_wallet(wallets, wallet.name, yes, mode).await
         }
         _ => unreachable!("offline dispatch only handles wallet commands"),
     }
@@ -124,6 +133,7 @@ async fn dispatch_online(
     cli: &ChainClient,
     cmd: SubCommand,
     dry_run: bool,
+    mode: OutputMode,
 ) -> Result<(), EldError> {
     match cmd {
         SubCommand::Wallet { .. }
@@ -143,6 +153,7 @@ async fn dispatch_online(
                 tx.recipient.hex_with_prefix(),
                 tx.amount.amount(),
                 dry_run,
+                mode,
             )
             .await
         }
@@ -150,49 +161,51 @@ async fn dispatch_online(
             cmd: TxCommand::Faucet(faucet),
         }
         | SubCommand::RequestFaucet(faucet) => {
-            commands::tx::request_faucet(cli, faucet.address.hex_with_prefix()).await
+            commands::tx::request_faucet(cli, faucet.address.hex_with_prefix(), mode).await
         }
         SubCommand::Account {
             cmd: AccountCommand::Get(account),
         }
         | SubCommand::GetAccount(account) => {
-            commands::account::get_account(cli, account.address.hex_with_prefix()).await
+            commands::account::get_account(cli, account.address.hex_with_prefix(), mode).await
         }
         SubCommand::Account {
             cmd: AccountCommand::StakeGet(account),
         }
         | SubCommand::GetStakeAccount(account) => {
-            commands::account::get_stake_account(cli, account.address.hex_with_prefix()).await
+            commands::account::get_stake_account(cli, account.address.hex_with_prefix(), mode).await
         }
         SubCommand::Chain {
             cmd: ChainCommand::AbciInfo,
         }
-        | SubCommand::GetAbciInfo => commands::account::get_abci_info(cli).await,
+        | SubCommand::GetAbciInfo => commands::account::get_abci_info(cli, mode).await,
         SubCommand::Tx {
             cmd: TxCommand::Stake(tx),
         }
         | SubCommand::Stake(tx) => {
-            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount(), dry_run).await
+            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount(), dry_run, mode).await
         }
         SubCommand::Tx {
             cmd: TxCommand::Unstake(tx),
         }
         | SubCommand::Unstake(tx) => {
-            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount(), dry_run).await
+            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount(), dry_run, mode).await
         }
         SubCommand::Chain {
             cmd: ChainCommand::Validators,
         }
-        | SubCommand::ViewActiveValidators => commands::epoch::view_active_validators(cli).await,
+        | SubCommand::ViewActiveValidators => {
+            commands::epoch::view_active_validators(cli, mode).await
+        }
         SubCommand::Chain {
             cmd: ChainCommand::Epoch,
         }
-        | SubCommand::ViewEpoch => commands::epoch::view_epoch(cli).await,
+        | SubCommand::ViewEpoch => commands::epoch::view_epoch(cli, mode).await,
         SubCommand::Namespace {
             cmd: NamespaceCommand::Get(namespace),
         }
         | SubCommand::GetNamespace(namespace) => {
-            commands::namespace::get_namespace(cli, namespace.namespace_slug).await
+            commands::namespace::get_namespace(cli, namespace.namespace_slug, mode).await
         }
         SubCommand::Namespace {
             cmd: NamespaceCommand::Add(namespace),
@@ -204,6 +217,7 @@ async fn dispatch_online(
                 namespace.namespace_slug,
                 namespace.registration_fee.amount(),
                 dry_run,
+                mode,
             )
             .await
         }
@@ -225,28 +239,32 @@ async fn dispatch_online(
                     namespace: post.namespace,
                 },
                 dry_run,
+                mode,
             )
             .await
         }
         SubCommand::Cado {
             cmd: CadoCommand::Get(cado),
         }
-        | SubCommand::GetCado(cado) => commands::cado::get_cado(cli, cado.path).await,
+        | SubCommand::GetCado(cado) => commands::cado::get_cado(cli, cado.path, mode).await,
         SubCommand::Cado {
             cmd: CadoCommand::List(cado),
         }
-        | SubCommand::ListCados(cado) => commands::cado::list_cados(cli, cado.search_string).await,
+        | SubCommand::ListCados(cado) => {
+            commands::cado::list_cados(cli, cado.search_string, mode).await
+        }
         SubCommand::Pinboard {
             cmd: PinboardCommand::Get(post),
         }
         | SubCommand::PinboardGetPost(post) => {
-            commands::pinboard::get_post(cli, post.wallet.hex_with_prefix(), post.message_id).await
+            commands::pinboard::get_post(cli, post.wallet.hex_with_prefix(), post.message_id, mode)
+                .await
         }
         SubCommand::Pinboard {
             cmd: PinboardCommand::ListTag(post),
         }
         | SubCommand::PinboardListByTag(post) => {
-            commands::pinboard::list_by_tag(cli, post.tag, post.page, post.page_size).await
+            commands::pinboard::list_by_tag(cli, post.tag, post.page, post.page_size, mode).await
         }
         SubCommand::Pinboard {
             cmd: PinboardCommand::ListWallet(post),
@@ -257,6 +275,7 @@ async fn dispatch_online(
                 post.wallet.hex_with_prefix(),
                 post.page,
                 post.page_size,
+                mode,
             )
             .await
         }
@@ -277,6 +296,7 @@ mod tests {
             config: None,
             yes: false,
             dry_run: false,
+            output: args::OutputFormat::Text,
         }
     }
 

@@ -2,9 +2,8 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use eld_client::api::abci::deliver_tx_events;
+use eld_client::api::abci::{deliver_tx_events, AbciInfoWrapper};
 use eld_client::api::rest::{NamespaceRegisteredResponse, PostMessageSubmitResponse};
-use eld_client::facade::ChainClient;
 use eld_client::facade::NamespaceLookup;
 use eld_client::facade::SubmittedTx;
 use eld_common::account::Account;
@@ -16,6 +15,7 @@ use eld_common::error::{EldError, ErrorBuilder};
 use eld_common::staking_account::StakingAccount;
 use eld_common::validator::{ActiveValidatorsInfo, EpochInfo};
 use eld_common::wallet::Wallet;
+use serde::Serialize;
 use serde_json::Value;
 
 struct Text {
@@ -40,6 +40,26 @@ impl Text {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OutputMode {
+    pub(crate) format: crate::args::OutputFormat,
+}
+
+impl OutputMode {
+    pub(crate) fn new(format: crate::args::OutputFormat) -> Self {
+        Self { format }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn text() -> Self {
+        Self::new(crate::args::OutputFormat::Text)
+    }
+
+    pub(crate) fn is_json(self) -> bool {
+        self.format == crate::args::OutputFormat::Json
+    }
+}
+
 pub(crate) fn print_result(text: &str) {
     let text = text.trim_end_matches('\n');
     if text.is_empty() {
@@ -49,6 +69,25 @@ pub(crate) fn print_result(text: &str) {
 }
 
 pub(crate) const UNENCRYPTED_WALLET_WARNING: &str = "Warning: local wallets store unencrypted Ed25519 keys. Keep wallets.json mode 0600 and never commit it.";
+
+pub(crate) fn print_json<T: Serialize>(value: &T) -> Result<(), EldError> {
+    let json = serde_json::to_string(value).map_err(|err| EldError::ValidationError {
+        field: "output".to_string(),
+        value: "json".to_string(),
+        details: format!("failed to serialize JSON: {err}"),
+    })?;
+    println!("{json}");
+    Ok(())
+}
+
+pub(crate) fn emit<T: Serialize>(mode: OutputMode, text: &str, value: &T) -> Result<(), EldError> {
+    if mode.is_json() {
+        print_json(value)
+    } else {
+        print_result(text);
+        Ok(())
+    }
+}
 
 pub(crate) fn warn_unencrypted_wallets() {
     eprintln!("{UNENCRYPTED_WALLET_WARNING}");
@@ -118,7 +157,7 @@ pub(crate) fn submitted_tx(kind: &str, submitted: &SubmittedTx) -> String {
     text.line(format!("nonce: {}", submitted.nonce.value()));
     for event in deliver_tx_events(&submitted.response) {
         text.blank();
-        text.line(format!("Event Type: {}", event.event_type));
+        text.line(format!("event_type: {}", event.event_type));
         for (key, value) in event.attributes {
             text.line(format!("{key}: {value}"));
         }
@@ -160,9 +199,9 @@ pub(crate) fn staking_account(address: &str, account: &StakingAccount) -> String
     )
 }
 
-pub(crate) async fn active_validators(
-    cli: &ChainClient,
-    validators: Option<ActiveValidatorsInfo>,
+pub(crate) fn active_validators(
+    validators: Option<&ActiveValidatorsInfo>,
+    balances: &[String],
 ) -> String {
     let mut text = Text::new();
     match validators {
@@ -188,15 +227,7 @@ pub(crate) async fn active_validators(
                 text.line(format!("Validator {}", i + 1));
                 text.line(format!("  address: {}", validator.address));
                 text.line(format!("  stake: {}", validator.stake));
-
-                let balance = match cli
-                    .get_account_by_address(validator.address.to_string())
-                    .await
-                {
-                    Ok(Some(account)) => account.balance().to_string(),
-                    Ok(None) => "account not found".to_string(),
-                    Err(e) => format!("error: {e}"),
-                };
+                let balance = balances.get(i).map(String::as_str).unwrap_or("unknown");
                 text.line(format!("  balance: {balance}"));
                 text.line(format!(
                     "  public_key: {}",
@@ -258,9 +289,13 @@ pub(crate) fn epoch(epoch_info: &EpochInfo, active_validators: &ActiveValidators
         epoch_info.blocks_until_next_epoch
     ));
 
-    let progress = ((epoch_info.blocks_per_epoch - epoch_info.blocks_until_next_epoch) as f64
-        / epoch_info.blocks_per_epoch as f64)
-        * 100.0;
+    let progress = if epoch_info.blocks_per_epoch == 0 {
+        0.0
+    } else {
+        ((epoch_info.blocks_per_epoch - epoch_info.blocks_until_next_epoch) as f64
+            / epoch_info.blocks_per_epoch as f64)
+            * 100.0
+    };
     let bar_width = 50;
     let filled_width = (progress / 100.0 * bar_width as f64) as usize;
     let mut bar = String::from("  [");
@@ -352,6 +387,435 @@ pub(crate) fn list_cados(search_string: &str, paths: &[String]) -> String {
         text.line(format!("{}. {path}", i + 1));
     }
     text.finish()
+}
+
+#[derive(Serialize)]
+struct WalletJson {
+    name: String,
+    address: String,
+    public_key: String,
+}
+
+fn wallet_json(wallet: &Wallet) -> WalletJson {
+    WalletJson {
+        name: wallet.name.clone(),
+        address: wallet.address.hex_with_prefix(),
+        public_key: hex::encode(wallet.public_key),
+    }
+}
+
+#[derive(Serialize)]
+struct WalletListJson {
+    wallets: Vec<WalletJson>,
+}
+
+#[derive(Serialize)]
+struct RemovedWalletJson {
+    name: String,
+    removed: bool,
+}
+
+#[derive(Serialize)]
+struct EventAttrJson {
+    key: String,
+    value: String,
+}
+
+#[derive(Serialize)]
+struct EventJson {
+    event_type: String,
+    attributes: Vec<EventAttrJson>,
+}
+
+#[derive(Serialize)]
+struct SubmittedTxJson {
+    kind: String,
+    tx_hash: String,
+    fee: u128,
+    nonce: u32,
+    events: Vec<EventJson>,
+}
+
+fn submitted_tx_json(kind: &str, submitted: &SubmittedTx) -> SubmittedTxJson {
+    SubmittedTxJson {
+        kind: kind.to_string(),
+        tx_hash: submitted.tx_hash.to_string(),
+        fee: submitted.fee.amount(),
+        nonce: submitted.nonce.value(),
+        events: deliver_tx_events(&submitted.response)
+            .into_iter()
+            .map(|event| EventJson {
+                event_type: event.event_type,
+                attributes: event
+                    .attributes
+                    .into_iter()
+                    .map(|(key, value)| EventAttrJson { key, value })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+#[derive(Serialize)]
+struct FaucetJson {
+    success: Option<bool>,
+    message: String,
+}
+
+fn faucet_json(body: &str) -> FaucetJson {
+    match serde_json::from_str::<Value>(body) {
+        Ok(value) => FaucetJson {
+            success: value.get("success").and_then(|v| v.as_bool()),
+            message: value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(no message)")
+                .to_string(),
+        },
+        Err(_) => FaucetJson {
+            success: None,
+            message: "Faucet request succeeded".to_string(),
+        },
+    }
+}
+
+#[derive(Serialize)]
+struct AbciJson {
+    app_version: u64,
+    version: String,
+    last_block_height: String,
+    last_block_app_hash: String,
+}
+
+#[derive(Serialize)]
+struct ValidatorJson {
+    address: String,
+    stake: String,
+    balance: String,
+    public_key: String,
+}
+
+#[derive(Serialize)]
+struct ActiveValidatorsJson {
+    current_epoch: Option<i64>,
+    total_stake: Option<String>,
+    validators: Vec<ValidatorJson>,
+}
+
+fn active_validators_json(
+    info: Option<&ActiveValidatorsInfo>,
+    balances: &[String],
+) -> ActiveValidatorsJson {
+    let Some(info) = info else {
+        return ActiveValidatorsJson {
+            current_epoch: None,
+            total_stake: None,
+            validators: Vec::new(),
+        };
+    };
+    ActiveValidatorsJson {
+        current_epoch: Some(info.current_epoch),
+        total_stake: Some(info.total_stake.to_string()),
+        validators: info
+            .validators
+            .iter()
+            .enumerate()
+            .map(|(i, validator)| ValidatorJson {
+                address: validator.address.to_string(),
+                stake: validator.stake.to_string(),
+                balance: balances
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                public_key: hex::encode(&validator.public_key),
+            })
+            .collect(),
+    }
+}
+
+#[derive(Serialize)]
+struct EpochJson<'a> {
+    epoch: &'a EpochInfo,
+    validators: &'a ActiveValidatorsInfo,
+}
+
+#[derive(Serialize)]
+struct MissingNamespaceJson {
+    registered: bool,
+    namespace_slug: String,
+}
+
+#[derive(Serialize)]
+struct CadoListJson<'a> {
+    search_string: &'a str,
+    paths: &'a [String],
+}
+
+#[derive(Serialize)]
+struct DryRunTransferJson<'a> {
+    action: &'static str,
+    wallet: &'a str,
+    recipient: &'a str,
+    amount: u128,
+}
+
+#[derive(Serialize)]
+struct DryRunAmountJson<'a> {
+    action: &'static str,
+    wallet: &'a str,
+    amount: u128,
+}
+
+#[derive(Serialize)]
+struct DryRunNamespaceJson<'a> {
+    action: &'static str,
+    wallet: &'a str,
+    namespace: &'a str,
+    registration_fee: u128,
+}
+
+#[derive(Serialize)]
+struct DryRunPinboardJson<'a> {
+    action: &'static str,
+    wallet: &'a str,
+    file: &'a str,
+    user_fee_amount: u128,
+}
+
+pub(crate) fn emit_created_wallet(mode: OutputMode, wallet: &Wallet) -> Result<(), EldError> {
+    emit(mode, &created_wallet(wallet), &wallet_json(wallet))
+}
+
+pub(crate) fn emit_wallet_list(mode: OutputMode, wallets: &[Wallet]) -> Result<(), EldError> {
+    let view = WalletListJson {
+        wallets: wallets.iter().map(wallet_json).collect(),
+    };
+    emit(mode, &list_wallets(wallets), &view)
+}
+
+pub(crate) fn emit_wallet(mode: OutputMode, wallet: &Wallet) -> Result<(), EldError> {
+    emit(mode, &display_wallet(wallet), &wallet_json(wallet))
+}
+
+pub(crate) fn emit_removed_wallet(mode: OutputMode, name: &str) -> Result<(), EldError> {
+    emit(
+        mode,
+        &removed_wallet(name),
+        &RemovedWalletJson {
+            name: name.to_string(),
+            removed: true,
+        },
+    )
+}
+
+pub(crate) fn emit_submitted_tx(
+    mode: OutputMode,
+    kind: &str,
+    submitted: &SubmittedTx,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &submitted_tx(kind, submitted),
+        &submitted_tx_json(kind, submitted),
+    )
+}
+
+pub(crate) fn emit_faucet(mode: OutputMode, body: &str) -> Result<(), EldError> {
+    emit(mode, &faucet_ok(body), &faucet_json(body))
+}
+
+pub(crate) fn emit_account(mode: OutputMode, account: &Account) -> Result<(), EldError> {
+    emit(mode, &self::account(account), account)
+}
+
+pub(crate) fn emit_staking_account(
+    mode: OutputMode,
+    address: &str,
+    account: &StakingAccount,
+) -> Result<(), EldError> {
+    emit(mode, &staking_account(address, account), account)
+}
+
+pub(crate) fn emit_abci(mode: OutputMode, info: &AbciInfoWrapper) -> Result<(), EldError> {
+    let view = AbciJson {
+        app_version: info.app_version,
+        version: info.version.clone(),
+        last_block_height: info.last_block_height.to_string(),
+        last_block_app_hash: info.last_block_app_hash.to_string(),
+    };
+    emit(mode, &info.to_string(), &view)
+}
+
+pub(crate) fn emit_active_validators(
+    mode: OutputMode,
+    info: Option<&ActiveValidatorsInfo>,
+    balances: &[String],
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &active_validators(info, balances),
+        &active_validators_json(info, balances),
+    )
+}
+
+pub(crate) fn emit_epoch(
+    mode: OutputMode,
+    epoch_info: &EpochInfo,
+    validators: &ActiveValidatorsInfo,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &epoch(epoch_info, validators),
+        &EpochJson {
+            epoch: epoch_info,
+            validators,
+        },
+    )
+}
+
+pub(crate) fn emit_namespace_lookup(
+    mode: OutputMode,
+    lookup: &NamespaceLookup,
+) -> Result<(), EldError> {
+    match &lookup.registered {
+        Some(resp) => emit(mode, &namespace_lookup(lookup), resp),
+        None => emit(
+            mode,
+            &namespace_lookup(lookup),
+            &MissingNamespaceJson {
+                registered: false,
+                namespace_slug: lookup.canonical_slug.clone(),
+            },
+        ),
+    }
+}
+
+pub(crate) fn emit_registered(
+    mode: OutputMode,
+    resp: &NamespaceRegisteredResponse,
+) -> Result<(), EldError> {
+    emit(mode, &print_registered(resp), resp)
+}
+
+pub(crate) fn emit_pinboard_submit(
+    mode: OutputMode,
+    resp: &PostMessageSubmitResponse,
+) -> Result<(), EldError> {
+    emit(mode, &pinboard_submit(resp), resp)
+}
+
+pub(crate) fn emit_pinboard_value(
+    mode: OutputMode,
+    text: &str,
+    value: &Value,
+) -> Result<(), EldError> {
+    emit(mode, text, value)
+}
+
+pub(crate) fn emit_cado_list(
+    mode: OutputMode,
+    search_string: &str,
+    paths: &[String],
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &list_cados(search_string, paths),
+        &CadoListJson {
+            search_string,
+            paths,
+        },
+    )
+}
+
+pub(crate) fn emit_cado(mode: OutputMode, path: &str, response: &Value) -> Result<(), EldError> {
+    let text = cado(path, response)?;
+    emit(mode, &text, response)
+}
+
+pub(crate) fn emit_dry_run_transfer(
+    mode: OutputMode,
+    wallet: &str,
+    recipient: &str,
+    amount: u128,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &dry_run_transfer(wallet, recipient, amount),
+        &DryRunTransferJson {
+            action: "transfer",
+            wallet,
+            recipient,
+            amount,
+        },
+    )
+}
+
+pub(crate) fn emit_dry_run_stake(
+    mode: OutputMode,
+    wallet: &str,
+    amount: u128,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &dry_run_stake(wallet, amount),
+        &DryRunAmountJson {
+            action: "stake",
+            wallet,
+            amount,
+        },
+    )
+}
+
+pub(crate) fn emit_dry_run_unstake(
+    mode: OutputMode,
+    wallet: &str,
+    amount: u128,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &dry_run_unstake(wallet, amount),
+        &DryRunAmountJson {
+            action: "unstake",
+            wallet,
+            amount,
+        },
+    )
+}
+
+pub(crate) fn emit_dry_run_add_namespace(
+    mode: OutputMode,
+    wallet: &str,
+    namespace: &str,
+    registration_fee: u128,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &dry_run_add_namespace(wallet, namespace, registration_fee),
+        &DryRunNamespaceJson {
+            action: "add-namespace",
+            wallet,
+            namespace,
+            registration_fee,
+        },
+    )
+}
+
+pub(crate) fn emit_dry_run_pinboard_post(
+    mode: OutputMode,
+    wallet: &str,
+    file_path: &str,
+    user_fee_amount: u128,
+) -> Result<(), EldError> {
+    emit(
+        mode,
+        &dry_run_pinboard_post(wallet, file_path, user_fee_amount),
+        &DryRunPinboardJson {
+            action: "pinboard post",
+            wallet,
+            file: file_path,
+            user_fee_amount,
+        },
+    )
 }
 
 fn json_bytes(values: &[Value]) -> Vec<u8> {
@@ -561,6 +1025,29 @@ mod tests {
         assert!(!expected.contains("private"), "{expected}");
         assert!(!listed.contains("private"), "{listed}");
         assert!(!expected.contains(&hex::encode([7u8; 32])), "{expected}");
+        let json = serde_json::to_string(&super::wallet_json(&wallet)).unwrap();
+        let parsed: Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("name").is_some());
+        assert!(!json.contains("private"), "{json}");
+        assert!(!json.contains(&hex::encode([7u8; 32])), "{json}");
+    }
+
+    #[test]
+    fn epoch_zero_blocks_per_epoch_does_not_panic() {
+        let epoch_info = EpochInfo {
+            current_epoch: 1,
+            current_block: 1,
+            blocks_per_epoch: 0,
+            validators_per_epoch: 1,
+            blocks_until_next_epoch: 0,
+        };
+        let validators = ActiveValidatorsInfo {
+            validators: Vec::new(),
+            total_stake: Coin::zero(),
+            current_epoch: 1,
+        };
+        let text = epoch(&epoch_info, &validators);
+        assert!(text.contains("Epoch"), "{text}");
     }
 
     #[test]
@@ -605,7 +1092,7 @@ mod tests {
             nonce: Nonce::new(7),
         };
         let expected = format!(
-            "Transfer transaction committed\ntx_hash: {tx_hash}\nfee: 1000\nnonce: 7\n\nEvent Type: transfer\nsender: ok"
+            "Transfer transaction committed\ntx_hash: {tx_hash}\nfee: 1000\nnonce: 7\n\nevent_type: transfer\nsender: ok"
         );
         assert_eq!(submitted_tx("Transfer", &submitted), expected);
     }

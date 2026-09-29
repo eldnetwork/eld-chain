@@ -1,30 +1,30 @@
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 
+use crate::output::OutputMode;
+
 pub(crate) async fn transfer(
     cli: &ChainClient,
     wallet_name: String,
     recipient: String,
     amount: u128,
     dry_run: bool,
+    mode: OutputMode,
 ) -> Result<(), EldError> {
     if dry_run {
-        crate::output::print_result(&crate::output::dry_run_transfer(
-            &wallet_name,
-            &recipient,
-            amount,
-        ));
-        return Ok(());
+        return crate::output::emit_dry_run_transfer(mode, &wallet_name, &recipient, amount);
     }
     let submitted = cli.transfer(wallet_name, recipient, amount).await?;
-    crate::output::print_result(&crate::output::submitted_tx("Transfer", &submitted));
-    Ok(())
+    crate::output::emit_submitted_tx(mode, "Transfer", &submitted)
 }
 
-pub(crate) async fn request_faucet(cli: &ChainClient, address: String) -> Result<(), EldError> {
+pub(crate) async fn request_faucet(
+    cli: &ChainClient,
+    address: String,
+    mode: OutputMode,
+) -> Result<(), EldError> {
     let body = cli.request_faucet(address).await?;
-    crate::output::print_result(&crate::output::faucet_ok(&body));
-    Ok(())
+    crate::output::emit_faucet(mode, &body)
 }
 
 pub(crate) async fn stake(
@@ -32,14 +32,13 @@ pub(crate) async fn stake(
     wallet_name: String,
     amount: u128,
     dry_run: bool,
+    mode: OutputMode,
 ) -> Result<(), EldError> {
     if dry_run {
-        crate::output::print_result(&crate::output::dry_run_stake(&wallet_name, amount));
-        return Ok(());
+        return crate::output::emit_dry_run_stake(mode, &wallet_name, amount);
     }
     let submitted = cli.stake(wallet_name, amount).await?;
-    crate::output::print_result(&crate::output::submitted_tx("Stake", &submitted));
-    Ok(())
+    crate::output::emit_submitted_tx(mode, "Stake", &submitted)
 }
 
 pub(crate) async fn unstake(
@@ -47,12 +46,11 @@ pub(crate) async fn unstake(
     wallet_name: String,
     amount: u128,
     dry_run: bool,
+    mode: OutputMode,
 ) -> Result<(), EldError> {
     if dry_run {
-        crate::output::print_result(&crate::output::dry_run_unstake(&wallet_name, amount));
-        return Ok(());
+        return crate::output::emit_dry_run_unstake(mode, &wallet_name, amount);
     }
     let submitted = cli.unstake(wallet_name, amount).await?;
-    crate::output::print_result(&crate::output::submitted_tx("Unstake", &submitted));
-    Ok(())
+    crate::output::emit_submitted_tx(mode, "Unstake", &submitted)
 }
