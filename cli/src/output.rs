@@ -13,6 +13,7 @@ use eld_common::constants::cado::{
 };
 use eld_common::error::{EldError, ErrorBuilder};
 use eld_common::staking_account::StakingAccount;
+use eld_common::utils::json_number_array_as_bytes;
 use eld_common::validator::{ActiveValidatorsInfo, EpochInfo};
 use eld_common::wallet::Wallet;
 use serde::Serialize;
@@ -818,13 +819,6 @@ pub(crate) fn emit_dry_run_pinboard_post(
     )
 }
 
-fn json_bytes(values: &[Value]) -> Vec<u8> {
-    values
-        .iter()
-        .filter_map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok()))
-        .collect()
-}
-
 pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
     let cado = if let Some(mutable) = response.get("Mutable") {
         Some(("Mutable", mutable))
@@ -858,21 +852,17 @@ pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
 
     if let Some(hash) = cado.get("hash") {
         if let Some(hash_array) = hash.as_array() {
+            let hash_bytes = json_number_array_as_bytes(hash_array, "cado.hash")?;
             text.blank();
-            text.line(format!(
-                "Hash:\t\t 0x{}",
-                hex::encode(json_bytes(hash_array))
-            ));
+            text.line(format!("Hash:\t\t 0x{}", hex::encode(hash_bytes)));
         }
     }
 
     if cado_type == "Mutable" {
         if let Some(latest_hash) = cado.get("latest_hash") {
             if let Some(hash_array) = latest_hash.as_array() {
-                text.line(format!(
-                    "Latest Hash:\t 0x{}",
-                    hex::encode(json_bytes(hash_array))
-                ));
+                let hash_bytes = json_number_array_as_bytes(hash_array, "cado.latest_hash")?;
+                text.line(format!("Latest Hash:\t 0x{}", hex::encode(hash_bytes)));
             }
         }
     }
@@ -880,7 +870,7 @@ pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
     let Some(data) = cado.get("data").and_then(|d| d.as_array()) else {
         return Ok(text.finish());
     };
-    let data_bytes = json_bytes(data);
+    let data_bytes = json_number_array_as_bytes(data, "cado.data")?;
 
     if path.starts_with(PATH_PREFIX_STAKING_ACCOUNT) {
         match StakingAccount::deserialize_bin(&data_bytes) {
@@ -1030,6 +1020,31 @@ mod tests {
         assert!(parsed.get("name").is_some());
         assert!(!json.contains("private"), "{json}");
         assert!(!json.contains(&hex::encode([7u8; 32])), "{json}");
+    }
+
+    #[test]
+    fn cado_rejects_out_of_range_byte_instead_of_truncating() {
+        let response = serde_json::json!({
+            "Mutable": {
+                "hash": [0, 255, 256],
+                "data": [1, 2, 3]
+            }
+        });
+        let err = cado("/@eld/account/0xabc", &response).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("not a byte"), "{message}");
+        assert!(message.contains("256"), "{message}");
+    }
+
+    #[test]
+    fn cado_keeps_every_hash_byte() {
+        let response = serde_json::json!({
+            "Immutable": {
+                "hash": [0, 255]
+            }
+        });
+        let text = cado("/@eld/other", &response).unwrap();
+        assert!(text.contains("0x00ff"), "{text}");
     }
 
     #[test]

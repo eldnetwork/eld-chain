@@ -25,6 +25,30 @@ pub fn pinboard_eld_post_cado_path(wallet: &str, message_id: &str) -> String {
     )
 }
 
+/// Pinboard wallet list query: `/@eld/pinboard/wallet/{wallet}/{page}/{page_size}`.
+pub fn pinboard_wallet_query_path(wallet: &str, page: usize, page_size: usize) -> String {
+    format!(
+        "{}{}/{}/{}/{}",
+        cado::PATH_PREFIX_PINBOARD,
+        abci_query::PINBOARD_SEGMENT_WALLET,
+        wallet,
+        page,
+        page_size
+    )
+}
+
+/// Pinboard tag list query: `/@eld/pinboard/tag/{tag}/{page}/{page_size}`.
+pub fn pinboard_tag_query_path(tag: &str, page: usize, page_size: usize) -> String {
+    format!(
+        "{}{}/{}/{}/{}",
+        cado::PATH_PREFIX_PINBOARD,
+        abci_query::PINBOARD_SEGMENT_TAG,
+        tag,
+        page,
+        page_size
+    )
+}
+
 /// Response `cado_path` / `content_path` for a committed post.
 pub fn pinboard_response_cado_path(meta: &PinboardMessageMetadata) -> String {
     if let Some(ns) = meta.namespace.as_ref() {
@@ -102,6 +126,22 @@ pub struct PinboardMessageMetadata {
 mod tests {
     use super::*;
     use crate::Address;
+
+    #[test]
+    fn pinboard_query_paths_match_abci_shape() {
+        assert_eq!(
+            pinboard_eld_post_cado_path("0xabc", "msg1"),
+            "/@eld/pinboard/post/0xabc/msg1"
+        );
+        assert_eq!(
+            pinboard_wallet_query_path("0xabc", 1, 20),
+            "/@eld/pinboard/wallet/0xabc/1/20"
+        );
+        assert_eq!(
+            pinboard_tag_query_path("news", 0, 100),
+            "/@eld/pinboard/tag/news/0/100"
+        );
+    }
 
     #[test]
     fn pinboard_namespace_content_path_format() {

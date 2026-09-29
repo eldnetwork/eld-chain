@@ -5,7 +5,6 @@ pub mod api;
 pub mod config;
 pub mod endpoint;
 pub mod facade;
-mod json_bytes;
 pub mod logging;
 pub mod wallet_store_config;
 

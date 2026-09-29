@@ -2,7 +2,6 @@
 
 use super::{AbciHttpApi, AbciInfoWrapper};
 use crate::config::client_config::ClientConfig;
-use crate::json_bytes::json_number_array_as_bytes;
 use eld_common::account::Account;
 use eld_common::address::Address;
 use eld_common::cado::CadoType;
@@ -10,6 +9,7 @@ use eld_common::cado::{CadoPath, CadoPathKey};
 use eld_common::error::EldError;
 use eld_common::nonce::Nonce;
 use eld_common::staking_account::StakingAccount;
+use eld_common::utils::json_number_array_as_bytes;
 use tendermint_rpc::endpoint::block::Response;
 
 pub(crate) fn abci_http_api(config: &ClientConfig) -> Result<AbciHttpApi, EldError> {

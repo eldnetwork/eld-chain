@@ -7,9 +7,10 @@ use crate::api::rest::{
 };
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use eld_common::constants::abci_query;
-use eld_common::constants::cado::PATH_PREFIX_PINBOARD;
 use eld_common::error::{EldError, ErrorBuilder};
+use eld_common::pinboard::{
+    pinboard_eld_post_cado_path, pinboard_tag_query_path, pinboard_wallet_query_path,
+};
 use eld_common::tx::PostMessageUserRequestInput;
 use std::fs;
 
@@ -93,13 +94,7 @@ pub(crate) async fn pinboard_get_post(
     wallet: String,
     message_id: String,
 ) -> Result<serde_json::Value, EldError> {
-    let path = format!(
-        "{}{}/{}/{}",
-        PATH_PREFIX_PINBOARD,
-        abci_query::PINBOARD_SEGMENT_POST,
-        wallet,
-        message_id
-    );
+    let path = pinboard_eld_post_cado_path(&wallet, &message_id);
 
     let base_url = client
         .config
@@ -146,14 +141,7 @@ pub(crate) async fn pinboard_list_by_wallet(
     page_size: usize,
 ) -> Result<serde_json::Value, EldError> {
     let api = crate::api::abci::AbciHttpApi::new(client.config.get_node_url()?)?;
-    let path = format!(
-        "{}{}/{}/{}/{}",
-        PATH_PREFIX_PINBOARD,
-        abci_query::PINBOARD_SEGMENT_WALLET,
-        wallet,
-        page,
-        page_size
-    );
+    let path = pinboard_wallet_query_path(&wallet, page, page_size);
     api.pinboard_query(path).await
 }
 
@@ -164,13 +152,6 @@ pub(crate) async fn pinboard_list_by_tag(
     page_size: usize,
 ) -> Result<serde_json::Value, EldError> {
     let api = crate::api::abci::AbciHttpApi::new(client.config.get_node_url()?)?;
-    let path = format!(
-        "{}{}/{}/{}/{}",
-        PATH_PREFIX_PINBOARD,
-        abci_query::PINBOARD_SEGMENT_TAG,
-        tag,
-        page,
-        page_size
-    );
+    let path = pinboard_tag_query_path(&tag, page, page_size);
     api.pinboard_query(path).await
 }

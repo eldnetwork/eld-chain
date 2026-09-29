@@ -1,6 +1,9 @@
 use eld_client::api::rest::PinboardMessageParams;
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
+use eld_common::pinboard::{
+    pinboard_eld_post_cado_path, pinboard_tag_query_path, pinboard_wallet_query_path,
+};
 
 use crate::output::OutputMode;
 
@@ -28,7 +31,7 @@ pub(crate) async fn get_post(
     message_id: String,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    let path = pinboard_post_path(&wallet, &message_id);
+    let path = pinboard_eld_post_cado_path(&wallet, &message_id);
     let value = cli.pinboard_get_post(wallet, message_id).await?;
     let text = crate::output::pinboard_post(&path, &value);
     crate::output::emit_pinboard_value(mode, &text, &value)
@@ -41,7 +44,7 @@ pub(crate) async fn list_by_tag(
     page_size: usize,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    let path = pinboard_tag_path(&tag, page, page_size);
+    let path = pinboard_tag_query_path(&tag, page, page_size);
     let value = cli.pinboard_list_by_tag(tag, page, page_size).await?;
     let text = crate::output::pinboard_list(&path, &value);
     crate::output::emit_pinboard_value(mode, &text, &value)
@@ -54,40 +57,8 @@ pub(crate) async fn list_by_wallet(
     page_size: usize,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    let path = pinboard_wallet_path(&wallet, page, page_size);
+    let path = pinboard_wallet_query_path(&wallet, page, page_size);
     let value = cli.pinboard_list_by_wallet(wallet, page, page_size).await?;
     let text = crate::output::pinboard_list(&path, &value);
     crate::output::emit_pinboard_value(mode, &text, &value)
-}
-
-fn pinboard_post_path(wallet: &str, message_id: &str) -> String {
-    format!(
-        "{}{}/{}/{}",
-        eld_common::constants::cado::PATH_PREFIX_PINBOARD,
-        eld_common::constants::abci_query::PINBOARD_SEGMENT_POST,
-        wallet,
-        message_id
-    )
-}
-
-fn pinboard_tag_path(tag: &str, page: usize, page_size: usize) -> String {
-    format!(
-        "{}{}/{}/{}/{}",
-        eld_common::constants::cado::PATH_PREFIX_PINBOARD,
-        eld_common::constants::abci_query::PINBOARD_SEGMENT_TAG,
-        tag,
-        page,
-        page_size
-    )
-}
-
-fn pinboard_wallet_path(wallet: &str, page: usize, page_size: usize) -> String {
-    format!(
-        "{}{}/{}/{}/{}",
-        eld_common::constants::cado::PATH_PREFIX_PINBOARD,
-        eld_common::constants::abci_query::PINBOARD_SEGMENT_WALLET,
-        wallet,
-        page,
-        page_size
-    )
 }
