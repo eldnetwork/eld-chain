@@ -26,6 +26,9 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - runner: macos-15
             target: aarch64-apple-darwin
+          # GitHub's macOS runners are arm64. Intel is a cross build on that host.
+          - runner: macos-15
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
@@ -40,6 +43,9 @@ jobs:
           sudo apt-get install -y pkg-config libssl-dev
       - name: Build eld-cli
         run: cargo build --release --locked -p eld-cli --target ${{ matrix.target }}
+      - name: Install Rosetta for the Intel macOS binary
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: arch -x86_64 /usr/bin/true || softwareupdate --install-rosetta --agree-to-license
       - name: Check version matches tag
         env:
           TAG: ${{ github.ref_name }}
