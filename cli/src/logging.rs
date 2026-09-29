@@ -13,6 +13,7 @@ pub(crate) fn init_default_logging() -> Result<(), EldError> {
 
     let subscriber = tracing_subscriber::registry().with(env_filter).with(
         tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
             .with_timer(UtcTime::rfc_3339())
             .with_target(false)
             .with_thread_ids(false)

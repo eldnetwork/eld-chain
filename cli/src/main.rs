@@ -15,21 +15,121 @@ use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 use output::OutputMode;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use tracing::Instrument;
 
 #[tokio::main]
-async fn main() {
-    let args = Arguments::parse();
+async fn main() -> ExitCode {
+    let args = match Arguments::try_parse() {
+        Ok(args) => args,
+        Err(err) => {
+            let code = err.exit_code();
+            let _ = err.print();
+            return u8::try_from(code).map_or(ExitCode::from(2), ExitCode::from);
+        }
+    };
     if let Err(err) = logging::init_default_logging() {
-        fail(err);
+        eprintln!("{err}");
+        return ExitCode::from(1);
     }
-    if let Err(err) = dispatch(args).await {
-        fail(err);
+    let command = command_name(&args.cmd);
+    let span = tracing::info_span!("dispatch", command);
+    match dispatch(args).instrument(span).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
     }
 }
 
-fn fail(err: EldError) -> ! {
-    eprintln!("{err}");
-    std::process::exit(1);
+fn command_name(cmd: &SubCommand) -> &'static str {
+    match cmd {
+        SubCommand::Wallet {
+            cmd: WalletCommand::Create(_),
+        }
+        | SubCommand::CreateWallet(_) => "wallet create",
+        SubCommand::Wallet {
+            cmd: WalletCommand::List,
+        }
+        | SubCommand::ListWallets => "wallet list",
+        SubCommand::Wallet {
+            cmd: WalletCommand::Show(_),
+        }
+        | SubCommand::GetWallet(_) => "wallet show",
+        SubCommand::Wallet {
+            cmd: WalletCommand::Remove(_),
+        }
+        | SubCommand::RemoveWallet(_) => "wallet remove",
+        SubCommand::Tx {
+            cmd: TxCommand::Transfer(_),
+        }
+        | SubCommand::Transfer(_) => "tx transfer",
+        SubCommand::Tx {
+            cmd: TxCommand::Stake(_),
+        }
+        | SubCommand::Stake(_) => "tx stake",
+        SubCommand::Tx {
+            cmd: TxCommand::Unstake(_),
+        }
+        | SubCommand::Unstake(_) => "tx unstake",
+        SubCommand::Tx {
+            cmd: TxCommand::Faucet(_),
+        }
+        | SubCommand::RequestFaucet(_) => "tx faucet",
+        SubCommand::Account {
+            cmd: AccountCommand::Get(_),
+        }
+        | SubCommand::GetAccount(_) => "account get",
+        SubCommand::Account {
+            cmd: AccountCommand::StakeGet(_),
+        }
+        | SubCommand::GetStakeAccount(_) => "account stake-get",
+        SubCommand::Chain {
+            cmd: ChainCommand::AbciInfo,
+        }
+        | SubCommand::GetAbciInfo => "chain abci-info",
+        SubCommand::Chain {
+            cmd: ChainCommand::Epoch,
+        }
+        | SubCommand::ViewEpoch => "chain epoch",
+        SubCommand::Chain {
+            cmd: ChainCommand::Validators,
+        }
+        | SubCommand::ViewActiveValidators => "chain validators",
+        SubCommand::Namespace {
+            cmd: NamespaceCommand::Get(_),
+        }
+        | SubCommand::GetNamespace(_) => "namespace get",
+        SubCommand::Namespace {
+            cmd: NamespaceCommand::Add(_),
+        }
+        | SubCommand::AddNamespace(_) => "namespace add",
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::Post(_),
+        }
+        | SubCommand::PostPinboardMessage(_) => "pinboard post",
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::Get(_),
+        }
+        | SubCommand::PinboardGetPost(_) => "pinboard get",
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListTag(_),
+        }
+        | SubCommand::PinboardListByTag(_) => "pinboard list-tag",
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListWallet(_),
+        }
+        | SubCommand::PinboardListByWallet(_) => "pinboard list-wallet",
+        SubCommand::Cado {
+            cmd: CadoCommand::Get(_),
+        }
+        | SubCommand::GetCado(_) => "cado get",
+        SubCommand::Cado {
+            cmd: CadoCommand::List(_),
+        }
+        | SubCommand::ListCados(_) => "cado list",
+    }
 }
 
 struct CliPaths {
@@ -85,6 +185,7 @@ fn open_chain_client(paths: &CliPaths) -> Result<ChainClient, EldError> {
 }
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
+    tracing::info!("running command");
     let paths = resolve_paths(&args);
     let yes = args.yes;
     let dry_run = args.dry_run;
