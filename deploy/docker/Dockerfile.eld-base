@@ -15,4 +15,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
-RUN cargo build -p eld-node
+# eld-cli runs on the host and talks to this node. Cargo still loads every
+# workspace member, so drop cli from the copied manifest before building.
+RUN sed -i 's/, "cli"//g' Cargo.toml \
+    && cargo build -p eld-node
