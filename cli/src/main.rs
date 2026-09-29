@@ -129,6 +129,7 @@ fn command_name(cmd: &SubCommand) -> &'static str {
             cmd: CadoCommand::List(_),
         }
         | SubCommand::ListCados(_) => "cado list",
+        SubCommand::Completions { .. } => "completions",
     }
 }
 
@@ -186,6 +187,10 @@ fn open_chain_client(paths: &CliPaths) -> Result<ChainClient, EldError> {
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
     tracing::info!("running command");
+    if let SubCommand::Completions { shell } = args.cmd {
+        args::print_completions(shell)?;
+        return Ok(());
+    }
     let paths = resolve_paths(&args);
     let yes = args.yes;
     let dry_run = args.dry_run;
@@ -243,6 +248,9 @@ async fn dispatch_online(
         | SubCommand::GetWallet(_)
         | SubCommand::RemoveWallet(_) => {
             unreachable!("wallet commands are dispatched offline")
+        }
+        SubCommand::Completions { .. } => {
+            unreachable!("completions are printed before online dispatch")
         }
         SubCommand::Tx {
             cmd: TxCommand::Transfer(tx),
