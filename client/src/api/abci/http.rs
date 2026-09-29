@@ -501,8 +501,7 @@ impl fmt::Display for AbciInfoWrapper {
             f,
             "app_version: {}\nversion: {}\nlast_block_height: {}\nlast_block_app_hash: {}\n",
             self.app_version, self.version, self.last_block_height, self.last_block_app_hash,
-        )?;
-        writeln!(f, "Accounts:")
+        )
     }
 }
 
@@ -574,8 +573,10 @@ mod tests {
             last_block_app_hash: AppHash::default(),
             data: "{\"accounts\":{},\"metadata\":{}}".to_owned(),
         };
-        let abci_info_wrapper = AbciInfoWrapper::from(info);
-        assert!(!abci_info_wrapper.to_string().is_empty());
+        let text = AbciInfoWrapper::from(info).to_string();
+        assert!(text.contains("app_version: 1\n"));
+        assert!(text.contains("version: 2\n"));
+        assert!(!text.contains("Accounts"));
     }
 
     #[test]
