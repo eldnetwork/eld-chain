@@ -14,17 +14,14 @@ Commands:
   help         Print this message or the help of the given subcommand(s)
 
 Options:
-      --home <DIR>               Base directory for config and wallets [default: .]
-      --wallets <PATH>           Wallet file. Default: `$home/wallets/wallets.json`
-      --consensus-config <PATH>  Consensus config file. Default:
-                                 `$home/config/consensus_config.json`
-      --cli-config <PATH>        Client endpoints file. Default: `$home/config/config.json` [env:
-                                 ELD_CLI_CONFIG=]
-  -y, --yes                      Skip confirmations
-      --dry-run                  Print the intended transfer, stake, unstake, namespace add, or
-                                 pinboard post and do not broadcast
-      --output <OUTPUT>          Output format. `text` is the default. Also read from
-                                 `ELD_CLI_OUTPUT` [env: ELD_CLI_OUTPUT=] [default: text] [possible
-                                 values: text, json]
-  -h, --help                     Print help
-  -V, --version                  Print version
+      --home <DIR>         Base directory for config and wallets [default: .]
+      --wallets <PATH>     Wallet file. Default: `$home/wallets/wallets.json`
+      --cli-config <PATH>  Client endpoints file. Default: `$home/config/eld-cli-config.json` [env:
+                           ELD_CLI_CONFIG=]
+  -y, --yes                Skip confirmations
+      --dry-run            Print the intended transfer, stake, unstake, namespace add, or pinboard
+                           post and do not broadcast
+      --output <OUTPUT>    Output format. `text` is the default. Also read from `ELD_CLI_OUTPUT`
+                           [env: ELD_CLI_OUTPUT=] [default: text] [possible values: text, json]
+  -h, --help               Print help
+  -V, --version            Print version

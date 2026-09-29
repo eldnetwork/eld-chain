@@ -8,9 +8,7 @@ use args::{
     SubCommand, TxCommand, WalletCommand,
 };
 use clap::Parser;
-use eld_client::config::{
-    load_client_setup, CONSENSUS_CONFIG_PATH, DEFAULT_CONFIG_PATH, WALLETS_PATH,
-};
+use eld_client::config::{ClientConfig, FeeConfig, WALLETS_PATH};
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 use output::OutputMode;
@@ -133,10 +131,11 @@ fn command_name(cmd: &SubCommand) -> &'static str {
     }
 }
 
+const CLI_CONFIG_PATH: &str = "config/eld-cli-config.json";
+
 struct CliPaths {
     cli_config: PathBuf,
     wallets: PathBuf,
-    consensus_config: PathBuf,
 }
 
 fn resolve_paths(args: &Arguments) -> CliPaths {
@@ -145,15 +144,11 @@ fn resolve_paths(args: &Arguments) -> CliPaths {
         cli_config: args
             .config
             .clone()
-            .unwrap_or_else(|| home.join(DEFAULT_CONFIG_PATH)),
+            .unwrap_or_else(|| home.join(CLI_CONFIG_PATH)),
         wallets: args
             .wallets
             .clone()
             .unwrap_or_else(|| home.join(WALLETS_PATH)),
-        consensus_config: args
-            .consensus_config
-            .clone()
-            .unwrap_or_else(|| home.join(CONSENSUS_CONFIG_PATH)),
     }
 }
 
@@ -177,12 +172,16 @@ fn utf8_path(path: &Path) -> Result<&str, EldError> {
 }
 
 fn open_chain_client(paths: &CliPaths) -> Result<ChainClient, EldError> {
-    let setup = load_client_setup(
-        utf8_path(&paths.cli_config)?,
-        utf8_path(&paths.consensus_config)?,
-    )?;
-    setup.config.get_node_url()?;
-    ChainClient::with_wallets(setup.config, setup.fee_config, &paths.wallets)
+    let config = ClientConfig::from_file(utf8_path(&paths.cli_config)?)?;
+    if config.chain_id.trim().is_empty() {
+        return Err(EldError::make_validation_error(
+            "chain_id",
+            "empty",
+            "Chain ID cannot be empty in eld-cli-config.json",
+        ));
+    }
+    config.get_node_url()?;
+    ChainClient::with_wallets(config, FeeConfig::default(), &paths.wallets)
 }
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
@@ -401,7 +400,6 @@ mod tests {
             cmd,
             home,
             wallets: None,
-            consensus_config: None,
             config: None,
             yes: false,
             dry_run: false,
@@ -421,11 +419,7 @@ mod tests {
         );
         assert_eq!(
             paths.cli_config,
-            PathBuf::from("/tmp/eld-home/config/config.json")
-        );
-        assert_eq!(
-            paths.consensus_config,
-            PathBuf::from("/tmp/eld-home/config/consensus_config.json")
+            PathBuf::from("/tmp/eld-home/config/eld-cli-config.json")
         );
     }
 
@@ -458,7 +452,7 @@ mod tests {
         let config_dir = dir.path().join("config");
         std::fs::create_dir(&config_dir).unwrap();
         std::fs::write(
-            config_dir.join("config.json"),
+            config_dir.join("eld-cli-config.json"),
             r#"{
                 "node_host": "127.0.0.1",
                 "node_port": "26657",
@@ -466,13 +460,9 @@ mod tests {
                 "faucet_host": "127.0.0.1",
                 "faucet_port": "8080",
                 "faucet_end_point": "/faucet/request",
-                "app_port": "9001"
+                "app_port": "9001",
+                "chain_id": "eld-testnet-tempelhof"
             }"#,
-        )
-        .unwrap();
-        std::fs::write(
-            config_dir.join("consensus_config.json"),
-            r#"{"chain_id": "eld-testnet-tempelhof"}"#,
         )
         .unwrap();
 

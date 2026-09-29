@@ -4,5 +4,6 @@
     "faucet_host": "127.0.0.1",
     "faucet_port": "8080",
     "faucet_end_point": "/faucet/request",
-    "app_port": "9001"
+    "app_port": "9001",
+    "chain_id": "eld-testnet-tempelhof"
 }

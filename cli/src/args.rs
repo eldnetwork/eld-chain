@@ -19,11 +19,7 @@ pub struct Arguments {
     #[arg(long, value_name = "PATH")]
     pub(crate) wallets: Option<PathBuf>,
 
-    /// Consensus config file. Default: `$home/config/consensus_config.json`.
-    #[arg(long = "consensus-config", value_name = "PATH")]
-    pub(crate) consensus_config: Option<PathBuf>,
-
-    /// Client endpoints file. Default: `$home/config/config.json`.
+    /// Client endpoints file. Default: `$home/config/eld-cli-config.json`.
     #[arg(long = "cli-config", env = "ELD_CLI_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
 

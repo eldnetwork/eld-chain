@@ -13,11 +13,12 @@ Crates are unpublished (`publish = false`).
 
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`, `completions`). The old flat verbs stay as hidden aliases.
-- `eld-cli` flags `--output text|json`, `--home`, `--wallets`, `--consensus-config`, `--yes`, and `--dry-run`. Shell completions print to stdout.
+- `eld-cli` flags `--output text|json`, `--home`, `--wallets`, `--yes`, and `--dry-run`. Shell completions print to stdout.
 - Tag `eld-cli-v*` (for example `eld-cli-v0.0.1`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 
 ### Changed
 
+- `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `config/eld-cli-config.json`.
 - Crate versions are `0.0.1`, the same number as git tag `v0.0.1`.
 - `Coin` no longer implements SCALE. Amounts stay on serde (JSON decimal strings and bincode). `eld-common` warns on missing docs for `Address`, `Tx`, `Wallet`, the typed IDs, and `EldError`.
 

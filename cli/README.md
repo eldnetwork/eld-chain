@@ -32,18 +32,18 @@ tar -xzf "$asset"
 
 Start a node with the Docker scripts in the [root README](../README.md). The single-node script publishes Tendermint RPC on `26657` and app REST on `9001`.
 
-The CLI reads three paths. `--home` defaults to `.`. An explicit flag replaces that default.
+The CLI reads two paths. `--home` defaults to `.`. An explicit flag replaces that default.
 
 | Path | Flag | Purpose |
 |---|---|---|
-| `$home/config/config.json` | `--cli-config`, env `ELD_CLI_CONFIG` | Tendermint RPC, app REST, and faucet endpoints. Copy [`config/config.json.example`](config/config.json.example). |
-| `$home/config/consensus_config.json` | `--consensus-config` | `chain_id` and `fee_config` used when signing. |
+| `$home/config/eld-cli-config.json` | `--cli-config`, env `ELD_CLI_CONFIG` | Node endpoints and `chain_id`. Copy [`config/eld-cli-config.json.example`](config/eld-cli-config.json.example). |
 | `$home/wallets/wallets.json` | `--wallets` | Local Ed25519 keys. Gitignored. |
+
+Signing uses the built-in fee schedule. It is not read from a file.
 
 ```sh
 mkdir -p config
-cp cli/config/config.json.example config/config.json
-cp cli/config/consensus_config.json config/consensus_config.json
+cp cli/config/eld-cli-config.json.example config/eld-cli-config.json
 ```
 
 Run those copies from the workspace root. The example faucet endpoint is `127.0.0.1:8080`.
@@ -56,9 +56,8 @@ Optional `node_url`, `app_url`, and `faucet_url` in the client config override h
 
 | Flag | Meaning |
 |---|---|
-| `--home <DIR>` | Base directory for the three paths above. Default `.`. |
+| `--home <DIR>` | Base directory for the paths above. Default `.`. |
 | `--wallets <PATH>` | Wallet file. |
-| `--consensus-config <PATH>` | Consensus config file. |
 | `--cli-config <PATH>` | Client endpoints file. Env: `ELD_CLI_CONFIG`. |
 | `-y`, `--yes` | Skip the `wallet remove` confirmation. |
 | `--dry-run` | Print the intended transfer, stake, unstake, namespace add, or pinboard post. Does not broadcast and does not print a tx hash. |

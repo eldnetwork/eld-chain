@@ -52,8 +52,7 @@ With that node up, talk to it with [`eld-cli`](cli/README.md):
 
 ```sh
 mkdir -p config
-cp cli/config/config.json.example config/config.json
-cp cli/config/consensus_config.json config/consensus_config.json
+cp cli/config/eld-cli-config.json.example config/eld-cli-config.json
 cargo run -p eld-cli -- wallet create my-wallet
 cargo run -p eld-cli -- tx faucet 0xYourAddress
 cargo run -p eld-cli -- account get 0xYourAddress
