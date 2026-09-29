@@ -79,6 +79,11 @@ pub(crate) enum SubCommand {
         #[command(subcommand)]
         cmd: CadoCommand,
     },
+    /// Node and faucet addresses.
+    Config {
+        #[command(subcommand)]
+        cmd: ConfigCommand,
+    },
     /// Print a shell completion script to stdout.
     #[command(after_help = "Example:\n  eld-cli completions bash")]
     Completions {
@@ -198,6 +203,26 @@ pub(crate) enum TxCommand {
     /// Request tokens from the dev faucet.
     #[command(alias = "request-faucet")]
     Faucet(FaucetArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum ConfigCommand {
+    /// Set the node IP or URL and read `chain_id` from the node.
+    #[command(
+        after_help = "Example:\n  eld-cli config node 127.0.0.1\n  eld-cli config node https://rpc.example.com"
+    )]
+    Node {
+        /// IP, hostname, or http(s) URL.
+        address: String,
+    },
+    /// Set the faucet IP or URL.
+    #[command(
+        after_help = "Example:\n  eld-cli config faucet 127.0.0.1\n  eld-cli config faucet https://faucet.example.com"
+    )]
+    Faucet {
+        /// IP, hostname, or http(s) URL.
+        address: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -559,16 +584,57 @@ mod tests {
         );
     }
 
+    const HELP_ROOT: &str = "\
+Command-line client for an Eld node: local wallets, signed transactions, and chain queries
+
+Usage: eld-cli [OPTIONS] <COMMAND>
+
+Commands:
+  wallet       Local signing keys
+  account      Balances and nonces
+  tx           Sign and broadcast
+  chain        Epoch, validators, and ABCI info
+  namespace    Namespace registry
+  pinboard     Ephemeral posts
+  cado         Content-addressed objects
+  config       Node and faucet addresses
+  completions  Print a shell completion script to stdout
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+      --home <DIR>         Base directory for config and wallets [default: .]
+      --wallets <PATH>     Wallet file. Default: `$home/wallets/wallets.json`
+      --cli-config <PATH>  Client endpoints file. Default: `$home/config/eld-cli-config.json` [env:
+                           ELD_CLI_CONFIG=]
+  -y, --yes                Skip confirmations
+      --dry-run            Print the intended transfer, stake, unstake, namespace add, or pinboard
+                           post and do not broadcast
+      --output <OUTPUT>    Output format. `text` is the default. Also read from `ELD_CLI_OUTPUT`
+                           [env: ELD_CLI_OUTPUT=] [default: text] [possible values: text, json]
+  -h, --help               Print help
+  -V, --version            Print version
+";
+
+    const HELP_WALLET: &str = "\
+Local signing keys
+
+Usage: wallet <COMMAND>
+
+Commands:
+  create  Create a local signing wallet
+  list    List wallets stored locally
+  show    Show one local wallet
+  remove  Delete a local wallet and its private key
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+";
+
     #[test]
-    fn help_snapshots_root_and_wallet() {
-        assert_eq!(
-            rendered_help(None),
-            include_str!("../tests/snapshots/help_root.txt")
-        );
-        assert_eq!(
-            rendered_help(Some("wallet")),
-            include_str!("../tests/snapshots/help_wallet.txt")
-        );
+    fn help_text_matches_root_and_wallet() {
+        assert_eq!(rendered_help(None), HELP_ROOT);
+        assert_eq!(rendered_help(Some("wallet")), HELP_WALLET);
     }
 
     fn rendered_help(subcommand: Option<&str>) -> String {

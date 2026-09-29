@@ -30,6 +30,19 @@ impl AbciHttpApi {
         })?;
         Ok(Self { client })
     }
+
+    /// Chain id from Tendermint `GET /status` (`node_info.network`).
+    pub async fn chain_id_from_status(&self) -> Result<String, EldError> {
+        let status = self
+            .client
+            .status()
+            .await
+            .map_err(|e| EldError::NetworkError {
+                operation: "status".to_string(),
+                details: format!("Failed to read node status: {e}"),
+            })?;
+        Ok(status.node_info.network.to_string())
+    }
 }
 
 impl AbciHttpApi {

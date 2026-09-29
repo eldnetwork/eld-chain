@@ -2,16 +2,18 @@ mod args;
 mod commands;
 mod logging;
 mod output;
+mod setup;
 
 use args::{
-    AccountCommand, Arguments, CadoCommand, ChainCommand, NamespaceCommand, PinboardCommand,
-    SubCommand, TxCommand, WalletCommand,
+    AccountCommand, Arguments, CadoCommand, ChainCommand, ConfigCommand, NamespaceCommand,
+    PinboardCommand, SubCommand, TxCommand, WalletCommand,
 };
 use clap::Parser;
 use eld_client::config::{ClientConfig, FeeConfig, WALLETS_PATH};
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 use output::OutputMode;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use tracing::Instrument;
@@ -127,6 +129,12 @@ fn command_name(cmd: &SubCommand) -> &'static str {
             cmd: CadoCommand::List(_),
         }
         | SubCommand::ListCados(_) => "cado list",
+        SubCommand::Config {
+            cmd: ConfigCommand::Node { .. },
+        } => "config node",
+        SubCommand::Config {
+            cmd: ConfigCommand::Faucet { .. },
+        } => "config faucet",
         SubCommand::Completions { .. } => "completions",
     }
 }
@@ -163,28 +171,47 @@ fn command_is_offline(cmd: &SubCommand) -> bool {
     )
 }
 
-fn utf8_path(path: &Path) -> Result<&str, EldError> {
-    path.to_str().ok_or_else(|| EldError::ValidationError {
-        field: "path".to_string(),
-        value: path.display().to_string(),
-        details: "path must be valid UTF-8".to_string(),
-    })
+fn command_is_faucet(cmd: &SubCommand) -> bool {
+    matches!(
+        cmd,
+        SubCommand::Tx {
+            cmd: TxCommand::Faucet(_),
+        } | SubCommand::RequestFaucet(_)
+    )
 }
 
-fn open_chain_client(paths: &CliPaths) -> Result<ChainClient, EldError> {
-    let config = ClientConfig::from_file(utf8_path(&paths.cli_config)?)?;
-    if config.chain_id.trim().is_empty() {
-        return Err(EldError::make_validation_error(
-            "chain_id",
-            "empty",
-            "Chain ID cannot be empty in eld-cli-config.json",
-        ));
+fn command_needs_chain_id(cmd: &SubCommand, dry_run: bool) -> bool {
+    if dry_run {
+        return false;
     }
-    config.get_node_url()?;
+    matches!(
+        cmd,
+        SubCommand::Tx {
+            cmd: TxCommand::Transfer(_) | TxCommand::Stake(_) | TxCommand::Unstake(_),
+        } | SubCommand::Transfer(_)
+            | SubCommand::Stake(_)
+            | SubCommand::Unstake(_)
+            | SubCommand::Namespace {
+                cmd: NamespaceCommand::Add(_),
+            }
+            | SubCommand::AddNamespace(_)
+            | SubCommand::Pinboard {
+                cmd: PinboardCommand::Post(_),
+            }
+            | SubCommand::PostPinboardMessage(_)
+    )
+}
+
+fn open_chain_client(paths: &CliPaths, config: ClientConfig) -> Result<ChainClient, EldError> {
     ChainClient::with_wallets(config, FeeConfig::default(), &paths.wallets)
 }
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    dispatch_with(args, interactive).await
+}
+
+async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldError> {
     tracing::info!("running command");
     if let SubCommand::Completions { shell } = args.cmd {
         args::print_completions(shell)?;
@@ -194,10 +221,21 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
     let yes = args.yes;
     let dry_run = args.dry_run;
     let mode = OutputMode::new(args.output);
+    if let SubCommand::Config { cmd } = args.cmd {
+        return commands::config::run(&paths.cli_config, cmd).await;
+    }
     if command_is_offline(&args.cmd) {
         return dispatch_offline(&paths.wallets, args.cmd, yes, mode).await;
     }
-    let cli = open_chain_client(&paths)?;
+    setup::ensure_node(&paths.cli_config, interactive).await?;
+    if command_is_faucet(&args.cmd) {
+        setup::ensure_faucet(&paths.cli_config, interactive).await?;
+    }
+    let config = setup::load_client_config(&paths.cli_config)?;
+    if command_needs_chain_id(&args.cmd, dry_run) && config.chain_id.trim().is_empty() {
+        return Err(setup::chain_id_missing_error());
+    }
+    let cli = open_chain_client(&paths, config)?;
     dispatch_online(&cli, args.cmd, dry_run, mode).await
 }
 
@@ -248,8 +286,8 @@ async fn dispatch_online(
         | SubCommand::RemoveWallet(_) => {
             unreachable!("wallet commands are dispatched offline")
         }
-        SubCommand::Completions { .. } => {
-            unreachable!("completions are printed before online dispatch")
+        SubCommand::Completions { .. } | SubCommand::Config { .. } => {
+            unreachable!("completions and config are handled before online dispatch")
         }
         SubCommand::Tx {
             cmd: TxCommand::Transfer(tx),
@@ -479,5 +517,94 @@ mod tests {
         .unwrap_err();
         let message = err.to_string();
         assert!(message.contains("URL"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn node_command_without_config_names_config_node_when_not_a_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = dispatch_with(
+            args_with(
+                dir.path().to_path_buf(),
+                SubCommand::Chain {
+                    cmd: ChainCommand::Epoch,
+                },
+            ),
+            false,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("config node"), "{message}");
+        assert!(!dir.path().join("config/eld-cli-config.json").exists());
+    }
+
+    #[tokio::test]
+    async fn faucet_without_address_names_config_faucet_when_not_a_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("eld-cli-config.json"),
+            r#"{
+                "node_host": "127.0.0.1",
+                "node_port": "26657",
+                "app_port": "9001",
+                "chain_id": "eld-dev"
+            }"#,
+        )
+        .unwrap();
+        let address =
+            eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
+                .unwrap();
+        let err = dispatch_with(
+            args_with(
+                dir.path().to_path_buf(),
+                SubCommand::Tx {
+                    cmd: TxCommand::Faucet(args::FaucetArgs { address }),
+                },
+            ),
+            false,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("config faucet"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn signing_without_chain_id_names_config_node() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("eld-cli-config.json"),
+            r#"{
+                "node_host": "127.0.0.1",
+                "node_port": "26657",
+                "app_port": "9001"
+            }"#,
+        )
+        .unwrap();
+        let address =
+            eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
+                .unwrap();
+        let err = dispatch_with(
+            args_with(
+                dir.path().to_path_buf(),
+                SubCommand::Tx {
+                    cmd: TxCommand::Transfer(args::TransferArgs {
+                        wallet_name: "alice".to_string(),
+                        recipient: address,
+                        amount: eld_common::coin::Coin::new(1).unwrap(),
+                    }),
+                },
+            ),
+            false,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("config node"), "{message}");
+        assert!(message.contains("Chain ID"), "{message}");
     }
 }

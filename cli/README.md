@@ -36,21 +36,43 @@ The CLI reads two paths. `--home` defaults to `.`. An explicit flag replaces tha
 
 | Path | Flag | Purpose |
 |---|---|---|
-| `$home/config/eld-cli-config.json` | `--cli-config`, env `ELD_CLI_CONFIG` | Node endpoints and `chain_id`. Copy [`config/eld-cli-config.json.example`](config/eld-cli-config.json.example). |
+| `$home/config/eld-cli-config.json` | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
 | `$home/wallets/wallets.json` | `--wallets` | Local Ed25519 keys. Gitignored. |
 
-Signing uses the built-in fee schedule. It is not read from a file.
+`wallet` commands and `completions` stay offline. They do not read this file and they do not prompt.
 
-```sh
-mkdir -p config
-cp cli/config/eld-cli-config.json.example config/eld-cli-config.json
+The first command that talks to a node (`account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
+
+```text
+Node address (IP or URL):
 ```
 
-Run those copies from the workspace root. The example faucet endpoint is `127.0.0.1:8080`.
+An IP or hostname is stored as `node_host` with Tendermint port `26657`. `host:port` uses that port instead. App REST uses the same host on port `9001`. An `http://` or `https://` URL is stored as `node_url`, and app REST uses that host on port `9001`. Faucet fields are left empty. `faucet_end_point` stays `/faucet/request`.
 
-`wallet create`, `wallet list`, `wallet show`, and `wallet remove` need only the wallet file. Every other command needs the client config and a node URL.
+The CLI then reads `chain_id` from Tendermint `GET /status`. If the node does not answer, the address is still saved, `chain_id` stays empty, and the CLI says so. The next command that signs a transaction tells you to run `eld-cli config node` again once the node is up.
 
-Optional `node_url`, `app_url`, and `faucet_url` in the client config override host and port when set.
+Without a terminal, a missing node address exits 1 and prints `eld-cli config node <ip-or-url>`.
+
+`tx faucet` (and the `request-faucet` alias) is the only command that asks for a faucet:
+
+```text
+Faucet address (IP or URL):
+```
+
+An IP or hostname uses port `8080` and `/faucet/request`. A URL is stored as `faucet_url`. Without a terminal, it exits 1 and prints `eld-cli config faucet <ip-or-url>`.
+
+`eld-cli config node <ip-or-url>` rewrites the node fields and refreshes `chain_id`. Faucet fields already in the file stay. `eld-cli config faucet <ip-or-url>` rewrites only the faucet fields. Both take the address as an argument and create `config/` when needed.
+
+```sh
+eld-cli config node 127.0.0.1
+eld-cli config node https://rpc.example.com
+eld-cli config faucet 127.0.0.1
+eld-cli config faucet https://faucet.example.com
+```
+
+You can still copy [`config/eld-cli-config.json.example`](config/eld-cli-config.json.example) to `config/eld-cli-config.json` instead of answering the prompt. Signing uses the built-in fee schedule. It is not read from a file.
+
+Optional `node_url`, `app_url`, and `faucet_url` override host and port when set.
 
 ## Global flags
 
@@ -98,6 +120,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `pinboard get` | Fetch one post |
 | `pinboard list-tag` / `pinboard list-wallet` | Page posts |
 | `cado get` / `cado list` | Read one CADO, or list paths |
+| `config node` / `config faucet` | Set the node or faucet address |
 | `completions bash\|zsh\|fish\|elvish\|powershell` | Shell completion script on stdout |
 
 ```sh
