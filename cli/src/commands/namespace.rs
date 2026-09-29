@@ -15,7 +15,16 @@ pub(crate) async fn add_namespace(
     wallet_name: String,
     namespace_slug: String,
     registration_fee: u128,
+    dry_run: bool,
 ) -> Result<(), EldError> {
+    if dry_run {
+        crate::output::print_result(&crate::output::dry_run_add_namespace(
+            &wallet_name,
+            &namespace_slug,
+            registration_fee,
+        ));
+        return Ok(());
+    }
     let resp = cli
         .add_namespace(wallet_name, namespace_slug, registration_fee)
         .await?;

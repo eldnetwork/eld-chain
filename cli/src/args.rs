@@ -26,6 +26,14 @@ pub struct Arguments {
     /// Client endpoints file. Default: `$home/config/config.json`.
     #[arg(long = "cli-config", env = "ELD_CLI_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
+
+    /// Skip confirmations.
+    #[arg(long, short = 'y')]
+    pub(crate) yes: bool,
+
+    /// Print the intended transfer, stake, unstake, namespace add, or pinboard post and do not broadcast.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
 }
 
 #[derive(Subcommand, Debug)]

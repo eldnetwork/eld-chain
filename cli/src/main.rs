@@ -85,14 +85,16 @@ fn open_chain_client(paths: &CliPaths) -> Result<ChainClient, EldError> {
 
 async fn dispatch(args: Arguments) -> Result<(), EldError> {
     let paths = resolve_paths(&args);
+    let yes = args.yes;
+    let dry_run = args.dry_run;
     if command_is_offline(&args.cmd) {
-        return dispatch_offline(&paths.wallets, args.cmd).await;
+        return dispatch_offline(&paths.wallets, args.cmd, yes).await;
     }
     let cli = open_chain_client(&paths)?;
-    dispatch_online(&cli, args.cmd).await
+    dispatch_online(&cli, args.cmd, dry_run).await
 }
 
-async fn dispatch_offline(wallets: &Path, cmd: SubCommand) -> Result<(), EldError> {
+async fn dispatch_offline(wallets: &Path, cmd: SubCommand, yes: bool) -> Result<(), EldError> {
     match cmd {
         SubCommand::Wallet {
             cmd: WalletCommand::Create(wallet),
@@ -112,13 +114,17 @@ async fn dispatch_offline(wallets: &Path, cmd: SubCommand) -> Result<(), EldErro
             cmd: WalletCommand::Remove(wallet),
         }
         | SubCommand::RemoveWallet(wallet) => {
-            commands::wallet::remove_wallet(wallets, wallet.name).await
+            commands::wallet::remove_wallet(wallets, wallet.name, yes).await
         }
         _ => unreachable!("offline dispatch only handles wallet commands"),
     }
 }
 
-async fn dispatch_online(cli: &ChainClient, cmd: SubCommand) -> Result<(), EldError> {
+async fn dispatch_online(
+    cli: &ChainClient,
+    cmd: SubCommand,
+    dry_run: bool,
+) -> Result<(), EldError> {
     match cmd {
         SubCommand::Wallet { .. }
         | SubCommand::CreateWallet(_)
@@ -136,6 +142,7 @@ async fn dispatch_online(cli: &ChainClient, cmd: SubCommand) -> Result<(), EldEr
                 tx.wallet_name,
                 tx.recipient.hex_with_prefix(),
                 tx.amount.amount(),
+                dry_run,
             )
             .await
         }
@@ -165,13 +172,13 @@ async fn dispatch_online(cli: &ChainClient, cmd: SubCommand) -> Result<(), EldEr
             cmd: TxCommand::Stake(tx),
         }
         | SubCommand::Stake(tx) => {
-            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount()).await
+            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount(), dry_run).await
         }
         SubCommand::Tx {
             cmd: TxCommand::Unstake(tx),
         }
         | SubCommand::Unstake(tx) => {
-            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount()).await
+            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount(), dry_run).await
         }
         SubCommand::Chain {
             cmd: ChainCommand::Validators,
@@ -196,6 +203,7 @@ async fn dispatch_online(cli: &ChainClient, cmd: SubCommand) -> Result<(), EldEr
                 namespace.wallet_name,
                 namespace.namespace_slug,
                 namespace.registration_fee.amount(),
+                dry_run,
             )
             .await
         }
@@ -216,6 +224,7 @@ async fn dispatch_online(cli: &ChainClient, cmd: SubCommand) -> Result<(), EldEr
                     user_fee_amount: post.user_fee_amount.amount(),
                     namespace: post.namespace,
                 },
+                dry_run,
             )
             .await
         }
@@ -266,6 +275,8 @@ mod tests {
             wallets: None,
             consensus_config: None,
             config: None,
+            yes: false,
+            dry_run: false,
         }
     }
 

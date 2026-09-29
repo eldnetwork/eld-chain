@@ -5,7 +5,16 @@ use eld_common::error::EldError;
 pub(crate) async fn post_message(
     cli: &ChainClient,
     params: PinboardMessageParams,
+    dry_run: bool,
 ) -> Result<(), EldError> {
+    if dry_run {
+        crate::output::print_result(&crate::output::dry_run_pinboard_post(
+            &params.wallet_name,
+            &params.file_path,
+            params.user_fee_amount,
+        ));
+        return Ok(());
+    }
     let resp = cli.post_pinboard_message(params).await?;
     crate::output::print_result(&crate::output::pinboard_submit(&resp));
     Ok(())

@@ -48,6 +48,44 @@ pub(crate) fn print_result(text: &str) {
     println!("{text}");
 }
 
+pub(crate) const UNENCRYPTED_WALLET_WARNING: &str = "Warning: local wallets store unencrypted Ed25519 keys. Keep wallets.json mode 0600 and never commit it.";
+
+pub(crate) fn warn_unencrypted_wallets() {
+    eprintln!("{UNENCRYPTED_WALLET_WARNING}");
+}
+
+pub(crate) fn dry_run_transfer(wallet: &str, recipient: &str, amount: u128) -> String {
+    format!("dry-run: transfer\nwallet: {wallet}\nrecipient: {recipient}\namount: {amount}")
+}
+
+pub(crate) fn dry_run_stake(wallet: &str, amount: u128) -> String {
+    format!("dry-run: stake\nwallet: {wallet}\namount: {amount}")
+}
+
+pub(crate) fn dry_run_unstake(wallet: &str, amount: u128) -> String {
+    format!("dry-run: unstake\nwallet: {wallet}\namount: {amount}")
+}
+
+pub(crate) fn dry_run_add_namespace(
+    wallet: &str,
+    namespace: &str,
+    registration_fee: u128,
+) -> String {
+    format!(
+        "dry-run: add-namespace\nwallet: {wallet}\nnamespace: {namespace}\nregistration_fee: {registration_fee}"
+    )
+}
+
+pub(crate) fn dry_run_pinboard_post(
+    wallet: &str,
+    file_path: &str,
+    user_fee_amount: u128,
+) -> String {
+    format!(
+        "dry-run: pinboard post\nwallet: {wallet}\nfile: {file_path}\nuser_fee_amount: {user_fee_amount}"
+    )
+}
+
 pub(crate) fn created_wallet(wallet: &Wallet) -> String {
     wallet.terminal_display()
 }
@@ -519,6 +557,19 @@ mod tests {
         );
         assert_eq!(created_wallet(&wallet), expected);
         assert_eq!(display_wallet(&wallet), expected);
+        let listed = list_wallets(std::slice::from_ref(&wallet));
+        assert!(!expected.contains("private"), "{expected}");
+        assert!(!listed.contains("private"), "{listed}");
+        assert!(!expected.contains(&hex::encode([7u8; 32])), "{expected}");
+    }
+
+    #[test]
+    fn dry_run_text_has_no_tx_hash() {
+        let text = dry_run_transfer("alice", ADDRESS, 1000);
+        assert!(text.contains("wallet: alice"), "{text}");
+        assert!(text.contains(&format!("recipient: {ADDRESS}")), "{text}");
+        assert!(text.contains("amount: 1000"), "{text}");
+        assert!(!text.contains("tx_hash"), "{text}");
     }
 
     #[test]
