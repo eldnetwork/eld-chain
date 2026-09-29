@@ -63,25 +63,31 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             cmd: TxCommand::Transfer(tx),
         }
         | SubCommand::Transfer(tx) => {
-            commands::tx::transfer(&cli, tx.wallet_name, tx.recipient, tx.amount).await
+            commands::tx::transfer(
+                &cli,
+                tx.wallet_name,
+                tx.recipient.hex_with_prefix(),
+                tx.amount.amount(),
+            )
+            .await
         }
         SubCommand::Tx {
             cmd: TxCommand::Faucet(faucet),
         }
         | SubCommand::RequestFaucet(faucet) => {
-            commands::tx::request_faucet(&cli, faucet.address).await
+            commands::tx::request_faucet(&cli, faucet.address.hex_with_prefix()).await
         }
         SubCommand::Account {
             cmd: AccountCommand::Get(account),
         }
         | SubCommand::GetAccount(account) => {
-            commands::account::get_account(&cli, account.address).await
+            commands::account::get_account(&cli, account.address.hex_with_prefix()).await
         }
         SubCommand::Account {
             cmd: AccountCommand::StakeGet(account),
         }
         | SubCommand::GetStakeAccount(account) => {
-            commands::account::get_stake_account(&cli, account.address).await
+            commands::account::get_stake_account(&cli, account.address.hex_with_prefix()).await
         }
         SubCommand::Chain {
             cmd: ChainCommand::AbciInfo,
@@ -90,11 +96,15 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
         SubCommand::Tx {
             cmd: TxCommand::Stake(tx),
         }
-        | SubCommand::Stake(tx) => commands::tx::stake(&cli, tx.wallet_name, tx.amount).await,
+        | SubCommand::Stake(tx) => {
+            commands::tx::stake(&cli, tx.wallet_name, tx.amount.amount()).await
+        }
         SubCommand::Tx {
             cmd: TxCommand::Unstake(tx),
         }
-        | SubCommand::Unstake(tx) => commands::tx::unstake(&cli, tx.wallet_name, tx.amount).await,
+        | SubCommand::Unstake(tx) => {
+            commands::tx::unstake(&cli, tx.wallet_name, tx.amount.amount()).await
+        }
         SubCommand::Chain {
             cmd: ChainCommand::Validators,
         }
@@ -117,7 +127,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
                 &cli,
                 namespace.wallet_name,
                 namespace.namespace_slug,
-                namespace.registration_fee,
+                namespace.registration_fee.amount(),
             )
             .await
         }
@@ -135,7 +145,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
                     visibility: post.visibility,
                     topic: post.topic,
                     tags: post.tags,
-                    user_fee_amount: post.user_fee_amount,
+                    user_fee_amount: post.user_fee_amount.amount(),
                     namespace: post.namespace,
                 },
             )
@@ -153,7 +163,7 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             cmd: PinboardCommand::Get(post),
         }
         | SubCommand::PinboardGetPost(post) => {
-            commands::pinboard::get_post(&cli, post.wallet, post.message_id).await
+            commands::pinboard::get_post(&cli, post.wallet.hex_with_prefix(), post.message_id).await
         }
         SubCommand::Pinboard {
             cmd: PinboardCommand::ListTag(post),
@@ -165,7 +175,13 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
             cmd: PinboardCommand::ListWallet(post),
         }
         | SubCommand::PinboardListByWallet(post) => {
-            commands::pinboard::list_by_wallet(&cli, post.wallet, post.page, post.page_size).await
+            commands::pinboard::list_by_wallet(
+                &cli,
+                post.wallet.hex_with_prefix(),
+                post.page,
+                post.page_size,
+            )
+            .await
         }
     }
 }

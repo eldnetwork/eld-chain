@@ -236,31 +236,31 @@ pub(crate) struct TransferArgs {
     pub(crate) wallet_name: String,
     /// Recipient address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) recipient: String,
+    pub(crate) recipient: Address,
     /// Amount in base units.
     #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
-    pub(crate) amount: u128,
+    pub(crate) amount: Coin,
 }
 
 #[derive(Args, Debug)]
 pub(crate) struct FaucetArgs {
     /// Address that receives the faucet tokens.
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) address: String,
+    pub(crate) address: Address,
 }
 
 #[derive(Args, Debug)]
 pub(crate) struct GetAccountArgs {
     /// Account address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) address: String,
+    pub(crate) address: Address,
 }
 
 #[derive(Args, Debug)]
 pub(crate) struct GetStakeAccountArgs {
     /// Staking account address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) address: String,
+    pub(crate) address: Address,
 }
 
 #[derive(Args, Debug)]
@@ -269,7 +269,7 @@ pub(crate) struct StakeArgs {
     pub(crate) wallet_name: String,
     /// Amount in base units.
     #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
-    pub(crate) amount: u128,
+    pub(crate) amount: Coin,
 }
 
 #[derive(Args, Debug)]
@@ -278,7 +278,7 @@ pub(crate) struct UnstakeArgs {
     pub(crate) wallet_name: String,
     /// Amount in base units.
     #[arg(value_name = "AMOUNT", value_parser = parse_amount)]
-    pub(crate) amount: u128,
+    pub(crate) amount: Coin,
 }
 
 #[derive(Args, Debug)]
@@ -294,8 +294,8 @@ pub(crate) struct AddNamespaceArgs {
     /// Namespace slug to register.
     pub(crate) namespace_slug: String,
     /// Fee paid to register the namespace (must be greater than zero).
-    #[arg(long, default_value_t = 1, value_parser = parse_amount)]
-    pub(crate) registration_fee: u128,
+    #[arg(long, default_value = "1", value_parser = parse_amount)]
+    pub(crate) registration_fee: Coin,
 }
 
 #[derive(Args, Debug)]
@@ -310,7 +310,7 @@ pub(crate) struct PostPinboardArgs {
     /// Post lifetime in blocks. Queries hide the body after the commit height plus this value.
     #[arg(long, default_value_t = 1000)]
     pub(crate) expires_height: u64,
-    /// Who can read the post.
+    /// Who can read the post (`Public` or `public`).
     #[arg(long, default_value = "Public", value_parser = parse_visibility)]
     pub(crate) visibility: String,
     /// Optional topic label.
@@ -322,11 +322,11 @@ pub(crate) struct PostPinboardArgs {
     /// Fee in base units paid with the post.
     #[arg(
         long,
-        default_value_t = 1000,
+        default_value = "1000",
         value_name = "AMOUNT",
         value_parser = parse_amount
     )]
-    pub(crate) user_fee_amount: u128,
+    pub(crate) user_fee_amount: Coin,
     /// Custom namespace slug (letter-only; must be registered and owned by the posting wallet).
     #[arg(long)]
     pub(crate) namespace: Option<String>,
@@ -348,7 +348,7 @@ pub(crate) struct ListCadosArgs {
 pub(crate) struct PinboardGetPostArgs {
     /// Wallet address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) wallet: String,
+    pub(crate) wallet: Address,
     /// Message id of the post.
     pub(crate) message_id: String,
 }
@@ -369,7 +369,7 @@ pub(crate) struct ListByTagArgs {
 pub(crate) struct ListByWalletArgs {
     /// Wallet address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) wallet: String,
+    pub(crate) wallet: Address,
     /// Zero-based page index.
     #[arg(long, default_value_t = 0)]
     pub(crate) page: usize,
@@ -378,21 +378,25 @@ pub(crate) struct ListByWalletArgs {
     pub(crate) page_size: usize,
 }
 
-fn parse_address(raw: &str) -> Result<String, EldError> {
-    Ok(Address::parse_hex_str(raw)?.hex_with_prefix())
+fn parse_address(raw: &str) -> Result<Address, EldError> {
+    Address::parse_hex_str(raw)
 }
 
-fn parse_amount(raw: &str) -> Result<u128, EldError> {
+fn parse_amount(raw: &str) -> Result<Coin, EldError> {
     let amount = raw.parse::<u128>().map_err(|err| EldError::CoinError {
         details: format!("invalid amount '{raw}': {err}"),
     })?;
-    Ok(Coin::new(amount)?.amount())
+    Coin::new(amount)
 }
 
 fn parse_content_type(raw: &str) -> Result<String, EldError> {
     validate_post_message_content_type(raw)?;
     Ok(raw.trim().to_string())
 }
+
+/// Spellings used for pinboard visibility in this repo. `eld-common` stores the field as a
+/// free-form string and has no visibility enum.
+const PINBOARD_VISIBILITY: &[&str] = &["Public", "public"];
 
 fn parse_visibility(raw: &str) -> Result<String, EldError> {
     let trimmed = raw.trim();
@@ -401,6 +405,13 @@ fn parse_visibility(raw: &str) -> Result<String, EldError> {
             field: "visibility".to_string(),
             value: raw.to_string(),
             details: "visibility must not be empty".to_string(),
+        });
+    }
+    if !PINBOARD_VISIBILITY.contains(&trimmed) {
+        return Err(EldError::ValidationError {
+            field: "visibility".to_string(),
+            value: raw.to_string(),
+            details: "visibility must be Public or public".to_string(),
         });
     }
     Ok(trimmed.to_string())
@@ -431,8 +442,8 @@ mod tests {
             panic!("expected transfer");
         };
         assert_eq!(transfer.wallet_name, "my-wallet");
-        assert_eq!(transfer.recipient, ADDRESS);
-        assert_eq!(transfer.amount, 1000);
+        assert_eq!(transfer.recipient.hex_with_prefix(), ADDRESS);
+        assert_eq!(transfer.amount.amount(), 1000);
     }
 
     #[test]
@@ -450,8 +461,8 @@ mod tests {
             panic!("expected legacy transfer alias");
         };
         assert_eq!(transfer.wallet_name, "my-wallet");
-        assert_eq!(transfer.recipient, ADDRESS);
-        assert_eq!(transfer.amount, 1000);
+        assert_eq!(transfer.recipient.hex_with_prefix(), ADDRESS);
+        assert_eq!(transfer.amount.amount(), 1000);
     }
 
     #[test]
@@ -499,5 +510,24 @@ mod tests {
             message.contains("visibility must not be empty"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn rejects_invalid_visibility() {
+        let err = Arguments::try_parse_from([
+            "eld-cli",
+            "pinboard",
+            "post",
+            "my-wallet",
+            "./message.txt",
+            "--content-type",
+            "text/plain",
+            "--visibility",
+            "secret",
+        ])
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("secret"), "{message}");
+        assert!(message.contains("Public or public"), "{message}");
     }
 }
