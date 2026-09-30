@@ -81,7 +81,6 @@ Optional `node_url`, `app_url`, and `faucet_url` override host and port when set
 | `--wallets <PATH>` | Wallet file. Overrides the platform path above. |
 | `--cli-config <PATH>` | Client endpoints file. Overrides the platform path above. Env: `ELD_CLI_CONFIG`. |
 | `-y`, `--yes` | Skip the `wallet remove` confirmation. |
-| `--dry-run` | Print the intended transfer, stake, unstake, namespace add, or pinboard post. Does not broadcast and does not print a tx hash. |
 | `--output text\|json` | Default `text`. Env: `ELD_CLI_OUTPUT`. JSON is one document on stdout. |
 
 `wallet remove` prompts `Remove wallet '<name>' and its private key? [y/N]` on a terminal. Without a terminal, pass `--yes` or the command exits 1 and does not delete the key.
@@ -132,7 +131,6 @@ eld-cli --output json wallet list
 eld-cli tx faucet 0x1234567890abcdef1234567890abcdef12345678
 eld-cli account get 0x1234567890abcdef1234567890abcdef12345678
 eld-cli tx transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
-eld-cli --dry-run tx transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
 eld-cli pinboard post my-wallet ./message.txt --content-type text/plain
 eld-cli completions bash
 ```

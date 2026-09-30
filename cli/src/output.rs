@@ -94,38 +94,6 @@ pub(crate) fn warn_unencrypted_wallets() {
     eprintln!("{UNENCRYPTED_WALLET_WARNING}");
 }
 
-pub(crate) fn dry_run_transfer(wallet: &str, recipient: &str, amount: u128) -> String {
-    format!("dry-run: transfer\nwallet: {wallet}\nrecipient: {recipient}\namount: {amount}")
-}
-
-pub(crate) fn dry_run_stake(wallet: &str, amount: u128) -> String {
-    format!("dry-run: stake\nwallet: {wallet}\namount: {amount}")
-}
-
-pub(crate) fn dry_run_unstake(wallet: &str, amount: u128) -> String {
-    format!("dry-run: unstake\nwallet: {wallet}\namount: {amount}")
-}
-
-pub(crate) fn dry_run_add_namespace(
-    wallet: &str,
-    namespace: &str,
-    registration_fee: u128,
-) -> String {
-    format!(
-        "dry-run: add-namespace\nwallet: {wallet}\nnamespace: {namespace}\nregistration_fee: {registration_fee}"
-    )
-}
-
-pub(crate) fn dry_run_pinboard_post(
-    wallet: &str,
-    file_path: &str,
-    user_fee_amount: u128,
-) -> String {
-    format!(
-        "dry-run: pinboard post\nwallet: {wallet}\nfile: {file_path}\nuser_fee_amount: {user_fee_amount}"
-    )
-}
-
 pub(crate) fn created_wallet(wallet: &Wallet) -> String {
     wallet.terminal_display()
 }
@@ -552,37 +520,6 @@ struct CadoListJson<'a> {
     paths: &'a [String],
 }
 
-#[derive(Serialize)]
-struct DryRunTransferJson<'a> {
-    action: &'static str,
-    wallet: &'a str,
-    recipient: &'a str,
-    amount: u128,
-}
-
-#[derive(Serialize)]
-struct DryRunAmountJson<'a> {
-    action: &'static str,
-    wallet: &'a str,
-    amount: u128,
-}
-
-#[derive(Serialize)]
-struct DryRunNamespaceJson<'a> {
-    action: &'static str,
-    wallet: &'a str,
-    namespace: &'a str,
-    registration_fee: u128,
-}
-
-#[derive(Serialize)]
-struct DryRunPinboardJson<'a> {
-    action: &'static str,
-    wallet: &'a str,
-    file: &'a str,
-    user_fee_amount: u128,
-}
-
 pub(crate) fn emit_created_wallet(mode: OutputMode, wallet: &Wallet) -> Result<(), EldError> {
     emit(mode, &created_wallet(wallet), &wallet_json(wallet))
 }
@@ -731,92 +668,6 @@ pub(crate) fn emit_cado_list(
 pub(crate) fn emit_cado(mode: OutputMode, path: &str, response: &Value) -> Result<(), EldError> {
     let text = cado(path, response)?;
     emit(mode, &text, response)
-}
-
-pub(crate) fn emit_dry_run_transfer(
-    mode: OutputMode,
-    wallet: &str,
-    recipient: &str,
-    amount: u128,
-) -> Result<(), EldError> {
-    emit(
-        mode,
-        &dry_run_transfer(wallet, recipient, amount),
-        &DryRunTransferJson {
-            action: "transfer",
-            wallet,
-            recipient,
-            amount,
-        },
-    )
-}
-
-pub(crate) fn emit_dry_run_stake(
-    mode: OutputMode,
-    wallet: &str,
-    amount: u128,
-) -> Result<(), EldError> {
-    emit(
-        mode,
-        &dry_run_stake(wallet, amount),
-        &DryRunAmountJson {
-            action: "stake",
-            wallet,
-            amount,
-        },
-    )
-}
-
-pub(crate) fn emit_dry_run_unstake(
-    mode: OutputMode,
-    wallet: &str,
-    amount: u128,
-) -> Result<(), EldError> {
-    emit(
-        mode,
-        &dry_run_unstake(wallet, amount),
-        &DryRunAmountJson {
-            action: "unstake",
-            wallet,
-            amount,
-        },
-    )
-}
-
-pub(crate) fn emit_dry_run_add_namespace(
-    mode: OutputMode,
-    wallet: &str,
-    namespace: &str,
-    registration_fee: u128,
-) -> Result<(), EldError> {
-    emit(
-        mode,
-        &dry_run_add_namespace(wallet, namespace, registration_fee),
-        &DryRunNamespaceJson {
-            action: "add-namespace",
-            wallet,
-            namespace,
-            registration_fee,
-        },
-    )
-}
-
-pub(crate) fn emit_dry_run_pinboard_post(
-    mode: OutputMode,
-    wallet: &str,
-    file_path: &str,
-    user_fee_amount: u128,
-) -> Result<(), EldError> {
-    emit(
-        mode,
-        &dry_run_pinboard_post(wallet, file_path, user_fee_amount),
-        &DryRunPinboardJson {
-            action: "pinboard post",
-            wallet,
-            file: file_path,
-            user_fee_amount,
-        },
-    )
 }
 
 pub(crate) fn cado(path: &str, response: &Value) -> Result<String, EldError> {
@@ -1066,15 +917,6 @@ mod tests {
         };
         let text = epoch(&epoch_info, &validators);
         assert!(text.contains("Epoch"), "{text}");
-    }
-
-    #[test]
-    fn dry_run_text_has_no_tx_hash() {
-        let text = dry_run_transfer("alice", ADDRESS, 1000);
-        assert!(text.contains("wallet: alice"), "{text}");
-        assert!(text.contains(&format!("recipient: {ADDRESS}")), "{text}");
-        assert!(text.contains("amount: 1000"), "{text}");
-        assert!(!text.contains("tx_hash"), "{text}");
     }
 
     #[test]

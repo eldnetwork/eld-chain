@@ -300,17 +300,12 @@ fn command_signs(cmd: &SubCommand) -> bool {
     )
 }
 
-fn command_needs_chain_id(cmd: &SubCommand, dry_run: bool) -> bool {
-    !dry_run && command_signs(cmd)
-}
-
 fn open_chain_client(
     paths: &CliPaths,
     config: ClientConfig,
     cmd: &SubCommand,
-    dry_run: bool,
 ) -> Result<ChainClient, EldError> {
-    if dry_run || !command_signs(cmd) {
+    if !command_signs(cmd) {
         return Ok(ChainClient::new(config, FeeConfig::default()));
     }
     ChainClient::with_wallets(config, FeeConfig::default(), &paths.wallets)
@@ -329,7 +324,6 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
     }
     let paths = resolve_paths(&args)?;
     let yes = args.yes;
-    let dry_run = args.dry_run;
     let mode = OutputMode::new(args.output);
     if let SubCommand::Config { cmd } = args.cmd {
         return commands::config::run(&paths.cli_config, cmd).await;
@@ -345,11 +339,11 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
         setup::ensure_faucet(&paths.cli_config, interactive).await?;
     }
     let config = setup::load_client_config(&paths.cli_config)?;
-    if command_needs_chain_id(&args.cmd, dry_run) && config.chain_id.trim().is_empty() {
+    if command_signs(&args.cmd) && config.chain_id.trim().is_empty() {
         return Err(setup::chain_id_missing_error());
     }
-    let cli = open_chain_client(&paths, config, &args.cmd, dry_run)?;
-    dispatch_online(&cli, args.cmd, dry_run, mode).await
+    let cli = open_chain_client(&paths, config, &args.cmd)?;
+    dispatch_online(&cli, args.cmd, mode).await
 }
 
 async fn dispatch_offline(
@@ -388,7 +382,6 @@ async fn dispatch_offline(
 async fn dispatch_online(
     cli: &ChainClient,
     cmd: SubCommand,
-    dry_run: bool,
     mode: OutputMode,
 ) -> Result<(), EldError> {
     match cmd {
@@ -411,7 +404,6 @@ async fn dispatch_online(
                 tx.wallet_name,
                 tx.recipient.hex_with_prefix(),
                 tx.amount.amount(),
-                dry_run,
                 mode,
             )
             .await
@@ -442,13 +434,13 @@ async fn dispatch_online(
             cmd: TxCommand::Stake(tx),
         }
         | SubCommand::Stake(tx) => {
-            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount(), dry_run, mode).await
+            commands::tx::stake(cli, tx.wallet_name, tx.amount.amount(), mode).await
         }
         SubCommand::Tx {
             cmd: TxCommand::Unstake(tx),
         }
         | SubCommand::Unstake(tx) => {
-            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount(), dry_run, mode).await
+            commands::tx::unstake(cli, tx.wallet_name, tx.amount.amount(), mode).await
         }
         SubCommand::Chain {
             cmd: ChainCommand::Validators,
@@ -475,7 +467,6 @@ async fn dispatch_online(
                 namespace.wallet_name,
                 namespace.namespace_slug,
                 namespace.registration_fee.amount(),
-                dry_run,
                 mode,
             )
             .await
@@ -497,7 +488,6 @@ async fn dispatch_online(
                     user_fee_amount: post.user_fee_amount.amount(),
                     namespace: post.namespace,
                 },
-                dry_run,
                 mode,
             )
             .await
@@ -552,7 +542,6 @@ mod tests {
             wallets: None,
             config: None,
             yes: false,
-            dry_run: false,
             output: args::OutputFormat::Text,
         }
     }

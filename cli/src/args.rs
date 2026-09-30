@@ -23,10 +23,6 @@ pub struct Arguments {
     #[arg(long, short = 'y')]
     pub(crate) yes: bool,
 
-    /// Print the intended transfer, stake, unstake, namespace add, or pinboard post and do not broadcast.
-    #[arg(long)]
-    pub(crate) dry_run: bool,
-
     /// Output format. `text` is the default. Also read from `ELD_CLI_OUTPUT`.
     #[arg(long, value_enum, default_value = "text", env = "ELD_CLI_OUTPUT")]
     pub(crate) output: OutputFormat,
@@ -607,8 +603,6 @@ Options:
                            `~/Library/Application Support/eld/eld-cli-config.json` [env:
                            ELD_CLI_CONFIG=]
   -y, --yes                Skip confirmations
-      --dry-run            Print the intended transfer, stake, unstake, namespace add, or pinboard
-                           post and do not broadcast
       --output <OUTPUT>    Output format. `text` is the default. Also read from `ELD_CLI_OUTPUT`
                            [env: ELD_CLI_OUTPUT=] [default: text] [possible values: text, json]
   -h, --help               Print help

@@ -8,12 +8,8 @@ pub(crate) async fn transfer(
     wallet_name: String,
     recipient: String,
     amount: u128,
-    dry_run: bool,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    if dry_run {
-        return crate::output::emit_dry_run_transfer(mode, &wallet_name, &recipient, amount);
-    }
     let submitted = cli.transfer(wallet_name, recipient, amount).await?;
     crate::output::emit_submitted_tx(mode, "Transfer", &submitted)
 }
@@ -31,12 +27,8 @@ pub(crate) async fn stake(
     cli: &ChainClient,
     wallet_name: String,
     amount: u128,
-    dry_run: bool,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    if dry_run {
-        return crate::output::emit_dry_run_stake(mode, &wallet_name, amount);
-    }
     let submitted = cli.stake(wallet_name, amount).await?;
     crate::output::emit_submitted_tx(mode, "Stake", &submitted)
 }
@@ -45,12 +37,8 @@ pub(crate) async fn unstake(
     cli: &ChainClient,
     wallet_name: String,
     amount: u128,
-    dry_run: bool,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    if dry_run {
-        return crate::output::emit_dry_run_unstake(mode, &wallet_name, amount);
-    }
     let submitted = cli.unstake(wallet_name, amount).await?;
     crate::output::emit_submitted_tx(mode, "Unstake", &submitted)
 }

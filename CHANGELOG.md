@@ -13,7 +13,7 @@ Crates are unpublished (`publish = false`).
 
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`, `completions`). The old flat verbs stay as hidden aliases.
-- `eld-cli` flags `--output text|json`, `--wallets`, `--yes`, and `--dry-run`. Shell completions print to stdout.
+- `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`. Shell completions print to stdout.
 - Tag `eld-cli-v*` (for example `eld-cli-v0.0.2`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 - `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `tx faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
 - `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.

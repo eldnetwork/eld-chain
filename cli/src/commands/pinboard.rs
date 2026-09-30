@@ -10,17 +10,8 @@ use crate::output::OutputMode;
 pub(crate) async fn post_message(
     cli: &ChainClient,
     params: PinboardMessageParams,
-    dry_run: bool,
     mode: OutputMode,
 ) -> Result<(), EldError> {
-    if dry_run {
-        return crate::output::emit_dry_run_pinboard_post(
-            mode,
-            &params.wallet_name,
-            &params.file_path,
-            params.user_fee_amount,
-        );
-    }
     let resp = cli.post_pinboard_message(params).await?;
     crate::output::emit_pinboard_submit(mode, &resp)
 }
