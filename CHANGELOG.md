@@ -16,6 +16,7 @@ Crates are unpublished (`publish = false`).
 - `eld-cli` flags `--output text|json`, `--wallets`, `--yes`, and `--dry-run`. Shell completions print to stdout.
 - Tag `eld-cli-v*` (for example `eld-cli-v0.0.2`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 - `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `tx faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
+- `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.
 
 ### Changed
 
@@ -26,6 +27,8 @@ Crates are unpublished (`publish = false`).
 - `Coin` no longer implements SCALE. Amounts stay on serde (JSON decimal strings and bincode). `eld-common` warns on missing docs for `Address`, `Tx`, `Wallet`, the typed IDs, and `EldError`.
 
 ### Fixed
+
+- `eld-cli` query commands no longer open the wallet file. `chain validators` and the other reads work when `wallets.json` is missing. The file is opened only when a command signs.
 
 ## [0.0.1] - 2026-09-26
 

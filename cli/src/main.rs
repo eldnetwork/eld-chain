@@ -135,6 +135,7 @@ fn command_name(cmd: &SubCommand) -> &'static str {
         SubCommand::Config {
             cmd: ConfigCommand::Faucet { .. },
         } => "config faucet",
+        SubCommand::Reset => "reset",
         SubCommand::Completions { .. } => "completions",
     }
 }
@@ -280,10 +281,7 @@ fn command_is_faucet(cmd: &SubCommand) -> bool {
     )
 }
 
-fn command_needs_chain_id(cmd: &SubCommand, dry_run: bool) -> bool {
-    if dry_run {
-        return false;
-    }
+fn command_signs(cmd: &SubCommand) -> bool {
     matches!(
         cmd,
         SubCommand::Tx {
@@ -302,7 +300,19 @@ fn command_needs_chain_id(cmd: &SubCommand, dry_run: bool) -> bool {
     )
 }
 
-fn open_chain_client(paths: &CliPaths, config: ClientConfig) -> Result<ChainClient, EldError> {
+fn command_needs_chain_id(cmd: &SubCommand, dry_run: bool) -> bool {
+    !dry_run && command_signs(cmd)
+}
+
+fn open_chain_client(
+    paths: &CliPaths,
+    config: ClientConfig,
+    cmd: &SubCommand,
+    dry_run: bool,
+) -> Result<ChainClient, EldError> {
+    if dry_run || !command_signs(cmd) {
+        return Ok(ChainClient::new(config, FeeConfig::default()));
+    }
     ChainClient::with_wallets(config, FeeConfig::default(), &paths.wallets)
 }
 
@@ -324,6 +334,9 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
     if let SubCommand::Config { cmd } = args.cmd {
         return commands::config::run(&paths.cli_config, cmd).await;
     }
+    if let SubCommand::Reset = args.cmd {
+        return commands::reset::reset(&paths.cli_config, &paths.wallets, yes, interactive, mode);
+    }
     if command_is_offline(&args.cmd) {
         return dispatch_offline(&paths.wallets, args.cmd, yes, mode).await;
     }
@@ -335,7 +348,7 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
     if command_needs_chain_id(&args.cmd, dry_run) && config.chain_id.trim().is_empty() {
         return Err(setup::chain_id_missing_error());
     }
-    let cli = open_chain_client(&paths, config)?;
+    let cli = open_chain_client(&paths, config, &args.cmd, dry_run)?;
     dispatch_online(&cli, args.cmd, dry_run, mode).await
 }
 
@@ -386,8 +399,8 @@ async fn dispatch_online(
         | SubCommand::RemoveWallet(_) => {
             unreachable!("wallet commands are dispatched offline")
         }
-        SubCommand::Completions { .. } | SubCommand::Config { .. } => {
-            unreachable!("completions and config are handled before online dispatch")
+        SubCommand::Completions { .. } | SubCommand::Config { .. } | SubCommand::Reset => {
+            unreachable!("completions, config, and reset are handled before online dispatch")
         }
         SubCommand::Tx {
             cmd: TxCommand::Transfer(tx),
@@ -739,5 +752,36 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("config node"), "{message}");
         assert!(message.contains("Chain ID"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn chain_validators_does_not_open_the_wallet_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("eld-cli-config.json"),
+            r#"{
+                "node_url": "http://127.0.0.1:1",
+                "app_port": "9001",
+                "chain_id": "eld-dev"
+            }"#,
+        )
+        .unwrap();
+        let wallets = dir.path().join("wallets").join("wallets.json");
+        let err = dispatch_with(
+            args_in(
+                dir.path(),
+                SubCommand::Chain {
+                    cmd: ChainCommand::Validators,
+                },
+            ),
+            false,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(!message.contains("Wallet file"), "{message}");
+        assert!(!wallets.exists());
     }
 }

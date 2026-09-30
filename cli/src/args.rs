@@ -80,6 +80,8 @@ pub(crate) enum SubCommand {
         #[command(subcommand)]
         cmd: ConfigCommand,
     },
+    /// Delete the client config and wallet file.
+    Reset,
     /// Print a shell completion script to stdout.
     #[command(after_help = "Example:\n  eld-cli completions bash")]
     Completions {
@@ -594,6 +596,7 @@ Commands:
   pinboard     Ephemeral posts
   cado         Content-addressed objects
   config       Node and faucet addresses
+  reset        Delete the client config and wallet file
   completions  Print a shell completion script to stdout
   help         Print this message or the help of the given subcommand(s)
 

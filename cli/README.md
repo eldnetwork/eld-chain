@@ -39,7 +39,7 @@ The CLI stores two files under the user account. They are not next to the binary
 | Linux: `~/.config/eld/eld-cli-config.json` (`$XDG_CONFIG_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/eld-cli-config.json`. | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
 | Linux: `~/.local/share/eld/wallets.json` (`$XDG_DATA_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/wallets.json`. | `--wallets` | Local Ed25519 keys. |
 
-`wallet` commands and `completions` stay offline. They do not read this file and they do not prompt.
+`wallet` commands and `completions` stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`, `tx faucet`) do not open the wallet file. The wallet file is opened only when signing: `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
 
 The first command that talks to a node (`account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
 
@@ -86,6 +86,8 @@ Optional `node_url`, `app_url`, and `faucet_url` override host and port when set
 
 `wallet remove` prompts `Remove wallet '<name>' and its private key? [y/N]` on a terminal. Without a terminal, pass `--yes` or the command exits 1 and does not delete the key.
 
+`reset` prints both file paths and warns that the wallet file holds unencrypted private keys, then prompts `Delete these files? [y/N]`. Without a terminal, pass `--yes` or the files stay.
+
 Every wallet command prints this on stderr:
 
 `Warning: local wallets store unencrypted Ed25519 keys. Keep wallets.json mode 0600 and never commit it.`
@@ -120,6 +122,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `pinboard list-tag` / `pinboard list-wallet` | Page posts |
 | `cado get` / `cado list` | Read one CADO, or list paths |
 | `config node` / `config faucet` | Set the node or faucet address |
+| `reset` | Delete the client config and wallet file |
 | `completions bash\|zsh\|fish\|elvish\|powershell` | Shell completion script on stdout |
 
 ```sh

@@ -4,5 +4,6 @@ pub(crate) mod config;
 pub(crate) mod epoch;
 pub(crate) mod namespace;
 pub(crate) mod pinboard;
+pub(crate) mod reset;
 pub(crate) mod tx;
 pub(crate) mod wallet;
