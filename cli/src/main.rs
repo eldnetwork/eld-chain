@@ -136,7 +136,6 @@ fn command_name(cmd: &SubCommand) -> &'static str {
             cmd: ConfigCommand::Faucet { .. },
         } => "config faucet",
         SubCommand::Reset => "reset",
-        SubCommand::Completions { .. } => "completions",
     }
 }
 
@@ -318,10 +317,6 @@ async fn dispatch(args: Arguments) -> Result<(), EldError> {
 
 async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldError> {
     tracing::info!("running command");
-    if let SubCommand::Completions { shell } = args.cmd {
-        args::print_completions(shell)?;
-        return Ok(());
-    }
     let paths = resolve_paths(&args)?;
     let yes = args.yes;
     let mode = OutputMode::new(args.output);
@@ -392,8 +387,8 @@ async fn dispatch_online(
         | SubCommand::RemoveWallet(_) => {
             unreachable!("wallet commands are dispatched offline")
         }
-        SubCommand::Completions { .. } | SubCommand::Config { .. } | SubCommand::Reset => {
-            unreachable!("completions, config, and reset are handled before online dispatch")
+        SubCommand::Config { .. } | SubCommand::Reset => {
+            unreachable!("config and reset are handled before online dispatch")
         }
         SubCommand::Tx {
             cmd: TxCommand::Transfer(tx),

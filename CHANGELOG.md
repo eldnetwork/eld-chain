@@ -12,14 +12,15 @@ Crates are unpublished (`publish = false`).
 ### Added
 
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
-- Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`, `completions`). The old flat verbs stay as hidden aliases.
-- `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`. Shell completions print to stdout.
+- Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`). The old flat verbs stay as hidden aliases.
+- `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`.
 - Tag `eld-cli-v*` (for example `eld-cli-v0.0.2`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 - `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `tx faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
 - `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.
 
 ### Changed
 
+- `eld-cli` no longer has a `completions` command.
 - `eld-cli pinboard list-wallet` is now `pinboard list-by-address`. The argument is a wallet address. The hidden alias `pinboard-list-by-wallet` is unchanged.
 - `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `eld-cli-config.json`.
 - `eld-cli` stores config and wallets in the user directories (XDG on Linux, `~/Library/Application Support/eld` on macOS). `--home` is gone. `--cli-config` and `--wallets` still override those paths.

@@ -1,6 +1,6 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eld_common::coin::Coin;
-use eld_common::error::{EldError, ErrorBuilder};
+use eld_common::error::EldError;
 use eld_common::tx::validate_post_message_content_type;
 use eld_common::Address;
 use std::path::PathBuf;
@@ -78,12 +78,6 @@ pub(crate) enum SubCommand {
     },
     /// Delete the client config and wallet file.
     Reset,
-    /// Print a shell completion script to stdout.
-    #[command(after_help = "Example:\n  eld-cli completions bash")]
-    Completions {
-        /// Shell to generate completions for.
-        shell: clap_complete::Shell,
-    },
 
     // Flat names from the previous CLI. Hidden so `--help` lists groups only.
     /// Create a local signing wallet.
@@ -465,23 +459,6 @@ fn parse_visibility(raw: &str) -> Result<String, EldError> {
     Ok(trimmed.to_string())
 }
 
-pub(crate) fn print_completions(shell: clap_complete::Shell) -> Result<(), EldError> {
-    use clap::CommandFactory;
-    use std::io::Write;
-    let mut cmd = Arguments::command();
-    let mut script = Vec::new();
-    clap_complete::generate(shell, &mut cmd, "eld-cli", &mut script);
-    match std::io::stdout().write_all(&script) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
-        Err(err) => Err(ErrorBuilder::file_system_error(
-            "write",
-            "stdout",
-            &err.to_string(),
-        )),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -584,17 +561,16 @@ Command-line client for an Eld node: local wallets, signed transactions, and cha
 Usage: eld-cli [OPTIONS] <COMMAND>
 
 Commands:
-  wallet       Local signing keys
-  account      Balances and nonces
-  tx           Sign and broadcast
-  chain        Epoch, validators, and ABCI info
-  namespace    Namespace registry
-  pinboard     Ephemeral posts
-  cado         Content-addressed objects
-  config       Node and faucet addresses
-  reset        Delete the client config and wallet file
-  completions  Print a shell completion script to stdout
-  help         Print this message or the help of the given subcommand(s)
+  wallet     Local signing keys
+  account    Balances and nonces
+  tx         Sign and broadcast
+  chain      Epoch, validators, and ABCI info
+  namespace  Namespace registry
+  pinboard   Ephemeral posts
+  cado       Content-addressed objects
+  config     Node and faucet addresses
+  reset      Delete the client config and wallet file
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --wallets <PATH>     Wallet file. Linux: `~/.local/share/eld/wallets.json`. macOS:
@@ -669,15 +645,5 @@ Options:
         let message = err.to_string();
         assert!(message.contains("secret"), "{message}");
         assert!(message.contains("Public or public"), "{message}");
-    }
-
-    #[test]
-    fn bash_completions_mention_wallet() {
-        let mut cmd = Arguments::command();
-        let mut buf = Vec::new();
-        clap_complete::generate(clap_complete::Shell::Bash, &mut cmd, "eld-cli", &mut buf);
-        let script = String::from_utf8(buf).unwrap();
-        assert!(script.contains("eld-cli"), "{script}");
-        assert!(script.contains("wallet"), "{script}");
     }
 }

@@ -39,7 +39,7 @@ The CLI stores two files under the user account. They are not next to the binary
 | Linux: `~/.config/eld/eld-cli-config.json` (`$XDG_CONFIG_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/eld-cli-config.json`. | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
 | Linux: `~/.local/share/eld/wallets.json` (`$XDG_DATA_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/wallets.json`. | `--wallets` | Local Ed25519 keys. |
 
-`wallet` commands and `completions` stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`, `tx faucet`) do not open the wallet file. The wallet file is opened only when signing: `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
+`wallet` commands stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`, `tx faucet`) do not open the wallet file. The wallet file is opened only when signing: `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
 
 The first command that talks to a node (`account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
 
@@ -122,7 +122,6 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `cado get` / `cado list` | Read one CADO, or list paths |
 | `config node` / `config faucet` | Set the node or faucet address |
 | `reset` | Delete the client config and wallet file |
-| `completions bash\|zsh\|fish\|elvish\|powershell` | Shell completion script on stdout |
 
 ```sh
 eld-cli wallet create my-wallet
@@ -132,7 +131,6 @@ eld-cli tx faucet 0x1234567890abcdef1234567890abcdef12345678
 eld-cli account get 0x1234567890abcdef1234567890abcdef12345678
 eld-cli tx transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
 eld-cli pinboard post my-wallet ./message.txt --content-type text/plain
-eld-cli completions bash
 ```
 
 ## Aliases
