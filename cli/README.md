@@ -118,7 +118,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `namespace get\|add` | Look up or register a namespace |
 | `pinboard post` | Post a message |
 | `pinboard get` | Fetch one post |
-| `pinboard list-tag` / `pinboard list-wallet` | Page posts |
+| `pinboard list-tag` / `pinboard list-by-address` | Page posts |
 | `cado get` / `cado list` | Read one CADO, or list paths |
 | `config node` / `config faucet` | Set the node or faucet address |
 | `reset` | Delete the client config and wallet file |
@@ -159,6 +159,6 @@ The old flat names still parse. They are hidden from `--help`.
 | `post-pinboard-message` | `pinboard post` |
 | `pinboard-get-post` | `pinboard get` |
 | `pinboard-list-by-tag` | `pinboard list-tag` |
-| `pinboard-list-by-wallet` | `pinboard list-wallet` |
+| `pinboard-list-by-wallet` | `pinboard list-by-address` |
 | `get-cado` | `cado get` |
 | `list-cados` | `cado list` |

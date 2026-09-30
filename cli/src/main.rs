@@ -118,9 +118,9 @@ fn command_name(cmd: &SubCommand) -> &'static str {
         }
         | SubCommand::PinboardListByTag(_) => "pinboard list-tag",
         SubCommand::Pinboard {
-            cmd: PinboardCommand::ListWallet(_),
+            cmd: PinboardCommand::ListByAddress(_),
         }
-        | SubCommand::PinboardListByWallet(_) => "pinboard list-wallet",
+        | SubCommand::PinboardListByWallet(_) => "pinboard list-by-address",
         SubCommand::Cado {
             cmd: CadoCommand::Get(_),
         }
@@ -516,7 +516,7 @@ async fn dispatch_online(
             commands::pinboard::list_by_tag(cli, post.tag, post.page, post.page_size, mode).await
         }
         SubCommand::Pinboard {
-            cmd: PinboardCommand::ListWallet(post),
+            cmd: PinboardCommand::ListByAddress(post),
         }
         | SubCommand::PinboardListByWallet(post) => {
             commands::pinboard::list_by_wallet(

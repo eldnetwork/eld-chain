@@ -248,8 +248,8 @@ pub(crate) enum PinboardCommand {
     Get(PinboardGetPostArgs),
     /// List pinboard posts by tag.
     ListTag(ListByTagArgs),
-    /// List pinboard posts by wallet.
-    ListWallet(ListByWalletArgs),
+    /// List pinboard posts by wallet address.
+    ListByAddress(ListByWalletArgs),
 }
 
 #[derive(Subcommand, Debug)]
