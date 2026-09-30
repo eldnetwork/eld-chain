@@ -32,12 +32,12 @@ tar -xzf "$asset"
 
 Start a node with the Docker scripts in the [root README](../README.md). The single-node script publishes Tendermint RPC on `26657` and app REST on `9001`.
 
-The CLI reads two paths. `--home` defaults to `.`. An explicit flag replaces that default.
+The CLI stores two files under the user account. They are not next to the binary and not in the current directory.
 
 | Path | Flag | Purpose |
 |---|---|---|
-| `$home/config/eld-cli-config.json` | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
-| `$home/wallets/wallets.json` | `--wallets` | Local Ed25519 keys. Gitignored. |
+| Linux: `~/.config/eld/eld-cli-config.json` (`$XDG_CONFIG_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/eld-cli-config.json`. | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
+| Linux: `~/.local/share/eld/wallets.json` (`$XDG_DATA_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/wallets.json`. | `--wallets` | Local Ed25519 keys. |
 
 `wallet` commands and `completions` stay offline. They do not read this file and they do not prompt.
 
@@ -61,7 +61,7 @@ Faucet address (IP or URL):
 
 An IP or hostname uses port `8080` and `/faucet/request`. A URL is stored as `faucet_url`. Without a terminal, it exits 1 and prints `eld-cli config faucet <ip-or-url>`.
 
-`eld-cli config node <ip-or-url>` rewrites the node fields and refreshes `chain_id`. Faucet fields already in the file stay. `eld-cli config faucet <ip-or-url>` rewrites only the faucet fields. Both take the address as an argument and create `config/` when needed.
+`eld-cli config node <ip-or-url>` rewrites the node fields and refreshes `chain_id`. Faucet fields already in the file stay. `eld-cli config faucet <ip-or-url>` rewrites only the faucet fields. Both take the address as an argument and create the parent directory when needed.
 
 ```sh
 eld-cli config node 127.0.0.1
@@ -70,7 +70,7 @@ eld-cli config faucet 127.0.0.1
 eld-cli config faucet https://faucet.example.com
 ```
 
-You can still copy [`config/eld-cli-config.json.example`](config/eld-cli-config.json.example) to `config/eld-cli-config.json` instead of answering the prompt. Signing uses the built-in fee schedule. It is not read from a file.
+[`config/eld-cli-config.json.example`](config/eld-cli-config.json.example) shows the fields. Signing uses the built-in fee schedule. It is not read from a file.
 
 Optional `node_url`, `app_url`, and `faucet_url` override host and port when set.
 
@@ -78,9 +78,8 @@ Optional `node_url`, `app_url`, and `faucet_url` override host and port when set
 
 | Flag | Meaning |
 |---|---|
-| `--home <DIR>` | Base directory for the paths above. Default `.`. |
-| `--wallets <PATH>` | Wallet file. |
-| `--cli-config <PATH>` | Client endpoints file. Env: `ELD_CLI_CONFIG`. |
+| `--wallets <PATH>` | Wallet file. Overrides the platform path above. |
+| `--cli-config <PATH>` | Client endpoints file. Overrides the platform path above. Env: `ELD_CLI_CONFIG`. |
 | `-y`, `--yes` | Skip the `wallet remove` confirmation. |
 | `--dry-run` | Print the intended transfer, stake, unstake, namespace add, or pinboard post. Does not broadcast and does not print a tx hash. |
 | `--output text\|json` | Default `text`. Env: `ELD_CLI_OUTPUT`. JSON is one document on stdout. |

@@ -9,7 +9,7 @@ use args::{
     PinboardCommand, SubCommand, TxCommand, WalletCommand,
 };
 use clap::Parser;
-use eld_client::config::{ClientConfig, FeeConfig, WALLETS_PATH};
+use eld_client::config::{ClientConfig, FeeConfig};
 use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 use output::OutputMode;
@@ -139,25 +139,125 @@ fn command_name(cmd: &SubCommand) -> &'static str {
     }
 }
 
-const CLI_CONFIG_PATH: &str = "config/eld-cli-config.json";
+const CONFIG_FILE_NAME: &str = "eld-cli-config.json";
+const WALLETS_FILE_NAME: &str = "wallets.json";
 
 struct CliPaths {
     cli_config: PathBuf,
     wallets: PathBuf,
 }
 
-fn resolve_paths(args: &Arguments) -> CliPaths {
-    let home = &args.home;
-    CliPaths {
-        cli_config: args
-            .config
-            .clone()
-            .unwrap_or_else(|| home.join(CLI_CONFIG_PATH)),
-        wallets: args
-            .wallets
-            .clone()
-            .unwrap_or_else(|| home.join(WALLETS_PATH)),
+fn non_empty_env_path(key: &str) -> Option<PathBuf> {
+    let value = std::env::var_os(key)?;
+    if value.is_empty() {
+        return None;
     }
+    Some(PathBuf::from(value))
+}
+
+fn user_home() -> Result<PathBuf, EldError> {
+    non_empty_env_path("HOME")
+        .or_else(|| non_empty_env_path("USERPROFILE"))
+        .ok_or_else(|| {
+            EldError::make_validation_error(
+                "home",
+                "missing",
+                "No home directory is set. Pass --cli-config and --wallets.",
+            )
+        })
+}
+
+fn platform_config_path(
+    home: &Path,
+    xdg_config_home: Option<&Path>,
+    appdata: Option<&Path>,
+) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (xdg_config_home, appdata);
+        home.join("Library/Application Support/eld")
+            .join(CONFIG_FILE_NAME)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = appdata;
+        let base = xdg_config_home
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.join(".config"));
+        base.join("eld").join(CONFIG_FILE_NAME)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = xdg_config_home;
+        let base = appdata
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.to_path_buf());
+        base.join("eld").join(CONFIG_FILE_NAME)
+    }
+}
+
+fn platform_wallets_path(
+    home: &Path,
+    xdg_data_home: Option<&Path>,
+    appdata: Option<&Path>,
+) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (xdg_data_home, appdata);
+        home.join("Library/Application Support/eld")
+            .join(WALLETS_FILE_NAME)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = appdata;
+        let base = xdg_data_home
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.join(".local/share"));
+        base.join("eld").join(WALLETS_FILE_NAME)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = xdg_data_home;
+        let base = appdata
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| home.to_path_buf());
+        base.join("eld").join(WALLETS_FILE_NAME)
+    }
+}
+
+fn default_config_path() -> Result<PathBuf, EldError> {
+    let home = user_home()?;
+    let xdg = non_empty_env_path("XDG_CONFIG_HOME");
+    let appdata = non_empty_env_path("APPDATA");
+    Ok(platform_config_path(
+        &home,
+        xdg.as_deref(),
+        appdata.as_deref(),
+    ))
+}
+
+fn default_wallets_path() -> Result<PathBuf, EldError> {
+    let home = user_home()?;
+    let xdg = non_empty_env_path("XDG_DATA_HOME");
+    let appdata = non_empty_env_path("APPDATA");
+    Ok(platform_wallets_path(
+        &home,
+        xdg.as_deref(),
+        appdata.as_deref(),
+    ))
+}
+
+fn resolve_paths(args: &Arguments) -> Result<CliPaths, EldError> {
+    Ok(CliPaths {
+        cli_config: match &args.config {
+            Some(path) => path.clone(),
+            None => default_config_path()?,
+        },
+        wallets: match &args.wallets {
+            Some(path) => path.clone(),
+            None => default_wallets_path()?,
+        },
+    })
 }
 
 fn command_is_offline(cmd: &SubCommand) -> bool {
@@ -217,7 +317,7 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
         args::print_completions(shell)?;
         return Ok(());
     }
-    let paths = resolve_paths(&args);
+    let paths = resolve_paths(&args)?;
     let yes = args.yes;
     let dry_run = args.dry_run;
     let mode = OutputMode::new(args.output);
@@ -433,10 +533,9 @@ mod tests {
     use super::*;
     use args::{CreateWalletArgs, GetAccountArgs};
 
-    fn args_with(home: PathBuf, cmd: SubCommand) -> Arguments {
+    fn args_with(cmd: SubCommand) -> Arguments {
         Arguments {
             cmd,
-            home,
             wallets: None,
             config: None,
             yes: false,
@@ -445,41 +544,75 @@ mod tests {
         }
     }
 
+    fn args_in(dir: &Path, cmd: SubCommand) -> Arguments {
+        let mut args = args_with(cmd);
+        args.config = Some(dir.join("config").join("eld-cli-config.json"));
+        args.wallets = Some(dir.join("wallets").join("wallets.json"));
+        args
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
-    fn home_sets_default_paths() {
-        let paths = resolve_paths(&args_with(
-            PathBuf::from("/tmp/eld-home"),
-            SubCommand::ListWallets,
-        ));
+    fn macos_defaults_use_application_support_and_ignore_xdg() {
+        let home = Path::new("/Users/eld");
+        let xdg = Path::new("/xdg");
         assert_eq!(
-            paths.wallets,
-            PathBuf::from("/tmp/eld-home/wallets/wallets.json")
+            platform_config_path(home, Some(xdg), None),
+            home.join("Library/Application Support/eld/eld-cli-config.json")
         );
         assert_eq!(
-            paths.cli_config,
-            PathBuf::from("/tmp/eld-home/config/eld-cli-config.json")
+            platform_wallets_path(home, Some(xdg), None),
+            home.join("Library/Application Support/eld/wallets.json")
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_defaults_use_xdg_or_home_dirs() {
+        let home = Path::new("/home/eld");
+        assert_eq!(
+            platform_config_path(home, None, None),
+            home.join(".config/eld/eld-cli-config.json")
+        );
+        assert_eq!(
+            platform_wallets_path(home, None, None),
+            home.join(".local/share/eld/wallets.json")
+        );
+        let xdg_config = Path::new("/tmp/xdg-config");
+        let xdg_data = Path::new("/tmp/xdg-data");
+        assert_eq!(
+            platform_config_path(home, Some(xdg_config), None),
+            xdg_config.join("eld/eld-cli-config.json")
+        );
+        assert_eq!(
+            platform_wallets_path(home, Some(xdg_data), None),
+            xdg_data.join("eld/wallets.json")
+        );
+    }
+
+    #[test]
+    fn explicit_paths_replace_platform_defaults() {
+        let mut args = args_with(SubCommand::ListWallets);
+        args.config = Some(PathBuf::from("/tmp/eld-cli-config.json"));
+        args.wallets = Some(PathBuf::from("/tmp/wallets.json"));
+        let paths = resolve_paths(&args).unwrap();
+        assert_eq!(paths.cli_config, PathBuf::from("/tmp/eld-cli-config.json"));
+        assert_eq!(paths.wallets, PathBuf::from("/tmp/wallets.json"));
     }
 
     #[tokio::test]
     async fn wallet_list_works_without_node_config() {
         let dir = tempfile::tempdir().unwrap();
         let wallets = dir.path().join("wallets.json");
-        let mut create = args_with(
-            dir.path().to_path_buf(),
-            SubCommand::CreateWallet(CreateWalletArgs {
-                name: "alice".to_string(),
-            }),
-        );
+        let mut create = args_with(SubCommand::CreateWallet(CreateWalletArgs {
+            name: "alice".to_string(),
+        }));
         create.wallets = Some(wallets.clone());
         dispatch(create).await.unwrap();
 
-        let mut list = args_with(
-            dir.path().to_path_buf(),
-            SubCommand::Wallet {
-                cmd: WalletCommand::List,
-            },
-        );
+        let mut list = args_with(SubCommand::Wallet {
+            cmd: WalletCommand::List,
+        });
         list.wallets = Some(wallets);
         dispatch(list).await.unwrap();
     }
@@ -507,8 +640,8 @@ mod tests {
         let address =
             eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
                 .unwrap();
-        let err = dispatch(args_with(
-            dir.path().to_path_buf(),
+        let err = dispatch(args_in(
+            dir.path(),
             SubCommand::Account {
                 cmd: AccountCommand::Get(GetAccountArgs { address }),
             },
@@ -523,8 +656,8 @@ mod tests {
     async fn node_command_without_config_names_config_node_when_not_a_terminal() {
         let dir = tempfile::tempdir().unwrap();
         let err = dispatch_with(
-            args_with(
-                dir.path().to_path_buf(),
+            args_in(
+                dir.path(),
                 SubCommand::Chain {
                     cmd: ChainCommand::Epoch,
                 },
@@ -557,8 +690,8 @@ mod tests {
             eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
                 .unwrap();
         let err = dispatch_with(
-            args_with(
-                dir.path().to_path_buf(),
+            args_in(
+                dir.path(),
                 SubCommand::Tx {
                     cmd: TxCommand::Faucet(args::FaucetArgs { address }),
                 },
@@ -589,8 +722,8 @@ mod tests {
             eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
                 .unwrap();
         let err = dispatch_with(
-            args_with(
-                dir.path().to_path_buf(),
+            args_in(
+                dir.path(),
                 SubCommand::Tx {
                     cmd: TxCommand::Transfer(args::TransferArgs {
                         wallet_name: "alice".to_string(),

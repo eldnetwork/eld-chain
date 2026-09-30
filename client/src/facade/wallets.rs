@@ -12,6 +12,11 @@ use std::path::Path;
 /// Writes wallet JSON; on Unix also chmods the file to owner read/write only (`0600`).
 fn write_wallet_file(path: impl AsRef<Path>, contents: &str) -> std::io::Result<()> {
     let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
     fs::write(path, contents)?;
     #[cfg(unix)]
     {
@@ -128,6 +133,17 @@ mod tests {
         write_wallet_file(path, "[]").unwrap();
 
         let mode = fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_wallet_file_creates_missing_parent_and_sets_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join("wallets.json");
+        write_wallet_file(&path, "[]").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "[]");
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
     }
 }

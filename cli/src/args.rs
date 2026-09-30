@@ -11,15 +11,11 @@ pub struct Arguments {
     #[command(subcommand)]
     pub(crate) cmd: SubCommand,
 
-    /// Base directory for config and wallets.
-    #[arg(long, default_value = ".", value_name = "DIR")]
-    pub(crate) home: PathBuf,
-
-    /// Wallet file. Default: `$home/wallets/wallets.json`.
+    /// Wallet file. Linux: `~/.local/share/eld/wallets.json`. macOS: `~/Library/Application Support/eld/wallets.json`.
     #[arg(long, value_name = "PATH")]
     pub(crate) wallets: Option<PathBuf>,
 
-    /// Client endpoints file. Default: `$home/config/eld-cli-config.json`.
+    /// Client endpoints file. Linux: `~/.config/eld/eld-cli-config.json`. macOS: `~/Library/Application Support/eld/eld-cli-config.json`.
     #[arg(long = "cli-config", env = "ELD_CLI_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
 
@@ -602,9 +598,10 @@ Commands:
   help         Print this message or the help of the given subcommand(s)
 
 Options:
-      --home <DIR>         Base directory for config and wallets [default: .]
-      --wallets <PATH>     Wallet file. Default: `$home/wallets/wallets.json`
-      --cli-config <PATH>  Client endpoints file. Default: `$home/config/eld-cli-config.json` [env:
+      --wallets <PATH>     Wallet file. Linux: `~/.local/share/eld/wallets.json`. macOS:
+                           `~/Library/Application Support/eld/wallets.json`
+      --cli-config <PATH>  Client endpoints file. Linux: `~/.config/eld/eld-cli-config.json`. macOS:
+                           `~/Library/Application Support/eld/eld-cli-config.json` [env:
                            ELD_CLI_CONFIG=]
   -y, --yes                Skip confirmations
       --dry-run            Print the intended transfer, stake, unstake, namespace add, or pinboard
