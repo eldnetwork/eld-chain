@@ -19,10 +19,10 @@ cargo install --path cli --locked
 cargo run -p eld-cli -- --help
 ```
 
-A tag `eld-cli-v*` (for example `eld-cli-v0.0.1`) builds release binaries and attaches them to a draft GitHub Release. The tarballs are public after that draft is published. Linux assets are `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`; those binaries need `libssl.so.3` (Debian and Ubuntu). macOS assets are `aarch64-apple-darwin` and `x86_64-apple-darwin`. Those binaries are unsigned and not notarized, so Gatekeeper will block a browser download until the quarantine attribute is removed. Each release includes `sha256sums.txt`.
+A tag `eld-cli-v*` (for example `eld-cli-v0.0.2`) builds release binaries and attaches them to a draft GitHub Release. The tarballs are public after that draft is published. Linux assets are `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`; those binaries need `libssl.so.3` (Debian and Ubuntu). macOS assets are `aarch64-apple-darwin` and `x86_64-apple-darwin`. Those binaries are unsigned and not notarized, so Gatekeeper will block a browser download until the quarantine attribute is removed. Each release includes `sha256sums.txt`.
 
 ```sh
-tag=eld-cli-v0.0.1
+tag=eld-cli-v0.0.2
 asset="${tag}-x86_64-unknown-linux-gnu.tar.gz"
 curl -fsSL -O "https://github.com/eldnetwork/eld-chain/releases/download/${tag}/${asset}"
 tar -xzf "$asset"
