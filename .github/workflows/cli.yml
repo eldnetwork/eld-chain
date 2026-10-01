@@ -70,7 +70,7 @@ jobs:
         run: |
           ldd ./target/${{ matrix.target }}/release/eld-cli
           ! ldd ./target/${{ matrix.target }}/release/eld-cli | grep -q 'not found'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: eld-cli-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/eld-cli
