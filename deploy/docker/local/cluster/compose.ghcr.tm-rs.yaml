@@ -26,7 +26,7 @@ x-app-eld: &app-eld
     <<: *app-log
 
 x-tendermint: &tendermint-common
-  image: ghcr.io/eldnetwork/eld-tendermint-rs:v0.34.24-eld-tm-rs.1
+  image: ${TM_RS_IMAGE}
   pull_policy: always
   restart: unless-stopped
   logging:
