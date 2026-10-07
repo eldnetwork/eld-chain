@@ -17,7 +17,7 @@ That reads `config/faucet_config.json` (`node_host` and `chain_id`) and listens 
 | Method | Path | Response |
 |---|---|---|
 | GET | `/health` | body `OK` |
-| POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }` |
+| POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }`. On success also `tx_hash` and `amount`. Body over 1 KB is rejected. |
 
 ## Rate limits
 
@@ -28,7 +28,9 @@ Each successful check counts **one drip** for the requested address and **one re
 | `address_daily_drips` | recipient address | UTC calendar day | `1` |
 | `ip_hourly_requests` | socket peer IP | UTC hour | `3` |
 
-- Address limit: after `address_daily_drips` drips to the same `0x…` address in one UTC day, further requests for that address get `429` with `Daily faucet limit reached for this address.`
-- IP limit: after `ip_hourly_requests` from the same peer IP in the current UTC hour, further requests from that IP get `429` with `Hourly faucet limit reached for this IP.`
-- IP is the TCP peer address only (no `X-Forwarded-For` yet).
+- Address limit: after `address_daily_drips` drips to the same `0x…` address in one UTC day, further requests for that address get `429`.
+- IP limit: after `ip_hourly_requests` from the same peer IP in the current UTC hour, further requests from that IP get `429`.
+- A `429` body is `{ "success": false, "message": "try again later" }` plus `Retry-After` (seconds until the next UTC day, or until the hour window ends).
+- IP is the TCP peer address. If `FAUCET_TRUST_PROXY=1`, the first `X-Forwarded-For` hop is used instead.
 - Counters are stored in SQLite at `db_path` (default `data/faucet.db`). They survive a restart. A failed broadcast releases the slot. Rows older than two days are purged every hour.
+- Transfers are signed one at a time. A node/network failure returns `503` `node unavailable`; other submit failures return `400` `Error submitting tx`. The response never includes the chain error text.

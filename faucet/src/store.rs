@@ -172,9 +172,6 @@ impl FaucetStore {
         })
     }
 
-    /// Records the submitted tx hash. The request path will call this once it
-    /// has the hash from broadcast.
-    #[allow(dead_code)]
     pub fn commit(&self, address: &str, tx_hash: &str) -> Result<(), StoreError> {
         let conn = self.conn.lock().expect("faucet store mutex");
         conn.execute(

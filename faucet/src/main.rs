@@ -1,10 +1,12 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
+use eld_common::error::EldError;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info};
@@ -17,6 +19,9 @@ use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
 
 use crate::store::{FaucetStore, LimitKind, StoreError};
 
+const JSON_BODY_LIMIT: usize = 1024;
+const TRUST_PROXY_ENV: &str = "FAUCET_TRUST_PROXY";
+
 #[derive(Deserialize)]
 struct FaucetRequest {
     address: String,
@@ -26,27 +31,90 @@ struct FaucetRequest {
 struct FaucetResponse {
     success: bool,
     message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tx_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    amount: Option<String>,
 }
 
 #[derive(Clone)]
 struct AppState {
     client: ChainClient,
     store: Arc<FaucetStore>,
+    sign_lock: Arc<tokio::sync::Mutex<()>>,
     wallet_name: String,
     drip_base_units: u64,
+    trust_proxy: bool,
 }
 
 fn failure(status: actix_web::http::StatusCode, message: impl Into<String>) -> HttpResponse {
     HttpResponse::build(status).json(FaucetResponse {
         success: false,
         message: Some(message.into()),
+        tx_hash: None,
+        amount: None,
     })
 }
 
-fn client_ip(req: &HttpRequest) -> String {
+fn first_forwarded_hop(header: &str) -> Option<&str> {
+    let hop = header.split(',').next()?.trim();
+    if hop.is_empty() {
+        None
+    } else {
+        Some(hop)
+    }
+}
+
+fn client_ip(req: &HttpRequest, trust_proxy: bool) -> String {
+    if trust_proxy {
+        if let Some(xff) = req
+            .headers()
+            .get("X-Forwarded-For")
+            .and_then(|value| value.to_str().ok())
+        {
+            if let Some(hop) = first_forwarded_hop(xff) {
+                return hop.to_string();
+            }
+        }
+    }
     req.peer_addr()
         .map(|addr| addr.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn retry_after_secs(kind: LimitKind, now: DateTime<Utc>) -> u64 {
+    match kind {
+        LimitKind::AddressDaily => {
+            let midnight = (now.date_naive() + ChronoDuration::days(1))
+                .and_time(chrono::NaiveTime::MIN)
+                .and_utc();
+            midnight.signed_duration_since(now).num_seconds().max(1) as u64
+        }
+        LimitKind::IpHourly => {
+            let ts = now.timestamp();
+            let hour_end = ts.div_euclid(3600) * 3600 + 3600;
+            (hour_end - ts).max(1) as u64
+        }
+    }
+}
+
+fn rate_limited(kind: LimitKind, now: DateTime<Utc>) -> HttpResponse {
+    HttpResponse::TooManyRequests()
+        .insert_header(("Retry-After", retry_after_secs(kind, now).to_string()))
+        .json(FaucetResponse {
+            success: false,
+            message: Some("try again later".to_string()),
+            tx_hash: None,
+            amount: None,
+        })
+}
+
+fn is_network_or_broadcast_failure(err: &EldError) -> bool {
+    matches!(err, EldError::NetworkError { .. })
+}
+
+fn trust_proxy_from_env() -> bool {
+    env::var(TRUST_PROXY_ENV).ok().as_deref() == Some("1")
 }
 
 async fn request_tokens(
@@ -61,17 +129,11 @@ async fn request_tokens(
         );
     }
 
-    let ip = client_ip(&req);
+    let ip = client_ip(&req, state.trust_proxy);
     let now = Utc::now();
     let reservation = match state.store.reserve(&body.address, &ip, now) {
         Ok(reservation) => reservation,
-        Err(StoreError::Limit(kind)) => {
-            let message = match kind {
-                LimitKind::AddressDaily => "Daily faucet limit reached for this address.",
-                LimitKind::IpHourly => "Hourly faucet limit reached for this IP.",
-            };
-            return failure(actix_web::http::StatusCode::TOO_MANY_REQUESTS, message);
-        }
+        Err(StoreError::Limit(kind)) => return rate_limited(kind, now),
         Err(e) => {
             error!("Faucet store reserve failed: {e}");
             return failure(
@@ -81,20 +143,34 @@ async fn request_tokens(
         }
     };
 
-    match state
-        .client
-        .transfer(
-            state.wallet_name.clone(),
-            body.address.clone(),
-            u128::from(state.drip_base_units),
-        )
-        .await
-    {
-        Ok(_) => {
-            info!("Faucet transfer tx submitted");
+    let submitted = {
+        let _sign = state.sign_lock.lock().await;
+        state
+            .client
+            .transfer(
+                state.wallet_name.clone(),
+                body.address.clone(),
+                u128::from(state.drip_base_units),
+            )
+            .await
+    };
+
+    match submitted {
+        Ok(submitted) => {
+            let tx_hash = submitted.tx_hash.to_string();
+            if let Err(e) = state.store.commit(&reservation.address, &tx_hash) {
+                error!("Faucet store commit failed: {e}");
+            }
+            info!(
+                address = %reservation.address,
+                tx_hash = %tx_hash,
+                "Faucet transfer tx submitted"
+            );
             HttpResponse::Ok().json(FaucetResponse {
                 success: true,
                 message: Some("tx submit".to_string()),
+                tx_hash: Some(tx_hash),
+                amount: Some(state.drip_base_units.to_string()),
             })
         }
         Err(e) => {
@@ -106,10 +182,17 @@ async fn request_tokens(
                 error!("Faucet store release failed: {release_err}");
             }
             error!("Faucet transfer failed: {e}");
-            failure(
-                actix_web::http::StatusCode::BAD_REQUEST,
-                "Error submitting tx",
-            )
+            if is_network_or_broadcast_failure(&e) {
+                failure(
+                    actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "node unavailable",
+                )
+            } else {
+                failure(
+                    actix_web::http::StatusCode::BAD_REQUEST,
+                    "Error submitting tx",
+                )
+            }
         }
     }
 }
@@ -143,6 +226,7 @@ async fn main() -> std::io::Result<()> {
     let faucet_config = FaucetConfig::load().map_err(io_err)?;
     let tendermint_url = faucet_config.node_url().map_err(io_err)?;
     let bind_addr = faucet_config.bind_addr();
+    let trust_proxy = trust_proxy_from_env();
     info!("Connecting to Tendermint at {tendermint_url}");
     info!("Starting faucet service at {bind_addr}");
     info!(
@@ -154,6 +238,7 @@ async fn main() -> std::io::Result<()> {
         db_path = %faucet_config.db_path,
         wallet_path = %faucet_config.wallet_path.display(),
         wallet_name = %faucet_config.wallet_name,
+        trust_proxy,
         "Faucet config loaded"
     );
 
@@ -204,18 +289,54 @@ async fn main() -> std::io::Result<()> {
     let state = AppState {
         client,
         store,
+        sign_lock: Arc::new(tokio::sync::Mutex::new(())),
         wallet_name: faucet_config.wallet_name.clone(),
         drip_base_units: faucet_config.drip_base_units,
+        trust_proxy,
     };
 
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
             .app_data(web::Data::new(state.clone()))
+            .app_data(web::JsonConfig::default().limit(JSON_BODY_LIMIT))
             .route(HEALTH_PATH, web::get().to(health_check))
             .route(REQUEST_PATH, web::post().to(request_tokens))
     })
     .bind(bind_addr)?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_forwarded_hop_takes_leftmost() {
+        assert_eq!(
+            first_forwarded_hop("203.0.113.1, 192.168.1.1"),
+            Some("203.0.113.1")
+        );
+        assert_eq!(first_forwarded_hop("  10.0.0.2  "), Some("10.0.0.2"));
+        assert_eq!(first_forwarded_hop("  , 10.0.0.2"), None);
+        assert_eq!(first_forwarded_hop(""), None);
+    }
+
+    #[test]
+    fn retry_after_address_daily_is_until_utc_midnight() {
+        let now = DateTime::from_timestamp(1_699_996_800, 0).expect("timestamp");
+        // 2023-11-14 21:20:00 UTC -> 2h 40m until 2023-11-15 00:00:00
+        assert_eq!(
+            retry_after_secs(LimitKind::AddressDaily, now),
+            2 * 3600 + 40 * 60
+        );
+    }
+
+    #[test]
+    fn retry_after_ip_hourly_is_until_hour_end() {
+        let now = DateTime::from_timestamp(1_699_996_800, 0).expect("timestamp");
+        // 21:20:00 -> 2400 seconds until 22:00:00
+        assert_eq!(retry_after_secs(LimitKind::IpHourly, now), 2400);
+    }
 }
