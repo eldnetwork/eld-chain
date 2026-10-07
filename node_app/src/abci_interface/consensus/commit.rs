@@ -1,4 +1,5 @@
 use super::connection::ConsensusConnection;
+use crate::abci_interface::snapshot::manager::CreateSnapshotAndPruneOutcome;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
 use crate::app_state::AppStateTip;
 use crate::errors::handle_fatal_eld_error;
@@ -538,15 +539,36 @@ where
             let snapshot_manager = self.snapshot_manager.clone();
             let snapshot_height = current_state.envelope.block_height;
             tokio::spawn(async move {
-                if let Err(e) = snapshot_manager
-                    .create_snapshot_from_latest_state(snapshot_height)
+                match snapshot_manager
+                    .create_snapshot_and_prune(snapshot_height)
                     .await
                 {
-                    error!(
-                        block_height = snapshot_height,
-                        error = %e,
-                        "Failed to create persisted-state snapshot"
-                    );
+                    Ok(CreateSnapshotAndPruneOutcome::SkippedAlreadyInFlight) => {
+                        warn!(
+                            block_height = snapshot_height,
+                            "Skipping snapshot build; another build is already in flight"
+                        );
+                    }
+                    Ok(CreateSnapshotAndPruneOutcome::Created) => {
+                        info!(
+                            block_height = snapshot_height,
+                            "Created persisted-state snapshot and pruned older snapshots"
+                        );
+                    }
+                    Ok(CreateSnapshotAndPruneOutcome::CreatedButPruneFailed(e)) => {
+                        error!(
+                            block_height = snapshot_height,
+                            error = %e,
+                            "Snapshot created successfully but pruning older snapshots failed"
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            block_height = snapshot_height,
+                            error = %e,
+                            "Failed to create persisted-state snapshot"
+                        );
+                    }
                 }
             });
         }
