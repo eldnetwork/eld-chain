@@ -141,12 +141,16 @@ pub(crate) fn faucet_ok(body: &str) -> String {
                 .get("message")
                 .and_then(|v| v.as_str())
                 .unwrap_or("(no message)");
-            match value.get("success").and_then(|v| v.as_bool()) {
+            let mut text = match value.get("success").and_then(|v| v.as_bool()) {
                 Some(success) => {
                     format!("Faucet request succeeded\nsuccess: {success}\nmessage: {message}")
                 }
                 None => format!("Faucet request succeeded\nmessage: {message}"),
+            };
+            if let Some(tx_hash) = value.get("tx_hash").and_then(|v| v.as_str()) {
+                text.push_str(&format!("\ntx_hash: {tx_hash}"));
             }
+            text
         }
         Err(_) => "Faucet request succeeded".to_string(),
     }
@@ -425,26 +429,13 @@ fn submitted_tx_json(kind: &str, submitted: &SubmittedTx) -> SubmittedTxJson {
     }
 }
 
-#[derive(Serialize)]
-struct FaucetJson {
-    success: Option<bool>,
-    message: String,
-}
-
-fn faucet_json(body: &str) -> FaucetJson {
+fn faucet_json(body: &str) -> Value {
     match serde_json::from_str::<Value>(body) {
-        Ok(value) => FaucetJson {
-            success: value.get("success").and_then(|v| v.as_bool()),
-            message: value
-                .get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or("(no message)")
-                .to_string(),
-        },
-        Err(_) => FaucetJson {
-            success: None,
-            message: "Faucet request succeeded".to_string(),
-        },
+        Ok(value) => value,
+        Err(_) => serde_json::json!({
+            "success": null,
+            "message": "Faucet request succeeded",
+        }),
     }
 }
 
@@ -934,6 +925,22 @@ mod tests {
         assert_eq!(json["address"], ADDRESS);
         assert_eq!(json["balance"], "1000");
         assert_eq!(json["nonce"], 3);
+    }
+
+    #[test]
+    fn faucet_ok_appends_tx_hash_when_present() {
+        let body = r#"{"success":true,"message":"tx submit","tx_hash":"abc","amount":"1000"}"#;
+        assert_eq!(
+            faucet_ok(body),
+            "Faucet request succeeded\nsuccess: true\nmessage: tx submit\ntx_hash: abc"
+        );
+        let json = faucet_json(body);
+        assert_eq!(json["tx_hash"], "abc");
+        assert_eq!(json["amount"], "1000");
+        assert_eq!(
+            faucet_ok(r#"{"success":true,"message":"tx submit"}"#),
+            "Faucet request succeeded\nsuccess: true\nmessage: tx submit"
+        );
     }
 
     #[test]
