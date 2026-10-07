@@ -12,9 +12,9 @@ From this directory:
 cargo run
 ```
 
-That reads `config/config.json` and `config/consensus_config.json` from the current directory and listens on `faucet_host`:`faucet_port` (`127.0.0.1:8080` in the checked-in config). Signing uses the built-in fee schedule. It is not read from the consensus file.
+That reads `config/faucet_config.json` (`node_host` and `chain_id`) and listens on `0.0.0.0:8080`. Tendermint RPC port is `26657`. Signing uses the built-in fee schedule.
 
 | Method | Path | Response |
 |---|---|---|
 | GET | `/health` | body `OK` |
-| POST | `/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }` |
+| POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }` |

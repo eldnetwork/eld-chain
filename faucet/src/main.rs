@@ -1,14 +1,17 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpResponse, HttpServer};
-use eld_client::config::{get_client_setup, FeeConfig, WALLETS_PATH};
+use eld_client::config::{FeeConfig, WALLETS_PATH};
 use eld_client::ChainClient;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info};
 
+mod config;
 mod logging;
 mod rate_limiter;
+
+use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
 
 use crate::rate_limiter::{InMemoryRateLimiter, DAILY_REQUEST_LIMIT};
 
@@ -124,15 +127,18 @@ async fn main() -> std::io::Result<()> {
     logging::init_default_logging().map_err(io_err)?;
 
     info!("Starting faucet server");
-    let setup = get_client_setup().map_err(io_err)?;
-    let tendermint_url = setup.config.get_node_url().map_err(io_err)?;
-    let bind_addr = format!("{}:{}", setup.config.faucet_host, setup.config.faucet_port);
-    let faucet_end_point = setup.config.faucet_end_point.clone();
+    let faucet_config = FaucetConfig::load().map_err(io_err)?;
+    let tendermint_url = faucet_config.node_url().map_err(io_err)?;
+    let bind_addr = FaucetConfig::bind_addr();
     info!("Connecting to Tendermint at {tendermint_url}");
     info!("Starting faucet service at {bind_addr}");
 
-    let client = ChainClient::with_wallets(setup.config, FeeConfig::default(), WALLETS_PATH)
-        .map_err(io_err)?;
+    let client = ChainClient::with_wallets(
+        faucet_config.to_client_config(),
+        FeeConfig::default(),
+        WALLETS_PATH,
+    )
+    .map_err(io_err)?;
     let state = AppState {
         client,
         rate_limiter: Arc::new(InMemoryRateLimiter::new(DAILY_REQUEST_LIMIT)),
@@ -142,8 +148,8 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Cors::permissive())
             .app_data(web::Data::new(state.clone()))
-            .route("/health", web::get().to(health_check))
-            .route(faucet_end_point.as_str(), web::post().to(request_tokens))
+            .route(HEALTH_PATH, web::get().to(health_check))
+            .route(REQUEST_PATH, web::post().to(request_tokens))
     })
     .bind(bind_addr)?
     .run()

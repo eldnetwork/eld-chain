@@ -1,8 +1,0 @@
-{
-    "node_host":"127.0.0.1",
-    "node_port":"26657",
-    "faucet_host":"127.0.0.1",
-    "faucet_port":"8080",
-    "faucet_end_point":"/request",
-    "app_port":"9001"
-}

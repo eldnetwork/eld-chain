@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["common", "client", "node_app", "cli"]
-default-members = ["common", "client", "node_app", "cli"]
+members = ["common", "client", "node_app", "cli", "faucet"]
+default-members = ["common", "client", "node_app", "cli", "faucet"]
 
 [workspace.package]
 edition = "2021"

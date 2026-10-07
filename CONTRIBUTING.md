@@ -1,6 +1,6 @@
 # Contributing
 
-This repo is the Eld workspace: `eld-common` (`common/`), `eld-client` (`client/`), the CLI (`eld-cli` in `cli/`), and the ABCI node (`eld-node` in `node_app/`). Crates are not on crates.io yet (`publish = false`).
+This repo is the Eld workspace: `eld-common` (`common/`), `eld-client` (`client/`), the CLI (`eld-cli` in `cli/`), the faucet (`eld-faucet` in `faucet/`), and the ABCI node (`eld-node` in `node_app/`). Crates are not on crates.io yet (`publish = false`).
 
 ## Pull requests
 
@@ -19,10 +19,11 @@ Use the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Report securi
 | `common/` | `eld-common` | Protocol types, validation, `Wallet`, `SlotAllocator` |
 | `client/` | `eld-client` | Tendermint RPC, app REST, faucet HTTP, CWD config, `wallets.json` I/O, `ChainClient` |
 | `cli/` | `eld-cli` | Command-line client over `ChainClient` |
+| `faucet/` | `eld-faucet` | HTTP faucet binary |
 | `node_app/` | `eld-node` | ABCI node binary and server logic |
 | `deploy/` | — | CI script, local four-node Compose, Dockerfiles |
 
-Package names are hyphenated (`eld-common`, `eld-client`, `eld-cli`, `eld-node`). Library imports use underscores (`eld_common`, `eld_client`). `eld-cli` and `eld-node` are binary-only.
+Package names are hyphenated (`eld-common`, `eld-client`, `eld-cli`, `eld-faucet`, `eld-node`). Library imports use underscores (`eld_common`, `eld_client`). `eld-cli`, `eld-faucet`, and `eld-node` are binary-only.
 
 Each library crate directory includes `LICENSE`, `README.md`, and `NOTICE`. `eld-common` and `eld-client` also maintain `CHANGELOG.md`; hex/ID rules live in `common/TYPE_DESIGN.md`.
 
