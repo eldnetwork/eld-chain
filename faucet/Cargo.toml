@@ -1,0 +1,34 @@
+[package]
+name = "eld-faucet"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "HTTP faucet that signs and broadcasts test-fund transfers"
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+homepage = "https://github.com/eldnetwork/eld-chain"
+keywords = ["blockchain", "faucet"]
+publish = false
+
+[[bin]]
+name = "eld-faucet"
+path = "src/main.rs"
+
+[dependencies]
+actix-cors = "0.7.1"
+actix-web = "4.11.0"
+chrono = "0.4.40"
+eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
+eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

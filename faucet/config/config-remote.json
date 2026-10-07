@@ -1,0 +1,8 @@
+{
+    "node_host":"tendermint-1",
+    "node_port":"26657",
+    "faucet_host":"0.0.0.0",
+    "faucet_port":"8080",
+    "faucet_end_point":"/request",
+    "app_port":"9001"
+}
