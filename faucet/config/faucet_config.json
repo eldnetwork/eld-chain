@@ -1,4 +1,4 @@
 {
-    "node_host": "127.0.0.1",
-    "chain_id": "eld-testnet-tempelhof"
+  "node_host": "127.0.0.1",
+  "chain_id": "eld-testnet-tempelhof"
 }
