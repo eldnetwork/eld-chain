@@ -1,6 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpResponse, HttpServer};
-use eld_client::config::{get_client_setup, WALLETS_PATH};
+use eld_client::config::{get_client_setup, FeeConfig, WALLETS_PATH};
 use eld_client::ChainClient;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
@@ -131,8 +131,8 @@ async fn main() -> std::io::Result<()> {
     info!("Connecting to Tendermint at {tendermint_url}");
     info!("Starting faucet service at {bind_addr}");
 
-    let client =
-        ChainClient::with_wallets(setup.config, setup.fee_config, WALLETS_PATH).map_err(io_err)?;
+    let client = ChainClient::with_wallets(setup.config, FeeConfig::default(), WALLETS_PATH)
+        .map_err(io_err)?;
     let state = AppState {
         client,
         rate_limiter: Arc::new(InMemoryRateLimiter::new(DAILY_REQUEST_LIMIT)),

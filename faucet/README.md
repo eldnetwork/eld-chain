@@ -12,7 +12,7 @@ From this directory:
 cargo run
 ```
 
-That reads `config/config.json` and `config/consensus_config.json` from the current directory and listens on `faucet_host`:`faucet_port` (`127.0.0.1:8080` in the checked-in config).
+That reads `config/config.json` and `config/consensus_config.json` from the current directory and listens on `faucet_host`:`faucet_port` (`127.0.0.1:8080` in the checked-in config). Signing uses the built-in fee schedule. It is not read from the consensus file.
 
 | Method | Path | Response |
 |---|---|---|
