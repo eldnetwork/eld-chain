@@ -18,3 +18,17 @@ That reads `config/faucet_config.json` (`node_host` and `chain_id`) and listens 
 |---|---|---|
 | GET | `/health` | body `OK` |
 | POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }` |
+
+## Rate limits
+
+Each successful check counts **one drip** for the requested address and **one request** for the client IP. Caps come from config (defaults below). Both must have room or the call returns `429` and neither counter moves.
+
+| Cap | Scope | Window | Default |
+|---|---|---|---|
+| `address_daily_drips` | recipient address | UTC calendar day | `1` |
+| `ip_hourly_requests` | socket peer IP | UTC hour | `3` |
+
+- Address limit: after `address_daily_drips` drips to the same `0x…` address in one UTC day, further requests for that address get `429` with `Daily faucet limit reached for this address.`
+- IP limit: after `ip_hourly_requests` from the same peer IP in the current UTC hour, further requests from that IP get `429` with `Hourly faucet limit reached for this IP.`
+- IP is the TCP peer address only (no `X-Forwarded-For` yet).
+- Counters live in memory. A process restart clears them. A failed broadcast still consumes a slot today.
