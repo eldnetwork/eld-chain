@@ -60,12 +60,8 @@ pub struct FaucetConfig {
     pub bind_port: u16,
     #[serde(default = "default_drip")]
     pub drip_base_units: u64,
-    /// Wired by the SQLite rate-limit store (not yet used at request time).
-    #[allow(dead_code)]
     #[serde(default = "default_address_daily")]
     pub address_daily_drips: u32,
-    /// Wired by the SQLite rate-limit store (not yet used at request time).
-    #[allow(dead_code)]
     #[serde(default = "default_ip_hourly")]
     pub ip_hourly_requests: u32,
     /// Wired by the hot-wallet reserve check (not yet used at request time).

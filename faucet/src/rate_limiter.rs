@@ -2,50 +2,81 @@ use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 
-pub const DAILY_REQUEST_LIMIT: u64 = 10_000_000;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitKind {
+    AddressDaily,
+    IpHourly,
+}
 
-struct DailyUsage {
+struct AddressDayUsage {
     date: NaiveDate,
-    amount: u64,
+    count: u32,
+}
+
+struct IpHourUsage {
+    window_start: i64,
+    count: u32,
+}
+
+fn utc_hour_start(ts: i64) -> i64 {
+    ts.div_euclid(3600) * 3600
 }
 
 pub struct InMemoryRateLimiter {
-    request_usage: Mutex<HashMap<String, DailyUsage>>,
-    daily_limit: u64,
+    address_usage: Mutex<HashMap<String, AddressDayUsage>>,
+    ip_usage: Mutex<HashMap<String, IpHourUsage>>,
+    address_daily_drips: u32,
+    ip_hourly_requests: u32,
 }
 
 impl InMemoryRateLimiter {
-    pub fn new(daily_limit: u64) -> Self {
+    pub fn new(address_daily_drips: u32, ip_hourly_requests: u32) -> Self {
         Self {
-            request_usage: Mutex::new(HashMap::new()),
-            daily_limit,
+            address_usage: Mutex::new(HashMap::new()),
+            ip_usage: Mutex::new(HashMap::new()),
+            address_daily_drips,
+            ip_hourly_requests,
         }
     }
 
-    pub async fn check_and_consume(
-        &self,
-        requester: &str,
-        requested_amount: u64,
-    ) -> Result<(), u64> {
-        let today = Utc::now().date_naive();
-        let mut usage = self.request_usage.lock().await;
+    /// Consume one drip for `address` and one request for `ip`.
+    /// Rolls neither counter back if either cap would be exceeded.
+    pub async fn check_and_consume(&self, address: &str, ip: &str) -> Result<(), LimitKind> {
+        let now = Utc::now();
+        let today = now.date_naive();
+        let hour_start = utc_hour_start(now.timestamp());
 
-        let requester_usage = usage.entry(requester.to_string()).or_insert(DailyUsage {
-            date: today,
-            amount: 0,
+        let mut addresses = self.address_usage.lock().await;
+        let mut ips = self.ip_usage.lock().await;
+
+        let address_usage = addresses
+            .entry(address.to_string())
+            .or_insert(AddressDayUsage {
+                date: today,
+                count: 0,
+            });
+        if address_usage.date != today {
+            address_usage.date = today;
+            address_usage.count = 0;
+        }
+        if address_usage.count >= self.address_daily_drips {
+            return Err(LimitKind::AddressDaily);
+        }
+
+        let ip_usage = ips.entry(ip.to_string()).or_insert(IpHourUsage {
+            window_start: hour_start,
+            count: 0,
         });
-
-        if requester_usage.date != today {
-            requester_usage.date = today;
-            requester_usage.amount = 0;
+        if ip_usage.window_start != hour_start {
+            ip_usage.window_start = hour_start;
+            ip_usage.count = 0;
+        }
+        if ip_usage.count >= self.ip_hourly_requests {
+            return Err(LimitKind::IpHourly);
         }
 
-        let updated_amount = requester_usage.amount.saturating_add(requested_amount);
-        if updated_amount > self.daily_limit {
-            return Err(self.daily_limit.saturating_sub(requester_usage.amount));
-        }
-
-        requester_usage.amount = updated_amount;
+        address_usage.count = address_usage.count.saturating_add(1);
+        ip_usage.count = ip_usage.count.saturating_add(1);
         Ok(())
     }
 }
@@ -55,34 +86,55 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn drip_exceeds_daily_limit() {
-        let limiter = InMemoryRateLimiter::new(DAILY_REQUEST_LIMIT);
-        let remaining = limiter
-            .check_and_consume("0xabc", 1_000 * 1_000_000)
+    async fn one_drip_allowed_second_same_day_blocked() {
+        let limiter = InMemoryRateLimiter::new(1, 10);
+        limiter
+            .check_and_consume("0xabc", "1.1.1.1")
             .await
-            .expect_err("drip is larger than the daily cap");
-        assert_eq!(remaining, DAILY_REQUEST_LIMIT);
+            .expect("first drip");
+        assert_eq!(
+            limiter
+                .check_and_consume("0xabc", "1.1.1.1")
+                .await
+                .expect_err("second drip same day"),
+            LimitKind::AddressDaily
+        );
     }
 
     #[tokio::test]
-    async fn consumes_until_the_daily_cap() {
-        let limiter = InMemoryRateLimiter::new(100);
+    async fn different_address_still_allowed() {
+        let limiter = InMemoryRateLimiter::new(1, 10);
         limiter
-            .check_and_consume("0xabc", 40)
+            .check_and_consume("0xabc", "1.1.1.1")
             .await
-            .expect("under the cap");
-        let remaining = limiter
-            .check_and_consume("0xabc", 70)
-            .await
-            .expect_err("over the cap");
-        assert_eq!(remaining, 60);
+            .expect("first address");
         limiter
-            .check_and_consume("0xabc", 60)
+            .check_and_consume("0xdef", "1.1.1.1")
             .await
-            .expect("exact remaining");
+            .expect("different address");
+    }
+
+    #[tokio::test]
+    async fn ip_hourly_cap() {
+        let limiter = InMemoryRateLimiter::new(10, 2);
         limiter
-            .check_and_consume("0xother", 100)
+            .check_and_consume("0xa", "9.9.9.9")
             .await
-            .expect("other address has its own cap");
+            .expect("1");
+        limiter
+            .check_and_consume("0xb", "9.9.9.9")
+            .await
+            .expect("2");
+        assert_eq!(
+            limiter
+                .check_and_consume("0xc", "9.9.9.9")
+                .await
+                .expect_err("third from same IP"),
+            LimitKind::IpHourly
+        );
+        limiter
+            .check_and_consume("0xc", "8.8.8.8")
+            .await
+            .expect("different IP");
     }
 }

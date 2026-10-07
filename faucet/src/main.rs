@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
 use eld_common::Address;
@@ -13,7 +13,7 @@ mod rate_limiter;
 
 use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
 
-use crate::rate_limiter::{InMemoryRateLimiter, DAILY_REQUEST_LIMIT};
+use crate::rate_limiter::{InMemoryRateLimiter, LimitKind};
 
 #[derive(Deserialize)]
 struct FaucetRequest {
@@ -41,7 +41,14 @@ fn failure(status: actix_web::http::StatusCode, message: impl Into<String>) -> H
     })
 }
 
+fn client_ip(req: &HttpRequest) -> String {
+    req.peer_addr()
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 async fn request_tokens(
+    req: HttpRequest,
     body: web::Json<FaucetRequest>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
@@ -52,17 +59,17 @@ async fn request_tokens(
         );
     }
 
-    if let Err(remaining_allowed) = state
+    let ip = client_ip(&req);
+    if let Err(kind) = state
         .rate_limiter
-        .check_and_consume(&body.address, state.drip_base_units)
+        .check_and_consume(&body.address, &ip)
         .await
     {
-        return failure(
-            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
-            format!(
-                "Daily faucet limit reached for this address. Remaining today: {remaining_allowed} base units."
-            ),
-        );
+        let message = match kind {
+            LimitKind::AddressDaily => "Daily faucet limit reached for this address.",
+            LimitKind::IpHourly => "Hourly faucet limit reached for this IP.",
+        };
+        return failure(actix_web::http::StatusCode::TOO_MANY_REQUESTS, message);
     }
 
     match state
@@ -157,7 +164,10 @@ async fn main() -> std::io::Result<()> {
 
     let state = AppState {
         client,
-        rate_limiter: Arc::new(InMemoryRateLimiter::new(DAILY_REQUEST_LIMIT)),
+        rate_limiter: Arc::new(InMemoryRateLimiter::new(
+            faucet_config.address_daily_drips,
+            faucet_config.ip_hourly_requests,
+        )),
         wallet_name: faucet_config.wallet_name.clone(),
         drip_base_units: faucet_config.drip_base_units,
     };
