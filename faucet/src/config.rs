@@ -64,8 +64,6 @@ pub struct FaucetConfig {
     pub address_daily_drips: u32,
     #[serde(default = "default_ip_hourly")]
     pub ip_hourly_requests: u32,
-    /// Wired by the hot-wallet reserve check (not yet used at request time).
-    #[allow(dead_code)]
     #[serde(default = "default_reserve")]
     pub hot_wallet_reserve: u64,
     #[serde(default = "default_db_path")]

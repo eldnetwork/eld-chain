@@ -33,4 +33,5 @@ Each successful check counts **one drip** for the requested address and **one re
 - A `429` body is `{ "success": false, "message": "try again later" }` plus `Retry-After` (seconds until the next UTC day, or until the hour window ends).
 - IP is the TCP peer address. If `FAUCET_TRUST_PROXY=1`, the first `X-Forwarded-For` hop is used instead.
 - Counters are stored in SQLite at `db_path` (default `data/faucet.db`). They survive a restart. A failed broadcast releases the slot. Rows older than two days are purged every hour.
-- Transfers are signed one at a time. A node/network failure returns `503` `node unavailable`; other submit failures return `400` `Error submitting tx`. The response never includes the chain error text.
+- Transfers are signed one at a time. Before each transfer the faucet checks that its account holds at least `drip_base_units + hot_wallet_reserve` (default reserve is 10 drips). If not, it returns `503` `faucet empty` and does not spend the daily/IP slot. The balance is cached for 5 seconds; the sign lock covers the check and the transfer.
+- A node/network failure returns `503` `node unavailable`; other submit failures return `400` `Error submitting tx`. The response never includes the chain error text.

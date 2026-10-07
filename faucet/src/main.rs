@@ -7,8 +7,8 @@ use eld_common::error::EldError;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tracing::{error, info};
 
 mod config;
@@ -21,6 +21,7 @@ use crate::store::{FaucetStore, LimitKind, StoreError};
 
 const JSON_BODY_LIMIT: usize = 1024;
 const TRUST_PROXY_ENV: &str = "FAUCET_TRUST_PROXY";
+const BALANCE_CACHE_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Deserialize)]
 struct FaucetRequest {
@@ -37,13 +38,51 @@ struct FaucetResponse {
     amount: Option<String>,
 }
 
+struct BalanceCache {
+    inner: Mutex<Option<(Instant, u128)>>,
+}
+
+impl BalanceCache {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+
+    fn get(&self, ttl: Duration) -> Option<u128> {
+        let guard = self.inner.lock().expect("balance cache mutex");
+        match *guard {
+            Some((fetched_at, balance)) if fetched_at.elapsed() < ttl => Some(balance),
+            _ => None,
+        }
+    }
+
+    fn set(&self, balance: u128) {
+        *self.inner.lock().expect("balance cache mutex") = Some((Instant::now(), balance));
+    }
+
+    fn subtract(&self, amount: u128) {
+        let mut guard = self.inner.lock().expect("balance cache mutex");
+        if let Some((_, balance)) = guard.as_mut() {
+            *balance = balance.saturating_sub(amount);
+        }
+    }
+
+    fn clear(&self) {
+        *self.inner.lock().expect("balance cache mutex") = None;
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     client: ChainClient,
     store: Arc<FaucetStore>,
     sign_lock: Arc<tokio::sync::Mutex<()>>,
+    balance_cache: Arc<BalanceCache>,
     wallet_name: String,
+    faucet_address: String,
     drip_base_units: u64,
+    hot_wallet_reserve: u64,
     trust_proxy: bool,
 }
 
@@ -117,6 +156,26 @@ fn trust_proxy_from_env() -> bool {
     env::var(TRUST_PROXY_ENV).ok().as_deref() == Some("1")
 }
 
+fn faucet_has_room(balance: u128, drip_base_units: u64, hot_wallet_reserve: u64) -> bool {
+    balance >= u128::from(drip_base_units) + u128::from(hot_wallet_reserve)
+}
+
+async fn faucet_balance(state: &AppState) -> Result<u128, EldError> {
+    if let Some(balance) = state.balance_cache.get(BALANCE_CACHE_TTL) {
+        return Ok(balance);
+    }
+    let balance = match state
+        .client
+        .get_account(state.faucet_address.clone())
+        .await?
+    {
+        Some(account) => account.balance().amount(),
+        None => 0,
+    };
+    state.balance_cache.set(balance);
+    Ok(balance)
+}
+
 async fn request_tokens(
     req: HttpRequest,
     body: web::Json<FaucetRequest>,
@@ -145,14 +204,38 @@ async fn request_tokens(
 
     let submitted = {
         let _sign = state.sign_lock.lock().await;
-        state
-            .client
-            .transfer(
-                state.wallet_name.clone(),
-                body.address.clone(),
-                u128::from(state.drip_base_units),
-            )
-            .await
+        match faucet_balance(&state).await {
+            Ok(balance) => {
+                if !faucet_has_room(balance, state.drip_base_units, state.hot_wallet_reserve) {
+                    Err(None)
+                } else {
+                    match state
+                        .client
+                        .transfer(
+                            state.wallet_name.clone(),
+                            body.address.clone(),
+                            u128::from(state.drip_base_units),
+                        )
+                        .await
+                    {
+                        Ok(submitted) => {
+                            state
+                                .balance_cache
+                                .subtract(u128::from(state.drip_base_units));
+                            Ok(submitted)
+                        }
+                        Err(e) => {
+                            state.balance_cache.clear();
+                            Err(Some(e))
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                state.balance_cache.clear();
+                Err(Some(e))
+            }
+        }
     };
 
     match submitted {
@@ -173,7 +256,20 @@ async fn request_tokens(
                 amount: Some(state.drip_base_units.to_string()),
             })
         }
-        Err(e) => {
+        Err(None) => {
+            if let Err(release_err) =
+                state
+                    .store
+                    .release(&reservation.address, &reservation.ip, now)
+            {
+                error!("Faucet store release failed: {release_err}");
+            }
+            failure(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                "faucet empty",
+            )
+        }
+        Err(Some(e)) => {
             if let Err(release_err) =
                 state
                     .store
@@ -259,16 +355,17 @@ async fn main() -> std::io::Result<()> {
     )
     .map_err(io_err)?;
 
-    match client
+    let faucet_address = match client
         .get_wallet_by_name(faucet_config.wallet_name.clone())
         .await
     {
-        Ok(Some(_)) => {
+        Ok(Some(wallet)) => {
             info!(
                 "Faucet wallet '{}' loaded from {}",
                 faucet_config.wallet_name,
                 faucet_config.wallet_path.display()
             );
+            wallet.address.hex_with_prefix()
         }
         Ok(None) => {
             return Err(io_err(format!(
@@ -284,14 +381,17 @@ async fn main() -> std::io::Result<()> {
                 faucet_config.wallet_path.display()
             )));
         }
-    }
+    };
 
     let state = AppState {
         client,
         store,
         sign_lock: Arc::new(tokio::sync::Mutex::new(())),
+        balance_cache: Arc::new(BalanceCache::new()),
         wallet_name: faucet_config.wallet_name.clone(),
+        faucet_address,
         drip_base_units: faucet_config.drip_base_units,
+        hot_wallet_reserve: faucet_config.hot_wallet_reserve,
         trust_proxy,
     };
 
@@ -338,5 +438,13 @@ mod tests {
         let now = DateTime::from_timestamp(1_699_996_800, 0).expect("timestamp");
         // 21:20:00 -> 2400 seconds until 22:00:00
         assert_eq!(retry_after_secs(LimitKind::IpHourly, now), 2400);
+    }
+
+    #[test]
+    fn faucet_has_room_requires_drip_plus_reserve() {
+        assert!(faucet_has_room(11_000, 1_000, 10_000));
+        assert!(!faucet_has_room(10_999, 1_000, 10_000));
+        assert!(!faucet_has_room(0, 1, 0));
+        assert!(faucet_has_room(1, 1, 0));
     }
 }
