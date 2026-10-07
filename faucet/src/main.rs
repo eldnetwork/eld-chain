@@ -1,12 +1,15 @@
 use actix_cors::Cors;
+use actix_web::http::header;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use eld_client::api::abci::AbciHttpApi;
 use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
 use eld_common::error::EldError;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{error, info};
@@ -15,13 +18,15 @@ mod config;
 mod logging;
 mod store;
 
-use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
+use crate::config::{FaucetConfig, HEALTH_PATH, READY_PATH, REQUEST_PATH};
 
 use crate::store::{FaucetStore, LimitKind, StoreError};
 
 const JSON_BODY_LIMIT: usize = 1024;
 const TRUST_PROXY_ENV: &str = "FAUCET_TRUST_PROXY";
+const CORS_ORIGIN_ENV: &str = "FAUCET_CORS_ORIGIN";
 const BALANCE_CACHE_TTL: Duration = Duration::from_secs(5);
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Deserialize)]
 struct FaucetRequest {
@@ -81,6 +86,8 @@ struct AppState {
     balance_cache: Arc<BalanceCache>,
     wallet_name: String,
     faucet_address: String,
+    chain_id: String,
+    node_url: String,
     drip_base_units: u64,
     hot_wallet_reserve: u64,
     trust_proxy: bool,
@@ -95,8 +102,8 @@ fn failure(status: actix_web::http::StatusCode, message: impl Into<String>) -> H
     })
 }
 
-fn first_forwarded_hop(header: &str) -> Option<&str> {
-    let hop = header.split(',').next()?.trim();
+fn first_forwarded_hop(header_value: &str) -> Option<&str> {
+    let hop = header_value.split(',').next()?.trim();
     if hop.is_empty() {
         None
     } else {
@@ -156,22 +163,49 @@ fn trust_proxy_from_env() -> bool {
     env::var(TRUST_PROXY_ENV).ok().as_deref() == Some("1")
 }
 
+fn cors_origin_from_env() -> Option<String> {
+    env::var(CORS_ORIGIN_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn build_cors(origin: Option<&str>) -> Cors {
+    match origin {
+        Some(origin) => Cors::default()
+            .allowed_origin(origin)
+            .allowed_methods(vec!["GET", "POST"])
+            .allowed_header(header::CONTENT_TYPE),
+        None => Cors::default(),
+    }
+}
+
 fn faucet_has_room(balance: u128, drip_base_units: u64, hot_wallet_reserve: u64) -> bool {
     balance >= u128::from(drip_base_units) + u128::from(hot_wallet_reserve)
+}
+
+async fn with_client_timeout<T, F>(fut: F) -> Result<T, EldError>
+where
+    F: Future<Output = Result<T, EldError>>,
+{
+    match tokio::time::timeout(CLIENT_TIMEOUT, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(EldError::NetworkError {
+            operation: "rpc".to_string(),
+            details: "timed out after 30 seconds".to_string(),
+        }),
+    }
 }
 
 async fn faucet_balance(state: &AppState) -> Result<u128, EldError> {
     if let Some(balance) = state.balance_cache.get(BALANCE_CACHE_TTL) {
         return Ok(balance);
     }
-    let balance = match state
-        .client
-        .get_account(state.faucet_address.clone())
-        .await?
-    {
-        Some(account) => account.balance().amount(),
-        None => 0,
-    };
+    let balance =
+        match with_client_timeout(state.client.get_account(state.faucet_address.clone())).await? {
+            Some(account) => account.balance().amount(),
+            None => 0,
+        };
     state.balance_cache.set(balance);
     Ok(balance)
 }
@@ -209,14 +243,12 @@ async fn request_tokens(
                 if !faucet_has_room(balance, state.drip_base_units, state.hot_wallet_reserve) {
                     Err(None)
                 } else {
-                    match state
-                        .client
-                        .transfer(
-                            state.wallet_name.clone(),
-                            body.address.clone(),
-                            u128::from(state.drip_base_units),
-                        )
-                        .await
+                    match with_client_timeout(state.client.transfer(
+                        state.wallet_name.clone(),
+                        body.address.clone(),
+                        u128::from(state.drip_base_units),
+                    ))
+                    .await
                     {
                         Ok(submitted) => {
                             state
@@ -297,6 +329,53 @@ async fn health_check() -> HttpResponse {
     HttpResponse::Ok().body("OK")
 }
 
+async fn ready_check(state: web::Data<AppState>) -> HttpResponse {
+    match state
+        .client
+        .get_wallet_by_name(state.wallet_name.clone())
+        .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return HttpResponse::ServiceUnavailable().body("wallet missing");
+        }
+        Err(e) => {
+            error!("Faucet ready wallet check failed: {e}");
+            return HttpResponse::ServiceUnavailable().body("wallet unavailable");
+        }
+    }
+
+    if let Err(e) = state.store.ping() {
+        error!("Faucet ready database check failed: {e}");
+        return HttpResponse::ServiceUnavailable().body("database unavailable");
+    }
+
+    let api = match AbciHttpApi::new(state.node_url.clone()) {
+        Ok(api) => api,
+        Err(e) => {
+            error!("Faucet ready status client failed: {e}");
+            return HttpResponse::ServiceUnavailable().body("node unavailable");
+        }
+    };
+    let status_chain_id = match with_client_timeout(api.chain_id_from_status()).await {
+        Ok(chain_id) => chain_id,
+        Err(e) => {
+            error!("Faucet ready status check failed: {e}");
+            return HttpResponse::ServiceUnavailable().body("node unavailable");
+        }
+    };
+    if status_chain_id != state.chain_id {
+        error!(
+            expected = %state.chain_id,
+            actual = %status_chain_id,
+            "Faucet ready chain id mismatch"
+        );
+        return HttpResponse::ServiceUnavailable().body("chain id mismatch");
+    }
+
+    HttpResponse::Ok().body("OK")
+}
+
 fn io_err(err: impl std::fmt::Display) -> std::io::Error {
     std::io::Error::other(err.to_string())
 }
@@ -323,6 +402,7 @@ async fn main() -> std::io::Result<()> {
     let tendermint_url = faucet_config.node_url().map_err(io_err)?;
     let bind_addr = faucet_config.bind_addr();
     let trust_proxy = trust_proxy_from_env();
+    let cors_origin = cors_origin_from_env();
     info!("Connecting to Tendermint at {tendermint_url}");
     info!("Starting faucet service at {bind_addr}");
     info!(
@@ -335,6 +415,7 @@ async fn main() -> std::io::Result<()> {
         wallet_path = %faucet_config.wallet_path.display(),
         wallet_name = %faucet_config.wallet_name,
         trust_proxy,
+        cors_origin = cors_origin.as_deref().unwrap_or(""),
         "Faucet config loaded"
     );
 
@@ -390,6 +471,8 @@ async fn main() -> std::io::Result<()> {
         balance_cache: Arc::new(BalanceCache::new()),
         wallet_name: faucet_config.wallet_name.clone(),
         faucet_address,
+        chain_id: faucet_config.chain_id.clone(),
+        node_url: tendermint_url,
         drip_base_units: faucet_config.drip_base_units,
         hot_wallet_reserve: faucet_config.hot_wallet_reserve,
         trust_proxy,
@@ -397,12 +480,15 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .wrap(Cors::permissive())
+            .wrap(build_cors(cors_origin.as_deref()))
             .app_data(web::Data::new(state.clone()))
             .app_data(web::JsonConfig::default().limit(JSON_BODY_LIMIT))
             .route(HEALTH_PATH, web::get().to(health_check))
+            .route(READY_PATH, web::get().to(ready_check))
             .route(REQUEST_PATH, web::post().to(request_tokens))
     })
+    .client_request_timeout(CLIENT_TIMEOUT)
+    .client_disconnect_timeout(CLIENT_TIMEOUT)
     .bind(bind_addr)?
     .run()
     .await

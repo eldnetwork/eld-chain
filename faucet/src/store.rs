@@ -181,6 +181,12 @@ impl FaucetStore {
         Ok(())
     }
 
+    pub fn ping(&self) -> Result<(), StoreError> {
+        let conn = self.conn.lock().expect("faucet store mutex");
+        conn.query_row("SELECT 1", [], |_| Ok(()))?;
+        Ok(())
+    }
+
     pub fn release(&self, address: &str, ip: &str, now: DateTime<Utc>) -> Result<(), StoreError> {
         let today = utc_day(now);
         let hour_start = utc_hour_start(now.timestamp());
@@ -314,5 +320,11 @@ mod tests {
         store
             .reserve("0xabc", "1.1.1.1", t)
             .expect("row was purged");
+    }
+
+    #[test]
+    fn ping_succeeds_on_open_store() {
+        let store = memory_store(1, 1);
+        store.ping().expect("ping");
     }
 }

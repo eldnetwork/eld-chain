@@ -16,8 +16,11 @@ That reads `config/faucet_config.json` (`node_host` and `chain_id`) and listens 
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/health` | body `OK` |
+| GET | `/health` | body `OK` (no I/O) |
+| GET | `/ready` | `200 OK` when the wallet is loaded, SQLite answers, and Tendermint `status` chain id matches config; otherwise `503` |
 | POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }`. On success also `tx_hash` and `amount`. Body over 1 KB is rejected. |
+
+CORS is off by default. Set `FAUCET_CORS_ORIGIN` to one origin to allow browser calls from that origin only. Client request and disconnect timeouts are 30 seconds; RPC calls used by the faucet share that cap.
 
 ## Rate limits
 

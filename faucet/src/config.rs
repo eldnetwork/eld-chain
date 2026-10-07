@@ -14,6 +14,8 @@ pub const NODE_PORT: &str = "26657";
 pub const APP_PORT: &str = "9001";
 /// GET health check path.
 pub const HEALTH_PATH: &str = "/health";
+/// GET readiness path (wallet, database, Tendermint chain id).
+pub const READY_PATH: &str = "/ready";
 /// POST path for faucet requests (matches `eld-cli`).
 pub const REQUEST_PATH: &str = "/faucet/request";
 
