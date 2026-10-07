@@ -1,6 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpResponse, HttpServer};
-use eld_client::config::{FeeConfig, WALLETS_PATH};
+use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
@@ -14,9 +14,6 @@ mod rate_limiter;
 use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
 
 use crate::rate_limiter::{InMemoryRateLimiter, DAILY_REQUEST_LIMIT};
-
-const FAUCET_WALLET_NAME: &str = "wallet-faucet-1";
-const FAUCET_DRIP_BASE_UNITS: u64 = 1_000 * 1_000_000;
 
 #[derive(Deserialize)]
 struct FaucetRequest {
@@ -33,6 +30,8 @@ struct FaucetResponse {
 struct AppState {
     client: ChainClient,
     rate_limiter: Arc<InMemoryRateLimiter>,
+    wallet_name: String,
+    drip_base_units: u64,
 }
 
 fn failure(status: actix_web::http::StatusCode, message: impl Into<String>) -> HttpResponse {
@@ -46,28 +45,6 @@ async fn request_tokens(
     body: web::Json<FaucetRequest>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    match state
-        .client
-        .get_wallet_by_name(FAUCET_WALLET_NAME.to_string())
-        .await
-    {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            error!("Faucet wallet not found");
-            return failure(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Faucet wallet not found",
-            );
-        }
-        Err(e) => {
-            error!("Failed to load faucet wallet: {e}");
-            return failure(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load faucet wallet",
-            );
-        }
-    }
-
     if Address::parse_hex_str(&body.address).is_err() {
         return failure(
             actix_web::http::StatusCode::BAD_REQUEST,
@@ -77,7 +54,7 @@ async fn request_tokens(
 
     if let Err(remaining_allowed) = state
         .rate_limiter
-        .check_and_consume(&body.address, FAUCET_DRIP_BASE_UNITS)
+        .check_and_consume(&body.address, state.drip_base_units)
         .await
     {
         return failure(
@@ -91,9 +68,9 @@ async fn request_tokens(
     match state
         .client
         .transfer(
-            FAUCET_WALLET_NAME.to_string(),
+            state.wallet_name.clone(),
             body.address.clone(),
-            u128::from(FAUCET_DRIP_BASE_UNITS),
+            u128::from(state.drip_base_units),
         )
         .await
     {
@@ -129,19 +106,60 @@ async fn main() -> std::io::Result<()> {
     info!("Starting faucet server");
     let faucet_config = FaucetConfig::load().map_err(io_err)?;
     let tendermint_url = faucet_config.node_url().map_err(io_err)?;
-    let bind_addr = FaucetConfig::bind_addr();
+    let bind_addr = faucet_config.bind_addr();
     info!("Connecting to Tendermint at {tendermint_url}");
     info!("Starting faucet service at {bind_addr}");
+    info!(
+        chain_id = %faucet_config.chain_id,
+        drip_base_units = faucet_config.drip_base_units,
+        address_daily_drips = faucet_config.address_daily_drips,
+        ip_hourly_requests = faucet_config.ip_hourly_requests,
+        hot_wallet_reserve = faucet_config.hot_wallet_reserve,
+        db_path = %faucet_config.db_path,
+        wallet_path = %faucet_config.wallet_path.display(),
+        wallet_name = %faucet_config.wallet_name,
+        "Faucet config loaded"
+    );
 
     let client = ChainClient::with_wallets(
         faucet_config.to_client_config(),
         FeeConfig::default(),
-        WALLETS_PATH,
+        &faucet_config.wallet_path,
     )
     .map_err(io_err)?;
+
+    match client
+        .get_wallet_by_name(faucet_config.wallet_name.clone())
+        .await
+    {
+        Ok(Some(_)) => {
+            info!(
+                "Faucet wallet '{}' loaded from {}",
+                faucet_config.wallet_name,
+                faucet_config.wallet_path.display()
+            );
+        }
+        Ok(None) => {
+            return Err(io_err(format!(
+                "Faucet wallet '{}' not found in {}",
+                faucet_config.wallet_name,
+                faucet_config.wallet_path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(io_err(format!(
+                "Failed to load faucet wallet '{}' from {}: {e}",
+                faucet_config.wallet_name,
+                faucet_config.wallet_path.display()
+            )));
+        }
+    }
+
     let state = AppState {
         client,
         rate_limiter: Arc::new(InMemoryRateLimiter::new(DAILY_REQUEST_LIMIT)),
+        wallet_name: faucet_config.wallet_name.clone(),
+        drip_base_units: faucet_config.drip_base_units,
     };
 
     HttpServer::new(move || {
