@@ -1,19 +1,21 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
+use chrono::{Duration as ChronoDuration, Utc};
 use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
 use eld_common::Address;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{error, info};
 
 mod config;
 mod logging;
-mod rate_limiter;
+mod store;
 
 use crate::config::{FaucetConfig, HEALTH_PATH, REQUEST_PATH};
 
-use crate::rate_limiter::{InMemoryRateLimiter, LimitKind};
+use crate::store::{FaucetStore, LimitKind, StoreError};
 
 #[derive(Deserialize)]
 struct FaucetRequest {
@@ -29,7 +31,7 @@ struct FaucetResponse {
 #[derive(Clone)]
 struct AppState {
     client: ChainClient,
-    rate_limiter: Arc<InMemoryRateLimiter>,
+    store: Arc<FaucetStore>,
     wallet_name: String,
     drip_base_units: u64,
 }
@@ -60,17 +62,24 @@ async fn request_tokens(
     }
 
     let ip = client_ip(&req);
-    if let Err(kind) = state
-        .rate_limiter
-        .check_and_consume(&body.address, &ip)
-        .await
-    {
-        let message = match kind {
-            LimitKind::AddressDaily => "Daily faucet limit reached for this address.",
-            LimitKind::IpHourly => "Hourly faucet limit reached for this IP.",
-        };
-        return failure(actix_web::http::StatusCode::TOO_MANY_REQUESTS, message);
-    }
+    let now = Utc::now();
+    let reservation = match state.store.reserve(&body.address, &ip, now) {
+        Ok(reservation) => reservation,
+        Err(StoreError::Limit(kind)) => {
+            let message = match kind {
+                LimitKind::AddressDaily => "Daily faucet limit reached for this address.",
+                LimitKind::IpHourly => "Hourly faucet limit reached for this IP.",
+            };
+            return failure(actix_web::http::StatusCode::TOO_MANY_REQUESTS, message);
+        }
+        Err(e) => {
+            error!("Faucet store reserve failed: {e}");
+            return failure(
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Error submitting tx",
+            );
+        }
+    };
 
     match state
         .client
@@ -89,6 +98,13 @@ async fn request_tokens(
             })
         }
         Err(e) => {
+            if let Err(release_err) =
+                state
+                    .store
+                    .release(&reservation.address, &reservation.ip, now)
+            {
+                error!("Faucet store release failed: {release_err}");
+            }
             error!("Faucet transfer failed: {e}");
             failure(
                 actix_web::http::StatusCode::BAD_REQUEST,
@@ -104,6 +120,19 @@ async fn health_check() -> HttpResponse {
 
 fn io_err(err: impl std::fmt::Display) -> std::io::Error {
     std::io::Error::other(err.to_string())
+}
+
+fn spawn_purge_task(store: Arc<FaucetStore>) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(3600));
+        loop {
+            ticker.tick().await;
+            let cutoff = Utc::now() - ChronoDuration::days(2);
+            if let Err(e) = store.purge_older_than(cutoff) {
+                error!("Faucet store purge failed: {e}");
+            }
+        }
+    });
 }
 
 #[actix_web::main]
@@ -127,6 +156,16 @@ async fn main() -> std::io::Result<()> {
         wallet_name = %faucet_config.wallet_name,
         "Faucet config loaded"
     );
+
+    let store = Arc::new(
+        FaucetStore::open(
+            &faucet_config.db_path,
+            faucet_config.address_daily_drips,
+            faucet_config.ip_hourly_requests,
+        )
+        .map_err(io_err)?,
+    );
+    spawn_purge_task(Arc::clone(&store));
 
     let client = ChainClient::with_wallets(
         faucet_config.to_client_config(),
@@ -164,10 +203,7 @@ async fn main() -> std::io::Result<()> {
 
     let state = AppState {
         client,
-        rate_limiter: Arc::new(InMemoryRateLimiter::new(
-            faucet_config.address_daily_drips,
-            faucet_config.ip_hourly_requests,
-        )),
+        store,
         wallet_name: faucet_config.wallet_name.clone(),
         drip_base_units: faucet_config.drip_base_units,
     };

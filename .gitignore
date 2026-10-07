@@ -3,6 +3,7 @@
 
 node_app/data/
 node_app/tx_responses/
+faucet/data/
 
 .idea/
 .vscode/

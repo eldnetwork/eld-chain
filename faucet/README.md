@@ -31,4 +31,4 @@ Each successful check counts **one drip** for the requested address and **one re
 - Address limit: after `address_daily_drips` drips to the same `0x…` address in one UTC day, further requests for that address get `429` with `Daily faucet limit reached for this address.`
 - IP limit: after `ip_hourly_requests` from the same peer IP in the current UTC hour, further requests from that IP get `429` with `Hourly faucet limit reached for this IP.`
 - IP is the TCP peer address only (no `X-Forwarded-For` yet).
-- Counters live in memory. A process restart clears them. A failed broadcast still consumes a slot today.
+- Counters are stored in SQLite at `db_path` (default `data/faucet.db`). They survive a restart. A failed broadcast releases the slot. Rows older than two days are purged every hour.
