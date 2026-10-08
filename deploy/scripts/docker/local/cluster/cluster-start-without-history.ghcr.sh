@@ -23,7 +23,8 @@ if [[ "${1:-}" == "--with-faucet" ]]; then
 fi
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" "${FAUCET_PROFILE[@]}" "$@"
+  # Bash 3.2 + set -u treats an empty "${arr[@]}" as unbound.
+  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} "$@"
 }
 
 echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ghcr.io/eldnetwork/eld-tendermint:${TENDERMINT_VERSION_TAG_GHCR}"

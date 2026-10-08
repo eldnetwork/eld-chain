@@ -23,7 +23,8 @@ if [[ "${1:-}" == "--with-faucet" ]]; then
 fi
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" "${FAUCET_PROFILE[@]}" "$@"
+  # Bash 3.2 + set -u treats an empty "${arr[@]}" as unbound.
+  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} "$@"
 }
 
 echo "Starting 4-node compose without history using ${ELD_APP_IMAGE} and ${ELD_TM_IMAGE}"
