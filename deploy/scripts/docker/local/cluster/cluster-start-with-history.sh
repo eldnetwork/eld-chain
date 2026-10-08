@@ -9,8 +9,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../../_env.sh"
 COMPOSE_FILE="$DEPLOY_DIR/docker/local/cluster/compose.yaml"
 
+FAUCET_PROFILE=()
+if [[ "${1:-}" == "--with-faucet" ]]; then
+  require_env FAUCET_VERSION_TAG
+  WALLET="$DEPLOY_DIR/docker/local/cluster/faucet/wallets.json"
+  if [[ ! -f "$WALLET" ]]; then
+    echo "Missing faucet wallet: $WALLET" >&2
+    echo "Create wallet-faucet-1 there before --with-faucet." >&2
+    exit 1
+  fi
+  FAUCET_PROFILE=(--profile faucet)
+fi
+
 compose() {
-  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" "$@"
+  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" "${FAUCET_PROFILE[@]}" "$@"
 }
 
 echo "Starting 4-node compose with history using ${ELD_APP_IMAGE} and ${ELD_TM_IMAGE}"
