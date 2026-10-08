@@ -119,7 +119,11 @@ To stop containers and the compose network (while keeping volumes):
 ./deploy/scripts/docker/local/cluster/cluster-stop.sh
 ```
 
-This always stops the faucet if it is running:
+This always stops the faucet if it is running. For the rust-Tendermint GHCR stack (`compose.ghcr.tm-rs.yaml`, project `deploy-tm-rs`):
+
+```sh
+./deploy/scripts/docker/local/cluster/cluster-stop.ghcr.tm-rs.sh
+```
 
 ## Ports (host)
 
