@@ -3,7 +3,7 @@ name: faucet-image
 on:
   push:
     tags:
-      - "eld-faucet-v.*.*.*"
+      - "eld-faucet-v*.*.*"
   workflow_dispatch:
 
 env:
@@ -18,7 +18,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   image:
-    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-faucet-v.')
+    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-faucet-v')
     needs: ci
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -70,7 +70,7 @@ jobs:
           retention-days: 1
 
   manifest:
-    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-faucet-v.')
+    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-faucet-v')
     needs: image
     runs-on: ubuntu-latest
     permissions:

@@ -26,7 +26,7 @@ Crates are unpublished (`publish = false`).
 - `eld-cli pinboard list-wallet` is now `pinboard list-by-address`. The argument is a wallet address. The hidden alias `pinboard-list-by-wallet` is unchanged.
 - `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `eld-cli-config.json`.
 - `eld-cli` stores config and wallets in the user directories (XDG on Linux, `~/Library/Application Support/eld` on macOS). `--home` is gone. `--cli-config` and `--wallets` still override those paths.
-- `eld-cli` is version `0.0.3`. The other crates stay `0.0.1`.
+- `eld-cli` is version `0.0.3`. `eld-faucet` is version `0.0.3`. The other crates stay `0.0.1`.
 - Crate versions are `0.0.1`, the same number as git tag `v0.0.1`.
 - `Coin` no longer implements SCALE. Amounts stay on serde (JSON decimal strings and bincode). `eld-common` warns on missing docs for `Address`, `Tx`, `Wallet`, the typed IDs, and `EldError`.
 
