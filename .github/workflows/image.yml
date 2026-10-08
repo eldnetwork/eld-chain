@@ -3,7 +3,7 @@ name: image
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "eld-app-v*.*.*"
   workflow_dispatch:
 
 env:
@@ -22,7 +22,7 @@ jobs:
     # failed CI job cannot publish. workflow_dispatch stays in CI only.
     # Each arch builds on a native runner: RocksDB under QEMU does not finish
     # reliably. The manifest job publishes one multi-arch image.
-    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-app-v')
     needs: ci
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -89,7 +89,7 @@ jobs:
           retention-days: 1
 
   manifest:
-    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-app-v')
     needs: image
     runs-on: ubuntu-latest
     permissions:

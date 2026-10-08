@@ -1,6 +1,6 @@
 # Deploy a release to EC2
 
-A `v*.*.*` tag publishes `ghcr.io/eldnetwork/eld-chain:<tag>` through [`.github/workflows/image.yml`](.github/workflows/image.yml). That does not deploy.
+An `eld-app-v*.*.*` tag publishes `ghcr.io/eldnetwork/eld-chain:<tag>` through [`.github/workflows/image.yml`](.github/workflows/image.yml). That does not deploy.
 
 Deploy is [`.github/workflows/deploy-ec2.yml`](.github/workflows/deploy-ec2.yml). A developer runs it by hand and must name a tag that already has a published GitHub Release and a successful image workflow. Local compose tags stay in `deploy/.env`. They are usually ahead of GitHub Actions, and this deploy does not read them.
 
@@ -105,13 +105,13 @@ The one-time copy uses the local working tree, which may be ahead of any release
 2. Push a tag. That only builds and publishes the image.
 
 ```sh
-git tag -a v0.0.42 -m "eld-chain v0.0.42"
-git push origin v0.0.42
+git tag -a eld-app-v0.0.3 -m "eld-app v0.0.2"
+git push origin eld-app-v0.0.3
 ```
 
 3. Publish a GitHub Release for that tag. A bare tag is not enough. Drafts are rejected. Prereleases are allowed.
 4. Wait until the `image` workflow for that tag is green.
-5. Run **deploy-ec2** from the Actions tab. Set `app_tag` to that release tag. Leave `tendermint_tag` empty to use the `TENDERMINT_VERSION_TAG_GHCR` variable, or set a tag explicitly.
+5. Run **deploy-ec2** from the Actions tab. Set `app_tag` to that release tag (for example `eld-app-v0.0.3`). Leave `tendermint_tag` empty to use the `TENDERMINT_VERSION_TAG_GHCR` variable, or set a tag explicitly.
 
 The job checks out that tag, copies compose and public node configs, rewrites `/opt/eld-chain/.env`, pulls the images, and recreates containers. Volumes and key files stay. If a Tendermint data volume has no `priv_validator_state.json`, that deploy runs `tendermint unsafe_reset_all` for that node only. Later deploys do not. The job fails unless all eight services are running and node 1 answers Tendermint RPC on port 26657.
 
@@ -124,9 +124,9 @@ Compose reads this file. The deploy workflow rewrites it on every run. Do not pu
 | Name | Example | Role |
 |---|---|---|
 | `ELD_DEPLOY_ROOT` | `/opt/eld-chain` | Host path for node config and `wallets.json` |
-| `ELD_CHAIN_IMAGE` | `ghcr.io/eldnetwork/eld-chain:v0.0.42` | App image, including tag |
+| `ELD_CHAIN_IMAGE` | `ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.3` | App image, including tag |
 | `ELD_TENDERMINT_IMAGE` | `ghcr.io/eldnetwork/eld-tendermint:v0.34.24-eld.1` | Tendermint image, including tag |
-| `NODE_APP_VERSION_TAG_GHCR` | `v0.0.42` | Recorded app tag. Compose does not interpolate it |
+| `NODE_APP_VERSION_TAG_GHCR` | `eld-app-v0.0.3` | Recorded app tag. Compose does not interpolate it |
 | `TENDERMINT_VERSION_TAG_GHCR` | `v0.34.24-eld.1` | Recorded Tendermint tag. Compose does not interpolate it |
 
 `GHCR_PULL_TOKEN` and `GHCR_USERNAME` are passed only for `docker login` during a deploy. They are not written to `.env`.
