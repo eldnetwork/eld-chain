@@ -353,13 +353,16 @@ impl RocksDBStorage {
 
 impl TransactionIndexerStorage for RocksDBStorage {
     /// Calculate transaction ID from transaction
-    fn calculate_tx_id(&self, tx: &Tx) -> String {
+    fn calculate_tx_id(&self, tx: &Tx) -> Result<String, EldError> {
         // Serialize transaction to JSON (canonical form with signature)
         // Using JSON instead of bincode because transactions contain variable-length sequences
         // that bincode's default config can't handle
-        let serialized = serde_json::to_vec(tx).expect("Failed to serialize transaction");
+        let serialized = serde_json::to_vec(tx).map_err(|e| EldError::StorageError {
+            operation: "calculate_tx_id".to_string(),
+            details: format!("Failed to serialize transaction: {e}"),
+        })?;
         let hash = Sha256::digest(&serialized);
-        format!("0x{}", hex::encode(hash))
+        Ok(format!("0x{}", hex::encode(hash)))
     }
 
     /// Index a transaction with all secondary indexes
@@ -372,7 +375,7 @@ impl TransactionIndexerStorage for RocksDBStorage {
         gas_used: Option<u64>,
         events: &[Event],
     ) -> Result<(), EldError> {
-        let tx_id = self.calculate_tx_id(tx);
+        let tx_id = self.calculate_tx_id(tx)?;
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| EldError::StorageError {

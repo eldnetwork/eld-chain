@@ -60,6 +60,116 @@ fn tendermint_abci_query_empty(height: u64) -> serde_json::Value {
     })
 }
 
+fn sample_tx_hash() -> tendermint::Hash {
+    use std::str::FromStr;
+    tendermint::Hash::from_str("6518740BDC98339841F9DEC4303FD7547A8E10E79F6151FB8AED039D0CADB740")
+        .expect("hash")
+}
+
+fn tendermint_tx_response_go_dialect(
+    height: &str,
+    gas_used: &str,
+    tx_b64: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "hash": "6518740BDC98339841F9DEC4303FD7547A8E10E79F6151FB8AED039D0CADB740",
+            "height": height,
+            "index": 0,
+            "tx_result": {
+                "code": 0,
+                "data": "",
+                "log": "",
+                "info": "",
+                "gas_wanted": "1",
+                "gas_used": gas_used,
+                "events": [],
+                "codespace": ""
+            },
+            "tx": tx_b64
+        }
+    })
+}
+
+fn tendermint_tx_response_rs_dialect(
+    height: u64,
+    gas_used: i64,
+    tx_b64: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "hash": "6518740BDC98339841F9DEC4303FD7547A8E10E79F6151FB8AED039D0CADB740",
+            "height": height,
+            "index": 0,
+            "tx_result": {
+                "code": 0,
+                "data": "",
+                "log": "",
+                "info": "",
+                "gas_wanted": 1,
+                "gas_used": gas_used,
+                "events": [],
+                "codespace": ""
+            },
+            "tx": tx_b64
+        }
+    })
+}
+
+#[tokio::test]
+async fn get_tx_by_hash_accepts_go_string_height_and_gas() {
+    use base64::Engine;
+    let tx_bytes = br#"{"nonce":1}"#;
+    let tx_b64 = base64::engine::general_purpose::STANDARD.encode(tx_bytes);
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("\"method\":\"tx\""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(tendermint_tx_response_go_dialect("2", "42", &tx_b64)),
+        )
+        .mount(&server)
+        .await;
+
+    let api = AbciHttpApi::new(format!("{}/", server.uri())).unwrap();
+    let tx = api.get_tx_by_hash(sample_tx_hash()).await.unwrap();
+
+    assert_eq!(tx.height, 2);
+    assert_eq!(tx.index, 0);
+    assert_eq!(tx.code, 0);
+    assert_eq!(tx.gas_used, 42);
+    assert_eq!(tx.tx, tx_bytes);
+}
+
+#[tokio::test]
+async fn get_tx_by_hash_accepts_rs_numeric_height_and_gas() {
+    use base64::Engine;
+    let tx_bytes = br#"{"nonce":1}"#;
+    let tx_b64 = base64::engine::general_purpose::STANDARD.encode(tx_bytes);
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("\"method\":\"tx\""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(tendermint_tx_response_rs_dialect(2, 7, &tx_b64)),
+        )
+        .mount(&server)
+        .await;
+
+    let api = AbciHttpApi::new(format!("{}/", server.uri())).unwrap();
+    let tx = api.get_tx_by_hash(sample_tx_hash()).await.unwrap();
+
+    assert_eq!(tx.height, 2);
+    assert_eq!(tx.gas_used, 7);
+    assert_eq!(tx.tx, tx_bytes);
+}
+
 #[tokio::test]
 async fn abci_http_api_fetches_latest_info() {
     let server = MockServer::start().await;

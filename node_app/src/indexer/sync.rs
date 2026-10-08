@@ -1,11 +1,14 @@
 //! Tendermint RPC-backed transaction indexer sync loop.
+//!
+//! Best-effort only: failures and panics stay on this thread and never enter the
+//! ABCI DeliverTx / Commit path. Block production continues while indexing retries.
 
 use crate::indexer::{TransactionIndexer, TransactionStatus};
 use eld_client::api::abci::{
-    decode_eld_tx_from_block_tx_bytes, tm_events_to_abci_events, tm_tx_gas_used,
-    tm_tx_result_is_success, wire_bytes_to_tx_hash, AbciHttpApi,
+    decode_eld_tx_from_block_tx_bytes, tm_tx_gas_used, wire_bytes_to_tx_hash, AbciHttpApi,
 };
 use eld_common::error::EldError;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
@@ -16,6 +19,8 @@ const RETRY_SLEEP: Duration = Duration::from_secs(1);
 const IX: &str = "INDEXER-LOG:";
 
 /// Spawn a dedicated thread that syncs indexed transactions from Tendermint RPC.
+///
+/// Independent of consensus: panics and RPC/storage errors are logged and retried here.
 pub fn spawn_indexer_sync(indexer: Arc<TransactionIndexer>, tendermint_rpc_url: String) {
     std::thread::spawn(move || {
         info!(
@@ -23,11 +28,40 @@ pub fn spawn_indexer_sync(indexer: Arc<TransactionIndexer>, tendermint_rpc_url: 
             "{} transaction indexer sync thread starting",
             IX
         );
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("INDEXER-LOG: failed to build indexer Tokio runtime");
-        rt.block_on(run_indexer_sync_loop(indexer, tendermint_rpc_url));
+        loop {
+            let indexer = Arc::clone(&indexer);
+            let url = tendermint_rpc_url.clone();
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        error!(
+                            error = %e,
+                            "{} failed to build indexer Tokio runtime; will retry after sleep",
+                            IX
+                        );
+                        std::thread::sleep(RETRY_SLEEP);
+                        return;
+                    }
+                };
+                rt.block_on(run_indexer_sync_loop(indexer, url));
+            }));
+            match result {
+                Ok(()) => {
+                    warn!("{} indexer sync loop exited; restarting after sleep", IX);
+                }
+                Err(_) => {
+                    error!(
+                        "{} indexer sync panicked; restarting after sleep (ABCI unaffected)",
+                        IX
+                    );
+                }
+            }
+            std::thread::sleep(RETRY_SLEEP);
+        }
     });
 }
 
@@ -209,7 +243,7 @@ async fn index_tx_from_block_and_tm_tx(
     let hash = wire_bytes_to_tx_hash(block_tx_wire);
     let tx_resp = api.get_tx_by_hash(hash).await?;
 
-    let resp_height = tx_resp.height.value();
+    let resp_height = tx_resp.height;
     let resp_index = tx_resp.index;
     if resp_height != expected_height || resp_index != expected_index {
         warn!(
@@ -220,24 +254,24 @@ async fn index_tx_from_block_and_tm_tx(
 
     // Index from the individual /tx response (authoritative wire + execution result).
     let eld_tx = decode_eld_tx_from_block_tx_bytes(&tx_resp.tx)?;
-    let status = if tm_tx_result_is_success(tx_resp.tx_result.code) {
+    let status = if tx_resp.code == 0 {
         TransactionStatus::Success
     } else {
         TransactionStatus::Failed
     };
 
-    let gas_used = tm_tx_gas_used(tx_resp.tx_result.gas_used);
-    let abci_events = tm_events_to_abci_events(&tx_resp.tx_result.events);
+    let gas_used = tm_tx_gas_used(tx_resp.gas_used);
+    let abci_events = &tx_resp.events;
     indexer.index_transaction(
         &eld_tx,
         expected_height,
         expected_index,
         status,
         gas_used,
-        &abci_events,
+        abci_events,
     )?;
 
-    let tx_id = indexer.calculate_tx_id(&eld_tx);
+    let tx_id = indexer.calculate_tx_id(&eld_tx)?;
     debug!(
         height = expected_height,
         block_index = expected_index,

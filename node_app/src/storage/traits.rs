@@ -375,7 +375,7 @@ pub trait ConsensusConnectionStorage:
 /// All database operations for transaction indexing should go through this trait
 pub trait TransactionIndexerStorage: Send + Sync {
     /// Calculate transaction ID from transaction
-    fn calculate_tx_id(&self, tx: &Tx) -> String;
+    fn calculate_tx_id(&self, tx: &Tx) -> Result<String, EldError>;
 
     /// Index a transaction with all secondary indexes.
     ///

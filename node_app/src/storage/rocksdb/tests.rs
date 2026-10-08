@@ -1428,7 +1428,7 @@ fn test_block_pos_chron_desc_order_newest_first_and_continuation_tuple() {
         .unwrap();
 
     let stored = storage
-        .get_indexed_transaction(&storage.calculate_tx_id(&first))
+        .get_indexed_transaction(&storage.calculate_tx_id(&first).unwrap())
         .unwrap()
         .unwrap();
     assert_eq!(stored.gas_used, Some(21_000));
@@ -1490,7 +1490,7 @@ fn test_index_transaction_stores_response_events() {
         .unwrap();
 
     let stored = storage
-        .get_indexed_transaction(&storage.calculate_tx_id(&tx))
+        .get_indexed_transaction(&storage.calculate_tx_id(&tx).unwrap())
         .unwrap()
         .unwrap();
     assert_eq!(stored.events.len(), 1);

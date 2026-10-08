@@ -19,6 +19,8 @@ use tendermint_rpc::{Client, HttpClient};
 /// HTTP client for Tendermint RPC and Eld ABCI queries (`abci_query`, blocks, tx search).
 pub struct AbciHttpApi {
     client: HttpClient,
+    /// Base Tendermint RPC URL (used for raw JSON-RPC where typed clients are dialect-brittle).
+    rpc_url: String,
 }
 
 impl AbciHttpApi {
@@ -28,11 +30,21 @@ impl AbciHttpApi {
             operation: "create ABCI HTTP client".to_string(),
             details: format!("Failed to create HTTP client for '{base_url}': {e}"),
         })?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            rpc_url: base_url,
+        })
     }
 
     /// Chain id from Tendermint `GET /status` (`node_info.network`).
     pub async fn chain_id_from_status(&self) -> Result<String, EldError> {
+        Ok(self.status_tip().await?.chain_id)
+    }
+
+    /// Height, latest block time (unix seconds), and chain id from Tendermint `GET /status`.
+    ///
+    /// Does not read `sync_info.catching_up` (always false in eld-tendermint-rs).
+    pub async fn status_tip(&self) -> Result<StatusTip, EldError> {
         let status = self
             .client
             .status()
@@ -41,8 +53,25 @@ impl AbciHttpApi {
                 operation: "status".to_string(),
                 details: format!("Failed to read node status: {e}"),
             })?;
-        Ok(status.node_info.network.to_string())
+        let height = status.sync_info.latest_block_height.value();
+        let block_time_secs = eld_common::to_timespec(status.sync_info.latest_block_time)?;
+        Ok(StatusTip {
+            height,
+            block_time_secs: block_time_secs as i64,
+            chain_id: status.node_info.network.to_string(),
+        })
     }
+}
+
+/// Tip fields from Tendermint `/status` used by the faucet node poller.
+#[derive(Debug, Clone)]
+pub struct StatusTip {
+    /// `sync_info.latest_block_height`.
+    pub height: u64,
+    /// `sync_info.latest_block_time` as unix seconds.
+    pub block_time_secs: i64,
+    /// `node_info.network`.
+    pub chain_id: String,
 }
 
 impl AbciHttpApi {
@@ -274,17 +303,51 @@ impl AbciHttpApi {
     }
 
     /// Fetch a committed transaction and its execution result by hash.
+    ///
+    /// Uses raw JSON-RPC so both Go Tendermint (string heights/gas) and
+    /// eld-tendermint-rs (numeric heights/gas) parse successfully.
     pub async fn get_tx_by_hash(
         &self,
         hash: tendermint::Hash,
-    ) -> Result<tendermint_rpc::endpoint::tx::Response, EldError> {
-        self.client
-            .tx(hash, false)
+    ) -> Result<crate::api::abci::tx_by_hash::TxByHashResult, EldError> {
+        use crate::api::abci::tx_by_hash::parse_tx_by_hash_response;
+
+        let hash_b64 = BASE64_STANDARD.encode(hash.as_bytes());
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tx",
+            "params": {
+                "hash": hash_b64,
+                "prove": false
+            }
+        });
+
+        let response = reqwest::Client::new()
+            .post(&self.rpc_url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
             .await
             .map_err(|e| EldError::NetworkError {
                 operation: "get_tx_by_hash".to_string(),
-                details: format!("Failed to get transaction {hash}: {e}"),
-            })
+                details: format!("Failed to send /tx request for {hash}: {e}"),
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            return Err(EldError::NetworkError {
+                operation: "get_tx_by_hash".to_string(),
+                details: format!("Tendermint /tx HTTP status {status} for {hash}"),
+            });
+        }
+
+        let response_text = response.text().await.map_err(|e| EldError::NetworkError {
+            operation: "get_tx_by_hash".to_string(),
+            details: format!("Failed to read /tx response for {hash}: {e}"),
+        })?;
+
+        parse_tx_by_hash_response(&response_text)
     }
 
     pub async fn get_cado(&self, path: String) -> Result<serde_json::Value, EldError> {

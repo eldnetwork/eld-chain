@@ -22,7 +22,7 @@ impl TransactionIndexer {
 
     /// Calculate transaction ID from transaction
     /// Delegates to RocksDBStorage's implementation through the trait
-    pub fn calculate_tx_id(&self, tx: &Tx) -> String {
+    pub fn calculate_tx_id(&self, tx: &Tx) -> Result<String, EldError> {
         self.storage.calculate_tx_id(tx)
     }
 
