@@ -1,4 +1,12 @@
 {
-  "node_host": "tendermint-1",
-  "chain_id": "eld-testnet-tempelhof"
+  "node_host": "tendermint-1:26657",
+  "node_hosts": [
+    "tendermint-1:26657",
+    "tendermint-2:26657",
+    "tendermint-3:26657",
+    "tendermint-4:26657"
+  ],
+  "chain_id": "eld-testnet-tempelhof",
+  "min_synced": 3,
+  "max_block_age_secs": 15
 }

@@ -2,7 +2,6 @@ use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use eld_client::api::abci::AbciHttpApi;
 use eld_client::config::FeeConfig;
 use eld_client::ChainClient;
 use eld_common::error::EldError;
@@ -10,16 +9,18 @@ use eld_common::Address;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{error, info};
 
 mod config;
 mod logging;
+mod nodes;
 mod store;
 
 use crate::config::{FaucetConfig, HEALTH_PATH, READY_PATH, REQUEST_PATH};
-
+use crate::nodes::NodePool;
 use crate::store::{FaucetStore, LimitKind, StoreError};
 
 const JSON_BODY_LIMIT: usize = 1024;
@@ -80,17 +81,29 @@ impl BalanceCache {
 
 #[derive(Clone)]
 struct AppState {
-    client: ChainClient,
     store: Arc<FaucetStore>,
+    nodes: Arc<NodePool>,
+    faucet_config: Arc<FaucetConfig>,
     sign_lock: Arc<tokio::sync::Mutex<()>>,
     balance_cache: Arc<BalanceCache>,
     wallet_name: String,
+    wallet_path: PathBuf,
     faucet_address: String,
-    chain_id: String,
-    node_url: String,
     drip_base_units: u64,
     hot_wallet_reserve: u64,
     trust_proxy: bool,
+}
+
+fn chain_client_for_endpoint(
+    config: &FaucetConfig,
+    node_host: &str,
+    node_port: &str,
+) -> Result<ChainClient, EldError> {
+    ChainClient::with_wallets(
+        config.to_client_config(node_host, node_port),
+        FeeConfig::default(),
+        &config.wallet_path,
+    )
 }
 
 fn failure(status: actix_web::http::StatusCode, message: impl Into<String>) -> HttpResponse {
@@ -197,12 +210,12 @@ where
     }
 }
 
-async fn faucet_balance(state: &AppState) -> Result<u128, EldError> {
+async fn faucet_balance(client: &ChainClient, state: &AppState) -> Result<u128, EldError> {
     if let Some(balance) = state.balance_cache.get(BALANCE_CACHE_TTL) {
         return Ok(balance);
     }
     let balance =
-        match with_client_timeout(state.client.get_account(state.faucet_address.clone())).await? {
+        match with_client_timeout(client.get_account(state.faucet_address.clone())).await? {
             Some(account) => account.balance().amount(),
             None => 0,
         };
@@ -222,6 +235,13 @@ async fn request_tokens(
         );
     }
 
+    let Some((target_host, target_port, target_url)) = state.nodes.target() else {
+        return failure(
+            actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+            "node unavailable",
+        );
+    };
+
     let ip = client_ip(&req, state.trust_proxy);
     let now = Utc::now();
     let reservation = match state.store.reserve(&body.address, &ip, now) {
@@ -238,35 +258,41 @@ async fn request_tokens(
 
     let submitted = {
         let _sign = state.sign_lock.lock().await;
-        match faucet_balance(&state).await {
-            Ok(balance) => {
-                if !faucet_has_room(balance, state.drip_base_units, state.hot_wallet_reserve) {
-                    Err(None)
-                } else {
-                    match with_client_timeout(state.client.transfer(
-                        state.wallet_name.clone(),
-                        body.address.clone(),
-                        u128::from(state.drip_base_units),
-                    ))
-                    .await
-                    {
-                        Ok(submitted) => {
-                            state
-                                .balance_cache
-                                .subtract(u128::from(state.drip_base_units));
-                            Ok(submitted)
-                        }
-                        Err(e) => {
-                            state.balance_cache.clear();
-                            Err(Some(e))
-                        }
-                    }
-                }
-            }
+        match chain_client_for_endpoint(&state.faucet_config, &target_host, &target_port) {
             Err(e) => {
                 state.balance_cache.clear();
                 Err(Some(e))
             }
+            Ok(client) => match faucet_balance(&client, &state).await {
+                Ok(balance) => {
+                    if !faucet_has_room(balance, state.drip_base_units, state.hot_wallet_reserve) {
+                        Err(None)
+                    } else {
+                        match with_client_timeout(client.transfer(
+                            state.wallet_name.clone(),
+                            body.address.clone(),
+                            u128::from(state.drip_base_units),
+                        ))
+                        .await
+                        {
+                            Ok(submitted) => {
+                                state
+                                    .balance_cache
+                                    .subtract(u128::from(state.drip_base_units));
+                                Ok(submitted)
+                            }
+                            Err(e) => {
+                                state.balance_cache.clear();
+                                Err(Some(e))
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    state.balance_cache.clear();
+                    Err(Some(e))
+                }
+            },
         }
     };
 
@@ -279,6 +305,7 @@ async fn request_tokens(
             info!(
                 address = %reservation.address,
                 tx_hash = %tx_hash,
+                target = %target_url,
                 "Faucet transfer tx submitted"
             );
             HttpResponse::Ok().json(FaucetResponse {
@@ -311,6 +338,7 @@ async fn request_tokens(
             }
             error!("Faucet transfer failed: {e}");
             if is_network_or_broadcast_failure(&e) {
+                state.nodes.exclude(&target_url);
                 failure(
                     actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
                     "node unavailable",
@@ -330,11 +358,7 @@ async fn health_check() -> HttpResponse {
 }
 
 async fn ready_check(state: web::Data<AppState>) -> HttpResponse {
-    match state
-        .client
-        .get_wallet_by_name(state.wallet_name.clone())
-        .await
-    {
+    match ChainClient::get_wallet_by_name_at(&state.wallet_name, &state.wallet_path).await {
         Ok(Some(_)) => {}
         Ok(None) => {
             return HttpResponse::ServiceUnavailable().body("wallet missing");
@@ -350,27 +374,8 @@ async fn ready_check(state: web::Data<AppState>) -> HttpResponse {
         return HttpResponse::ServiceUnavailable().body("database unavailable");
     }
 
-    let api = match AbciHttpApi::new(state.node_url.clone()) {
-        Ok(api) => api,
-        Err(e) => {
-            error!("Faucet ready status client failed: {e}");
-            return HttpResponse::ServiceUnavailable().body("node unavailable");
-        }
-    };
-    let status_chain_id = match with_client_timeout(api.chain_id_from_status()).await {
-        Ok(chain_id) => chain_id,
-        Err(e) => {
-            error!("Faucet ready status check failed: {e}");
-            return HttpResponse::ServiceUnavailable().body("node unavailable");
-        }
-    };
-    if status_chain_id != state.chain_id {
-        error!(
-            expected = %state.chain_id,
-            actual = %status_chain_id,
-            "Faucet ready chain id mismatch"
-        );
-        return HttpResponse::ServiceUnavailable().body("chain id mismatch");
+    if !state.nodes.has_quorum() {
+        return HttpResponse::ServiceUnavailable().body("nodes not in sync");
     }
 
     HttpResponse::Ok().body("OK")
@@ -393,17 +398,32 @@ fn spawn_purge_task(store: Arc<FaucetStore>) {
     });
 }
 
+fn spawn_node_poller(pool: Arc<NodePool>, poll_interval: Duration) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(poll_interval);
+        loop {
+            ticker.tick().await;
+            pool.poll().await;
+        }
+    });
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     logging::init_default_logging().map_err(io_err)?;
 
     info!("Starting faucet server");
     let faucet_config = FaucetConfig::load().map_err(io_err)?;
-    let tendermint_url = faucet_config.node_url().map_err(io_err)?;
+    let endpoints = faucet_config.node_endpoints().map_err(io_err)?;
+    let node_urls = faucet_config.node_urls().map_err(io_err)?;
     let bind_addr = faucet_config.bind_addr();
     let trust_proxy = trust_proxy_from_env();
     let cors_origin = cors_origin_from_env();
-    info!("Connecting to Tendermint at {tendermint_url}");
+    info!(
+        hosts = ?faucet_config.node_hosts,
+        urls = ?node_urls,
+        "Polling Tendermint RPC hosts"
+    );
     info!("Starting faucet service at {bind_addr}");
     info!(
         chain_id = %faucet_config.chain_id,
@@ -411,6 +431,9 @@ async fn main() -> std::io::Result<()> {
         address_daily_drips = faucet_config.address_daily_drips,
         ip_hourly_requests = faucet_config.ip_hourly_requests,
         hot_wallet_reserve = faucet_config.hot_wallet_reserve,
+        min_synced = faucet_config.min_synced,
+        max_block_age_secs = faucet_config.max_block_age_secs,
+        poll_interval_secs = faucet_config.poll_interval_secs,
         db_path = %faucet_config.db_path,
         wallet_path = %faucet_config.wallet_path.display(),
         wallet_name = %faucet_config.wallet_name,
@@ -429,16 +452,25 @@ async fn main() -> std::io::Result<()> {
     );
     spawn_purge_task(Arc::clone(&store));
 
-    let client = ChainClient::with_wallets(
-        faucet_config.to_client_config(),
-        FeeConfig::default(),
+    let poll_interval = Duration::from_secs(faucet_config.poll_interval_secs);
+    let hosts: Vec<String> = endpoints.iter().map(|e| e.host.clone()).collect();
+    let ports: Vec<String> = endpoints.iter().map(|e| e.port.clone()).collect();
+    let nodes = Arc::new(NodePool::new(
+        hosts,
+        ports,
+        node_urls,
+        faucet_config.chain_id.clone(),
+        faucet_config.min_synced as usize,
+        Duration::from_secs(faucet_config.max_block_age_secs),
+        poll_interval,
+    ));
+    spawn_node_poller(Arc::clone(&nodes), poll_interval);
+
+    let faucet_address = match ChainClient::get_wallet_by_name_at(
+        &faucet_config.wallet_name,
         &faucet_config.wallet_path,
     )
-    .map_err(io_err)?;
-
-    let faucet_address = match client
-        .get_wallet_by_name(faucet_config.wallet_name.clone())
-        .await
+    .await
     {
         Ok(Some(wallet)) => {
             info!(
@@ -464,15 +496,16 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    let faucet_config = Arc::new(faucet_config);
     let state = AppState {
-        client,
         store,
+        nodes,
+        faucet_config: Arc::clone(&faucet_config),
         sign_lock: Arc::new(tokio::sync::Mutex::new(())),
         balance_cache: Arc::new(BalanceCache::new()),
         wallet_name: faucet_config.wallet_name.clone(),
+        wallet_path: faucet_config.wallet_path.clone(),
         faucet_address,
-        chain_id: faucet_config.chain_id.clone(),
-        node_url: tendermint_url,
         drip_base_units: faucet_config.drip_base_units,
         hot_wallet_reserve: faucet_config.hot_wallet_reserve,
         trust_proxy,

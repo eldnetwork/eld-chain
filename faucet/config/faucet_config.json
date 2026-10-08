@@ -1,4 +1,12 @@
 {
-  "node_host": "127.0.0.1",
-  "chain_id": "eld-testnet-tempelhof"
+  "node_host": "127.0.0.1:26657",
+  "node_hosts": [
+    "127.0.0.1:26657",
+    "127.0.0.1:26667",
+    "127.0.0.1:26677",
+    "127.0.0.1:26687"
+  ],
+  "chain_id": "eld-testnet-tempelhof",
+  "min_synced": 3,
+  "max_block_age_secs": 15
 }

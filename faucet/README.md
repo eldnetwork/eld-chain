@@ -12,12 +12,16 @@ HTTP server that sends test funds from a local wallet. Package `eld-faucet`, bin
 
 ## Config
 
-Reads `config/faucet_config.json` relative to the process working directory. A checked-in sample is in `faucet/config/faucet_config.json` (placeholder host, no secrets). Required fields are `node_host` and `chain_id`. Everything else has defaults.
+Reads `config/faucet_config.json` relative to the process working directory. A checked-in sample is in `faucet/config/faucet_config.json` (placeholder hosts, no secrets). Required fields are `node_host` and `chain_id`. If `node_hosts` is omitted, the faucet treats `node_host` as a one-element list (and clamps `min_synced` to 1). Everything else has defaults.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `node_host` | (required) | Tendermint RPC host |
-| `chain_id` | (required) | Must match Tendermint `status` |
+| `node_host` | (required) | Fallback Tendermint RPC endpoint when `node_hosts` is empty (`host` or `host:port`) |
+| `node_hosts` | `[node_host]` | Tendermint RPC endpoints to poll (`host` or `host:port`) |
+| `chain_id` | (required) | Must match Tendermint `status` on polled nodes |
+| `min_synced` | `3` | Minimum RPCs in the tip group before `/ready` and drips proceed |
+| `max_block_age_secs` | `15` | Drop a sample if its latest block is older than this |
+| `poll_interval_secs` | `2` | How often to poll all RPC hosts |
 | `bind_host` | `0.0.0.0` | HTTP listen host |
 | `bind_port` | `8080` | HTTP listen port |
 | `drip_base_units` | `1000000000` | Amount sent per successful drip |
@@ -27,12 +31,15 @@ Reads `config/faucet_config.json` relative to the process working directory. A c
 | `db_path` | `data/faucet.db` | SQLite file for rate limits |
 | `wallet_name` | `wallet-faucet-1` | Name of the hot wallet in the wallet file |
 
-Tendermint RPC port is fixed at `26657`. Signing uses the built-in fee schedule.
+Each `node_hosts` entry is `host` or `host:port` (default port `26657`). The checked-in sample for host-side `cargo run` uses the Compose published ports on localhost: `26657`, `26667`, `26677`, `26687`. The Compose faucet config uses service DNS names with the in-network RPC port `26657` on each node. Signing uses the built-in fee schedule.
+
+A node is in the tip group if its height is `max` or `max - 1` among fresh samples. Quorum also requires the tip height or newest block time to advance after the first successful poll (so `/ready` stays `503` until progress is seen).
 
 ### Env overrides
 
 | Variable | Overrides |
 |---|---|
+| `FAUCET_NODE_HOSTS` | `node_hosts` (comma-separated `host` or `host:port` entries) |
 | `FAUCET_BIND_HOST` | `bind_host` |
 | `FAUCET_BIND_PORT` | `bind_port` |
 | `FAUCET_DB_PATH` | `db_path` |
@@ -52,7 +59,7 @@ cargo run
 | Method | Path | Response |
 |---|---|---|
 | GET | `/health` | body `OK` (no I/O) |
-| GET | `/ready` | `200 OK` when the wallet is loaded, SQLite answers, and Tendermint `status` chain id matches config; otherwise `503` |
+| GET | `/ready` | `200 OK` when the wallet is loaded, SQLite answers, and at least `min_synced` RPCs share a moving tip; otherwise `503` (`nodes not in sync` when the tip quorum is missing) |
 | POST | `/faucet/request` | JSON `{ "success", "message" }` for body `{ "address": "0x..." }`. On success also `tx_hash` and `amount`. Body over 1 KB is rejected. |
 
 CORS is off by default. Client request and disconnect timeouts are 30 seconds; RPC calls used by the faucet share that cap.
@@ -67,4 +74,4 @@ Each successful check counts **one drip** for the requested address and **one re
 - IP is the TCP peer address unless `FAUCET_TRUST_PROXY=1`.
 - Counters survive a restart in SQLite. A failed broadcast releases the slot. Rows older than two days are purged every hour.
 - Transfers are signed one at a time. Before each transfer the faucet checks that its account holds at least `drip_base_units + hot_wallet_reserve`. If not, it returns `503` `faucet empty` and does not spend the daily/IP slot. The balance is cached for 5 seconds; the sign lock covers the check and the transfer.
-- A node/network failure returns `503` `node unavailable`; other submit failures return `400` `Error submitting tx`. The response never includes the chain error text.
+- Each drip builds a client against the current quorum target RPC. A node/network failure returns `503` `node unavailable` and excludes that URL for one poll interval; other submit failures return `400` `Error submitting tx`. The response never includes the chain error text.
