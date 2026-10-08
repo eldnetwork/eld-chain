@@ -13,7 +13,22 @@ use lz4::block::compress;
 #[cfg(test)]
 use lz4::block::decompress;
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+/// Number of complete ABCI snapshots to retain after each successful create.
+const SNAPSHOT_KEEP_LAST_N: u32 = 2;
+
+/// Outcome of [`SnapshotManager::create_snapshot_and_prune`].
+#[derive(Debug)]
+pub enum CreateSnapshotAndPruneOutcome {
+    /// A snapshot build was already running; this height was skipped.
+    SkippedAlreadyInFlight,
+    /// Snapshot created, verified, and prune completed.
+    Created,
+    /// Snapshot created and verified, but prune failed.
+    CreatedButPruneFailed(EldError),
+}
 
 #[derive(Debug)]
 pub struct SnapshotManager<S>
@@ -21,6 +36,7 @@ where
     S: SnapshotStorage + Send + Sync + 'static,
 {
     storage: Arc<S>,
+    build_in_flight: AtomicBool,
 }
 
 impl<S> SnapshotManager<S>
@@ -28,7 +44,15 @@ where
     S: SnapshotStorage + Send + Sync + 'static,
 {
     pub fn new(storage: Arc<S>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            build_in_flight: AtomicBool::new(false),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn set_build_in_flight_for_test(&self, in_flight: bool) {
+        self.build_in_flight.store(in_flight, Ordering::SeqCst);
     }
 
     /// Get metadata for a snapshot at the specified height
@@ -129,12 +153,94 @@ where
         // Store the chunk directly
         self.storage.put_snapshot_chunk(height, chunk)
     }
+
+    pub async fn prune_snapshots(&self, keep_last_n: u32) -> Result<(), EldError> {
+        let snapshots = self.list_snapshots(u32::MAX).await?;
+        if snapshots.len() <= keep_last_n as usize {
+            return Ok(());
+        }
+
+        let mut heights: Vec<i64> = snapshots.iter().map(|s| s.height).collect();
+        heights.sort_unstable_by(|a, b| b.cmp(a));
+
+        for height in heights.iter().skip(keep_last_n as usize) {
+            self.delete_snapshot(*height).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn delete_snapshot(&self, height: i64) -> Result<(), EldError> {
+        if let Some(metadata) = self.get_metadata(height).await? {
+            for i in 0..metadata.chunk_count {
+                self.storage.delete_snapshot_chunk(height, i)?;
+            }
+            self.storage.delete_snapshot_metadata(height)?;
+        }
+        Ok(())
+    }
+
+    /// Verify metadata exists and every chunk index `0..chunk_count` is present.
+    async fn verify_snapshot_complete(&self, height: i64) -> Result<(), EldError> {
+        let metadata = self
+            .get_metadata(height)
+            .await?
+            .ok_or_else(|| EldError::StorageError {
+                operation: "verify_snapshot_complete".to_string(),
+                details: format!("Snapshot metadata missing for height {height}"),
+            })?;
+
+        for i in 0..metadata.chunk_count {
+            if self.get_chunk(height, i).await?.is_none() {
+                return Err(EldError::StorageError {
+                    operation: "verify_snapshot_complete".to_string(),
+                    details: format!("Missing chunk {i} for snapshot height {height}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<S> SnapshotManager<S>
 where
     S: SnapshotStorage + CADOStorage + Send + Sync + 'static,
 {
+    /// Create an ABCI snapshot, verify it, then prune to [`SNAPSHOT_KEEP_LAST_N`].
+    ///
+    /// Skips if another build is already in flight. Does not prune if create or verify fails.
+    pub async fn create_snapshot_and_prune(
+        &self,
+        height: i64,
+    ) -> Result<CreateSnapshotAndPruneOutcome, EldError> {
+        if self
+            .build_in_flight
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok(CreateSnapshotAndPruneOutcome::SkippedAlreadyInFlight);
+        }
+
+        let outcome = self.create_snapshot_and_prune_locked(height).await;
+        self.build_in_flight.store(false, Ordering::Release);
+        outcome
+    }
+
+    /// Create, verify, and prune while `build_in_flight` is held by the caller.
+    async fn create_snapshot_and_prune_locked(
+        &self,
+        height: i64,
+    ) -> Result<CreateSnapshotAndPruneOutcome, EldError> {
+        self.create_snapshot_from_latest_state(height).await?;
+        self.verify_snapshot_complete(height).await?;
+
+        match self.prune_snapshots(SNAPSHOT_KEEP_LAST_N).await {
+            Ok(()) => Ok(CreateSnapshotAndPruneOutcome::Created),
+            Err(e) => Ok(CreateSnapshotAndPruneOutcome::CreatedButPruneFailed(e)),
+        }
+    }
+
     /// Build and persist an ABCI snapshot from already committed state in RocksDB.
     pub async fn create_snapshot_from_latest_state(&self, height: i64) -> Result<(), EldError> {
         let latest_app_state_tip_path =
@@ -239,32 +345,6 @@ where
         }
 
         Ok(Some(data))
-    }
-
-    pub async fn prune_snapshots(&self, keep_last_n: u32) -> Result<(), EldError> {
-        let snapshots = self.list_snapshots(u32::MAX).await?;
-        if snapshots.len() <= keep_last_n as usize {
-            return Ok(());
-        }
-
-        let mut heights: Vec<i64> = snapshots.iter().map(|s| s.height).collect();
-        heights.sort_unstable_by(|a, b| b.cmp(a));
-
-        for height in heights.iter().skip(keep_last_n as usize) {
-            self.delete_snapshot(*height).await?;
-        }
-
-        Ok(())
-    }
-
-    pub async fn delete_snapshot(&self, height: i64) -> Result<(), EldError> {
-        if let Some(metadata) = self.get_metadata(height).await? {
-            for i in 0..metadata.chunk_count {
-                self.storage.delete_snapshot_chunk(height, i)?;
-            }
-            self.storage.delete_snapshot_metadata(height)?;
-        }
-        Ok(())
     }
 
     pub async fn get_latest_snapshot_height(&self) -> Result<Option<i64>, EldError> {
@@ -551,5 +631,163 @@ mod tests {
             .await
             .expect("Failed to get chunk")
             .is_none());
+    }
+
+    /// Seed AppStateTip + AppStateSnapshot at LATEST so create_snapshot_from_latest_state succeeds.
+    async fn seed_latest_state_for_height<S>(storage: &S, height: i64, app_hash: [u8; 32])
+    where
+        S: CADOStorage,
+    {
+        use crate::app_state::committed_cado_cache::CommittedCadoCache;
+        use crate::app_state::state_trie::StateTrie;
+        use eld_common::cado::{CADOMetadata, CadoBody};
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let state_trie_root = StateTrie::empty_root_hash();
+        let tip = AppStateTip {
+            block_height: height,
+            cado_root_hash: state_trie_root,
+            app_hash,
+        };
+        let tip_path =
+            CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("tip path");
+        let tip_cado = CadoBody::immutable(
+            bincode::serialize(&tip).expect("serialize tip"),
+            CADOMetadata::new(CadoType::AppStateTip, "system"),
+        );
+        storage
+            .put_cado_type(tip_path, tip_cado)
+            .expect("persist tip");
+
+        let snapshot = AppStateSnapshot {
+            block_height: height,
+            app_hash,
+            chain_id: "test-chain".to_string(),
+            current_epoch: height / 100,
+            committed_cado_cache: CommittedCadoCache::new(),
+            state_trie_root,
+            epoch_records_index: BTreeSet::new(),
+            namespace_registry_index: BTreeMap::new(),
+            validators: Vec::new(),
+            active_validators: Vec::new(),
+            capacity_validators: Vec::new(),
+            active_capacity_validator: None,
+        };
+        storage
+            .put_cado_type(
+                AppStateSnapshot::latest_path().expect("snapshot path"),
+                snapshot.to_cado().expect("snapshot to cado"),
+            )
+            .expect("persist app state snapshot");
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_and_prune_keeps_last_two() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let storage = Arc::new(
+            RocksDBStorage::new(temp_dir.path()).expect("Failed to create RocksDBStorage"),
+        );
+        let manager = SnapshotManager::new(storage.clone());
+
+        for height in [100_i64, 200, 300] {
+            let app_hash = [height as u8; 32];
+            seed_latest_state_for_height(storage.as_ref(), height, app_hash).await;
+            let outcome = manager
+                .create_snapshot_and_prune(height)
+                .await
+                .expect("create_snapshot_and_prune");
+            assert!(matches!(outcome, CreateSnapshotAndPruneOutcome::Created));
+        }
+
+        let snapshots = manager.list_snapshots(10).await.expect("list_snapshots");
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(snapshots[0].height, 300);
+        assert_eq!(snapshots[1].height, 200);
+
+        assert!(manager
+            .get_metadata(100)
+            .await
+            .expect("get metadata 100")
+            .is_none());
+        assert!(manager
+            .get_chunk(100, 0)
+            .await
+            .expect("get chunk 100")
+            .is_none());
+        assert!(manager
+            .get_metadata(200)
+            .await
+            .expect("get metadata 200")
+            .is_some());
+        assert!(manager
+            .get_metadata(300)
+            .await
+            .expect("get metadata 300")
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_and_prune_failed_create_does_not_prune() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let storage = Arc::new(
+            RocksDBStorage::new(temp_dir.path()).expect("Failed to create RocksDBStorage"),
+        );
+        let manager = SnapshotManager::new(storage);
+
+        for height in [100_i64, 200] {
+            manager
+                .create_snapshot_with_app_hash(
+                    height,
+                    vec![height as u8],
+                    [height as u8; 32],
+                    SnapshotStateCounts::default(),
+                )
+                .await
+                .expect("seed snapshot");
+        }
+
+        let result = manager.create_snapshot_and_prune(999).await;
+        assert!(
+            result.is_err(),
+            "expected create to fail without tip/snapshot"
+        );
+
+        assert!(manager
+            .get_metadata(100)
+            .await
+            .expect("get metadata 100")
+            .is_some());
+        assert!(manager
+            .get_metadata(200)
+            .await
+            .expect("get metadata 200")
+            .is_some());
+        let snapshots = manager.list_snapshots(10).await.expect("list_snapshots");
+        assert_eq!(snapshots.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_and_prune_skips_when_in_flight() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let storage = Arc::new(
+            RocksDBStorage::new(temp_dir.path()).expect("Failed to create RocksDBStorage"),
+        );
+        let manager = SnapshotManager::new(storage);
+
+        manager.set_build_in_flight_for_test(true);
+        let outcome = manager
+            .create_snapshot_and_prune(100)
+            .await
+            .expect("skip should return Ok");
+        assert!(matches!(
+            outcome,
+            CreateSnapshotAndPruneOutcome::SkippedAlreadyInFlight
+        ));
+        assert!(manager
+            .get_metadata(100)
+            .await
+            .expect("get metadata")
+            .is_none());
+        manager.set_build_in_flight_for_test(false);
     }
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **eld-chain** (this workspace: `eld-common`, `eld-client`, `eld-cli`, `eld-node`) are documented here.
+All notable changes to **eld-chain** (this workspace: `eld-common`, `eld-client`, `eld-cli`, `eld-faucet`, `eld-node`) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -11,6 +11,7 @@ Crates are unpublished (`publish = false`).
 
 ### Added
 
+- `eld-faucet` — HTTP server that signs test-fund transfers from a local wallet ([faucet/README.md](faucet/README.md)).
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`). The old flat verbs stay as hidden aliases.
 - `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`.
@@ -20,6 +21,7 @@ Crates are unpublished (`publish = false`).
 
 ### Changed
 
+- `eld-faucet` signs with the built-in fee schedule. It reads `config/faucet_config.json` for `node_host` and `chain_id`, binds `0.0.0.0:8080`, uses Tendermint port `26657`, and serves `/health` and `/faucet/request`.
 - `eld-cli` no longer has a `completions` command.
 - `eld-cli pinboard list-wallet` is now `pinboard list-by-address`. The argument is a wallet address. The hidden alias `pinboard-list-by-wallet` is unchanged.
 - `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `eld-cli-config.json`.

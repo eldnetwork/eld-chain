@@ -74,9 +74,10 @@ Library crates ship `LICENSE`, `README.md`, `NOTICE`, and (where relevant) `CHAN
 | [`common/`](common/README.md) | `eld-common` | Protocol types, validation, `Wallet` identity, CADO, capacity, pinboard |
 | [`client/`](client/README.md) | `eld-client` | Tendermint RPC, app REST, faucet HTTP, `ChainClient`, CWD config, wallet files |
 | [`cli/`](cli/README.md) | `eld-cli` | Command-line client over `ChainClient` |
+| [`faucet/`](faucet/README.md) | `eld-faucet` | HTTP faucet that signs test-fund transfers from a local wallet |
 | [`node_app/`](node_app/README.md) | `eld-node` | ABCI application (Tendermint, RocksDB, libp2p, Axum REST) |
 
-Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo package names may contain hyphens. `eld-cli` and `eld-node` are binary crates, not libraries.
+Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo package names may contain hyphens. `eld-cli`, `eld-faucet`, and `eld-node` are binary crates, not libraries.
 
 
 ## Architecture
@@ -93,6 +94,8 @@ Library crate imports use underscores (`eld_common`, `eld_client`) because Cargo
 Config loaders return `Result`; binaries can exit after they see an error.
 
 [`eld-cli`](cli/README.md) is the command-line binary on top of `ChainClient`.
+
+[`eld-faucet`](faucet/README.md) is the HTTP faucet binary. It signs transfers with `ChainClient` and a local wallet file.
 
 [`eld-node`](node_app/README.md) is the ABCI application. Runtime data (`data/`, `tx_responses/`), wallets, and P2P key files are not shipped in git. Compose mounts them from [`deploy/docker/local/`](deploy/docker/local/).
 
