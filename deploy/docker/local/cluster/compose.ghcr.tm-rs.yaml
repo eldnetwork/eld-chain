@@ -186,6 +186,28 @@ services:
       eld-app-4:
         condition: service_started
 
+  eld-faucet:
+    profiles: ["faucet"]
+    image: ghcr.io/eldnetwork/eld-faucet:${FAUCET_VERSION_TAG:-local}
+    pull_policy: always
+    container_name: eld-faucet
+    restart: unless-stopped
+    depends_on:
+      tendermint-1:
+        condition: service_started
+    networks:
+      - eld-network
+    ports:
+      - "8080:8080"
+    environment:
+      FAUCET_WALLET_PATH: /app/wallets/wallets.json
+      FAUCET_DB_PATH: /app/data/faucet.db
+      RUST_LOG: eld_faucet=info,eld_client=info
+    volumes:
+      - faucet-data:/app/data
+      - ./faucet/config:/app/config:ro
+      - ./faucet/wallets.json:/app/wallets/wallets.json:ro
+
 volumes:
   eld-data-1:
     driver: local
@@ -202,6 +224,8 @@ volumes:
   tendermint-data-3:
     driver: local
   tendermint-data-4:
+    driver: local
+  faucet-data:
     driver: local
 
 networks:

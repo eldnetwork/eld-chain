@@ -11,6 +11,6 @@ source "${SCRIPT_DIR}/../../../_env.sh"
 COMPOSE_FILE="$DEPLOY_DIR/docker/local/cluster/compose.yaml"
 
 echo "Stopping 4-node compose using ${ELD_APP_IMAGE} and ${ELD_TM_IMAGE}"
-docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" down --remove-orphans
+docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" --profile faucet down --remove-orphans
 
 echo "Stopped 4-node compose (volumes kept)."

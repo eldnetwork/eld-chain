@@ -84,23 +84,42 @@ git push origin v0.0.1
 
 Start and stop scripts load `deploy/.env` (or `DEPLOY_ENV_FILE`) and pass it to Compose so `eld-app` / `eld-tendermint` tags match `NODE_APP_VERSION_TAG` and `TENDERMINT_VERSION_TAG`. They do not rebuild images.
 
-Keep chain and Tendermint volumes (restart containers only):
+To include the faucet in the compose service:
+* Set `FAUCET_VERSION_TAG` in `.env`
+* Add a wallet named `wallet-faucet-1` in `deploy/docker/local/cluster/faucet/wallets.
+* Add `--with-faucet` to the cluster start script
+
+For a local (non-GHCR) image, build from the repo root first:
+
+```sh
+docker build -f deploy/docker/Dockerfile.faucet -t "eld-faucet:${FAUCET_VERSION_TAG}" .
+```
+
+To start a cluster with existing data i.e. keeping chain and Tendermint volumes (restart containers only):
 
 ```sh
 ./deploy/scripts/docker/local/cluster/cluster-start-with-history.sh
+// or
+./deploy/scripts/docker/local/cluster/cluster-start-with-history.sh --with-faucet
 ```
 
-Wipe volumes and start from genesis (fresh state). After the wipe this runs `tendermint unsafe_reset_all` on each Tendermint service so `data/priv_validator_state.json` exists before `up`:
+To wipe volumes and start from genesis (fresh state):
 
 ```sh
 ./deploy/scripts/docker/local/cluster/cluster-start-without-history.sh
+// or
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.sh --with-faucet
 ```
+After the wipe this runs `tendermint unsafe_reset_all` on each Tendermint service so a new `data/priv_validator_state.json` exists before `up` is called:
 
-Stop containers and the compose network (keep volumes):
+
+To stop containers and the compose network (while keeping volumes):
 
 ```sh
 ./deploy/scripts/docker/local/cluster/cluster-stop.sh
 ```
+
+This always stops the faucet if it is running:
 
 ## Ports (host)
 
