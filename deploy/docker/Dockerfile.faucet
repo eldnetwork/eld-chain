@@ -17,8 +17,10 @@ COPY common ./common
 COPY client ./client
 COPY faucet ./faucet
 # Cargo loads every workspace member. Drop members that were not copied.
+# metadata (online) rewrites the lock for the reduced workspace; --locked then
+# pins that lock. Do not use --offline here: a fresh image has no crates cache.
 RUN sed -i 's/, "cli"//g; s/, "node_app"//g' Cargo.toml \
-    && cargo metadata --offline --format-version 1 >/dev/null \
+    && cargo metadata --format-version 1 >/dev/null \
     && cargo build --release --locked -p eld-faucet
 
 FROM debian:bookworm-slim
