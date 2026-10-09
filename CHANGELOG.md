@@ -15,7 +15,7 @@ Crates are unpublished (`publish = false`).
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`). The old flat verbs stay as hidden aliases.
 - `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`.
-- Tag `eld-cli-v*` (for example `eld-cli-v0.0.3`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
+- Tag `eld-cli-v*` (for example `eld-cli-v0.0.4`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
 - `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
 - `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.
 
@@ -27,7 +27,7 @@ Crates are unpublished (`publish = false`).
 - `eld-cli pinboard list-wallet` is now `pinboard list-by-address`. The argument is a wallet address. The hidden alias `pinboard-list-by-wallet` is unchanged.
 - `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `eld-cli-config.json`.
 - `eld-cli` stores config and wallets in the user directories (XDG on Linux, `~/Library/Application Support/eld` on macOS). `--home` is gone. `--cli-config` and `--wallets` still override those paths.
-- `eld-cli` is version `0.0.3`. `eld-faucet` is version `0.0.3`. `eld-node` is version `0.0.5`. The other crates stay `0.0.1`.
+- `eld-cli` is version `0.0.4`. `eld-faucet` is version `0.0.3`. `eld-node` is version `0.0.5`. The other crates stay `0.0.1`.
 - Node app GHCR images publish from git tags `eld-app-v*.*.*` (for example `eld-app-v0.0.5`).
 - `Coin` no longer implements SCALE. Amounts stay on serde (JSON decimal strings and bincode). `eld-common` warns on missing docs for `Address`, `Tx`, `Wallet`, the typed IDs, and `EldError`.
 
