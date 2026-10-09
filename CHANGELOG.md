@@ -16,12 +16,13 @@ Crates are unpublished (`publish = false`).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`). The old flat verbs stay as hidden aliases.
 - `eld-cli` flags `--output text|json`, `--wallets`, and `--yes`.
 - Tag `eld-cli-v*` (for example `eld-cli-v0.0.3`) builds `eld-cli` for Linux x86_64 and arm64, and for macOS arm64 and x86_64, and attaches the binaries to a draft GitHub Release. Publishing that draft is a manual step in the GitHub UI (`.github/workflows/cli.yml`).
-- `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `tx faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
+- `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
 - `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.
 
 ### Changed
 
 - `eld-faucet` signs with the built-in fee schedule. It reads `config/faucet_config.json` for `node_host` and `chain_id`, binds `0.0.0.0:8080`, uses Tendermint port `26657`, and serves `/health` and `/faucet/request`.
+- `eld-cli faucet` is a top-level command (was `tx faucet`). The argument is a hex address or a local wallet name.
 - `eld-cli` no longer has a `completions` command.
 - `eld-cli pinboard list-wallet` is now `pinboard list-by-address`. The argument is a wallet address. The hidden alias `pinboard-list-by-wallet` is unchanged.
 - `eld-cli` no longer reads `config/consensus_config.json`. Fees used when signing are the built-in defaults. `chain_id` lives in `eld-cli-config.json`.

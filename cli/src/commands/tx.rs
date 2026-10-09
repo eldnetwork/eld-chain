@@ -14,15 +14,6 @@ pub(crate) async fn transfer(
     crate::output::emit_submitted_tx(mode, "Transfer", &submitted)
 }
 
-pub(crate) async fn request_faucet(
-    cli: &ChainClient,
-    address: String,
-    mode: OutputMode,
-) -> Result<(), EldError> {
-    let body = cli.request_faucet(address).await?;
-    crate::output::emit_faucet(mode, &body)
-}
-
 pub(crate) async fn stake(
     cli: &ChainClient,
     wallet_name: String,

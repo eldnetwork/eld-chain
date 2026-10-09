@@ -73,10 +73,7 @@ fn command_name(cmd: &SubCommand) -> &'static str {
             cmd: TxCommand::Unstake(_),
         }
         | SubCommand::Unstake(_) => "tx unstake",
-        SubCommand::Tx {
-            cmd: TxCommand::Faucet(_),
-        }
-        | SubCommand::RequestFaucet(_) => "tx faucet",
+        SubCommand::Faucet(_) | SubCommand::RequestFaucet(_) => "faucet",
         SubCommand::Account {
             cmd: AccountCommand::Get(_),
         }
@@ -272,12 +269,7 @@ fn command_is_offline(cmd: &SubCommand) -> bool {
 }
 
 fn command_is_faucet(cmd: &SubCommand) -> bool {
-    matches!(
-        cmd,
-        SubCommand::Tx {
-            cmd: TxCommand::Faucet(_),
-        } | SubCommand::RequestFaucet(_)
-    )
+    matches!(cmd, SubCommand::Faucet(_) | SubCommand::RequestFaucet(_))
 }
 
 fn command_signs(cmd: &SubCommand) -> bool {
@@ -338,7 +330,7 @@ async fn dispatch_with(args: Arguments, interactive: bool) -> Result<(), EldErro
         return Err(setup::chain_id_missing_error());
     }
     let cli = open_chain_client(&paths, config, &args.cmd)?;
-    dispatch_online(&cli, args.cmd, mode).await
+    dispatch_online(&cli, &paths.wallets, args.cmd, mode).await
 }
 
 async fn dispatch_offline(
@@ -376,6 +368,7 @@ async fn dispatch_offline(
 
 async fn dispatch_online(
     cli: &ChainClient,
+    wallets: &Path,
     cmd: SubCommand,
     mode: OutputMode,
 ) -> Result<(), EldError> {
@@ -403,11 +396,9 @@ async fn dispatch_online(
             )
             .await
         }
-        SubCommand::Tx {
-            cmd: TxCommand::Faucet(faucet),
-        }
-        | SubCommand::RequestFaucet(faucet) => {
-            commands::tx::request_faucet(cli, faucet.address.hex_with_prefix(), mode).await
+        SubCommand::Faucet(faucet) | SubCommand::RequestFaucet(faucet) => {
+            let address = commands::faucet::resolve_recipient(&faucet.recipient, wallets).await?;
+            commands::faucet::request_faucet(cli, address.hex_with_prefix(), mode).await
         }
         SubCommand::Account {
             cmd: AccountCommand::Get(account),
@@ -683,15 +674,12 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let address =
-            eld_common::Address::parse_hex_str("0x1234567890abcdef1234567890abcdef12345678")
-                .unwrap();
         let err = dispatch_with(
             args_in(
                 dir.path(),
-                SubCommand::Tx {
-                    cmd: TxCommand::Faucet(args::FaucetArgs { address }),
-                },
+                SubCommand::Faucet(args::FaucetArgs {
+                    recipient: "0x1234567890abcdef1234567890abcdef12345678".to_string(),
+                }),
             ),
             false,
         )

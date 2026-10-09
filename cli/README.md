@@ -39,9 +39,9 @@ The CLI stores two files under the user account. They are not next to the binary
 | Linux: `~/.config/eld/eld-cli-config.json` (`$XDG_CONFIG_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/eld-cli-config.json`. | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
 | Linux: `~/.local/share/eld/wallets.json` (`$XDG_DATA_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/wallets.json`. | `--wallets` | Local Ed25519 keys. |
 
-`wallet` commands stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`, `tx faucet`) do not open the wallet file. The wallet file is opened only when signing: `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
+`wallet` commands stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`) do not open the wallet file. `faucet` opens it only when the argument is a wallet name, to look up the address. The wallet file is opened for signing on `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
 
-The first command that talks to a node (`account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
+The first command that talks to a node (`account`, `tx`, `faucet`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
 
 ```text
 Node address (IP or URL):
@@ -53,7 +53,7 @@ The CLI then reads `chain_id` from Tendermint `GET /status`. If the node does no
 
 Without a terminal, a missing node address exits 1 and prints `eld-cli config node <ip-or-url>`.
 
-`tx faucet` (and the `request-faucet` alias) is the only command that asks for a faucet:
+`faucet` (and the `request-faucet` alias) is the only command that asks for a faucet:
 
 ```text
 Faucet address (IP or URL):
@@ -111,7 +111,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `account get` | Balance and nonce |
 | `account stake-get` | Staking account |
 | `tx transfer\|stake\|unstake` | Sign and broadcast |
-| `tx faucet` | Dev faucet (`tx request-faucet` is the same command) |
+| `faucet` | Dev faucet. Argument is a hex address or a local wallet name (`request-faucet` is the same command) |
 | `chain abci-info` | Tendermint ABCI info |
 | `chain epoch` | Epoch metadata and validator set |
 | `chain validators` | Validators in the current epoch |
@@ -127,7 +127,8 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 eld-cli wallet create my-wallet
 eld-cli wallet list
 eld-cli --output json wallet list
-eld-cli tx faucet 0x1234567890abcdef1234567890abcdef12345678
+eld-cli faucet 0x1234567890abcdef1234567890abcdef12345678
+eld-cli faucet my-wallet
 eld-cli account get 0x1234567890abcdef1234567890abcdef12345678
 eld-cli tx transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
 eld-cli pinboard post my-wallet ./message.txt --content-type text/plain
@@ -144,7 +145,7 @@ The old flat names still parse. They are hidden from `--help`.
 | `get-wallet` | `wallet show` |
 | `remove-wallet` | `wallet remove` |
 | `transfer` | `tx transfer` |
-| `request-faucet` | `tx faucet` |
+| `request-faucet` | `faucet` |
 | `get-account` | `account get` |
 | `get-stake-account` | `account stake-get` |
 | `get-abci-info` | `chain abci-info` |

@@ -51,6 +51,11 @@ pub(crate) enum SubCommand {
         #[command(subcommand)]
         cmd: TxCommand,
     },
+    /// Request tokens from the dev faucet.
+    #[command(
+        after_help = "Example:\n  eld-cli faucet 0x1234567890abcdef1234567890abcdef12345678\n  eld-cli faucet my-wallet"
+    )]
+    Faucet(FaucetArgs),
     /// Epoch, validators, and ABCI info.
     Chain {
         #[command(subcommand)]
@@ -188,9 +193,6 @@ pub(crate) enum TxCommand {
     Stake(StakeArgs),
     /// Unstake tokens back to a local wallet.
     Unstake(UnstakeArgs),
-    /// Request tokens from the dev faucet.
-    #[command(alias = "request-faucet")]
-    Faucet(FaucetArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -286,9 +288,9 @@ pub(crate) struct TransferArgs {
 
 #[derive(Args, Debug)]
 pub(crate) struct FaucetArgs {
-    /// Address that receives the faucet tokens.
-    #[arg(value_name = "ADDRESS", value_parser = parse_address)]
-    pub(crate) address: Address,
+    /// Hex address (`0x` and 40 hex digits) or local wallet name.
+    #[arg(value_name = "ADDRESS_OR_NAME")]
+    pub(crate) recipient: String,
 }
 
 #[derive(Args, Debug)]
@@ -509,6 +511,28 @@ mod tests {
     }
 
     #[test]
+    fn parses_faucet_hex_and_wallet_name() {
+        let hex = Arguments::try_parse_from(["eld-cli", "faucet", ADDRESS]).unwrap();
+        let SubCommand::Faucet(faucet) = hex.cmd else {
+            panic!("expected faucet");
+        };
+        assert_eq!(faucet.recipient, ADDRESS);
+
+        let named = Arguments::try_parse_from(["eld-cli", "faucet", "my-wallet"]).unwrap();
+        let SubCommand::Faucet(faucet) = named.cmd else {
+            panic!("expected faucet");
+        };
+        assert_eq!(faucet.recipient, "my-wallet");
+    }
+
+    #[test]
+    fn faucet_is_not_a_tx_subcommand() {
+        let err = Arguments::try_parse_from(["eld-cli", "tx", "faucet", ADDRESS]).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("unrecognized subcommand"), "{message}");
+    }
+
+    #[test]
     fn rejects_bad_address() {
         let err =
             Arguments::try_parse_from(["eld-cli", "account", "get", "not-an-address"]).unwrap_err();
@@ -564,6 +588,7 @@ Commands:
   wallet     Local signing keys
   account    Balances and nonces
   tx         Sign and broadcast
+  faucet     Request tokens from the dev faucet
   chain      Epoch, validators, and ABCI info
   namespace  Namespace registry
   pinboard   Ephemeral posts

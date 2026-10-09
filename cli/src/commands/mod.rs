@@ -2,6 +2,7 @@ pub(crate) mod account;
 pub(crate) mod cado;
 pub(crate) mod config;
 pub(crate) mod epoch;
+pub(crate) mod faucet;
 pub(crate) mod namespace;
 pub(crate) mod pinboard;
 pub(crate) mod reset;

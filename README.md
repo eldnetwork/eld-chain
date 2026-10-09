@@ -52,13 +52,13 @@ With that node up, talk to it with [`eld-cli`](cli/README.md):
 
 ```sh
 cargo run -p eld-cli -- wallet create my-wallet
-cargo run -p eld-cli -- tx faucet 0xYourAddress
+cargo run -p eld-cli -- faucet 0xYourAddress
 cargo run -p eld-cli -- account get 0xYourAddress
 ```
 
 The first command that needs a node asks for the node address and writes `eld-cli-config.json` under the user config directory (`~/.config/eld` on Linux, `~/Library/Application Support/eld` on macOS). `wallet create` writes `wallets.json` under the user data directory on Linux and under Application Support on macOS.
 
-`wallet create` prints the address to pass to `tx faucet` and `account get`. Flags, aliases, and exit codes are in [cli/README.md](cli/README.md).
+`wallet create` prints the address to pass to `faucet` and `account get`. `faucet` also accepts the wallet name. Flags, aliases, and exit codes are in [cli/README.md](cli/README.md).
 
 
 ## This repository
