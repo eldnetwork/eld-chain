@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       app_tag:
-        description: Published eld-app release tag (for example eld-app-v0.0.4)
+        description: Published eld-app release tag (for example eld-app-v0.0.5)
         required: true
         type: string
       tendermint_tag:
@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! "$APP_TAG" =~ ^eld-app-v[0-9A-Za-z._+-]+$ ]]; then
-            echo "app_tag must be a release tag such as eld-app-v0.0.4" >&2
+            echo "app_tag must be a release tag such as eld-app-v0.0.5" >&2
             exit 1
           fi
           if ! release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${APP_TAG}")"; then
