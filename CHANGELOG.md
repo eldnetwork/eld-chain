@@ -46,7 +46,7 @@ This is experimental: protocol constants are local-dev values, not mainnet econo
   - `eld-client` — Tendermint RPC, app REST, faucet, `ChainClient`, CWD config, wallet files ([client/CHANGELOG.md](client/CHANGELOG.md)).
   - `eld-node` — Tendermint ABCI application (RocksDB, libp2p, Axum REST).
 - Local Docker Compose: single-node and 4-node stacks under `deploy/docker/local/`, plus start/stop scripts.
-- GHCR multi-arch release image (`linux/amd64`, `linux/arm64`) via `.github/workflows/image.yml` on `v*.*.*` tags.
+- GHCR multi-arch release image (`linux/amd64`, `linux/arm64`) via `.github/workflows/eld-app-image.yml` on `v*.*.*` tags.
 - Single-node Compose that pulls `ghcr.io/eldnetwork/eld-chain` and `ghcr.io/eldnetwork/eld-tendermint`.
 - CI gate (`./deploy/scripts/ci.sh` and GitHub Actions): fmt, Clippy (warnings as errors), build, test, `cargo audit`, `cargo deny`, gitleaks.
 - Dependabot, `CODEOWNERS`, issue/PR templates, `SECURITY.md`.

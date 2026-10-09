@@ -1,6 +1,6 @@
 # Deploy a release to EC2
 
-An `eld-app-v*.*.*` tag publishes `ghcr.io/eldnetwork/eld-chain:<tag>` through [`.github/workflows/image.yml`](.github/workflows/image.yml). That does not deploy.
+An `eld-app-v*.*.*` tag publishes `ghcr.io/eldnetwork/eld-chain:<tag>` through [`.github/workflows/eld-app-image.yml`](.github/workflows/eld-app-image.yml). That does not deploy.
 
 Deploy is [`.github/workflows/deploy-ec2.yml`](.github/workflows/deploy-ec2.yml). A developer runs it by hand and must name a tag that already has a published GitHub Release and a successful image workflow. Local compose tags stay in `deploy/.env`. They are usually ahead of GitHub Actions, and this deploy does not read them.
 

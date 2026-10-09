@@ -69,7 +69,7 @@ Tendermint is compiled `GOOS=linux` in `TENDERMINT_DIR` for the Mac’s CPU, the
 
 ## Publish
 
-A tag matching `eld-app-v*.*.*` starts [`.github/workflows/image.yml`](../.github/workflows/image.yml). CI runs first. The image job then publishes `linux/amd64` and `linux/arm64` as one manifest:
+A tag matching `eld-app-v*.*.*` starts [`.github/workflows/eld-app-image.yml`](../.github/workflows/eld-app-image.yml). CI runs first. The image job then publishes `linux/amd64` and `linux/arm64` as one manifest:
 
 `ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.3`
 

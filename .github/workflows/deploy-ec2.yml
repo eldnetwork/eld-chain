@@ -1,6 +1,6 @@
 name: deploy-ec2
 
-# Manual only. A tag push publishes the image in image.yml and does not deploy.
+# Manual only. A tag push publishes the image in eld-app-image.yml and does not deploy.
 on:
   workflow_dispatch:
     inputs:
@@ -49,11 +49,11 @@ jobs:
             echo "${APP_TAG} is not a published release" >&2
             exit 1
           fi
-          runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/image.yml/runs" \
+          runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/eld-app-image.yml/runs" \
             -f branch="$APP_TAG" -f event=push -f status=completed -F per_page=20)"
           count="$(jq '[.workflow_runs[]? | select(.conclusion == "success")] | length' <<<"$runs")"
           if [[ "$count" -lt 1 ]]; then
-            echo "image workflow has not succeeded for ${APP_TAG}" >&2
+            echo "eld-app-image workflow has not succeeded for ${APP_TAG}" >&2
             exit 1
           fi
           tm_tag="$TM_TAG_INPUT"

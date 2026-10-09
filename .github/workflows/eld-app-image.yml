@@ -1,4 +1,4 @@
-name: image
+name: eld-app-image
 
 on:
   push:
