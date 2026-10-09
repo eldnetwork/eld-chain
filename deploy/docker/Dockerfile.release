@@ -18,10 +18,11 @@ COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
 # eld-cli and faucet are separate images/processes. Cargo still loads every
-# workspace member, so drop members that were not copied. Refresh the lock
-# offline first; that only removes those crates, and --locked then keeps node pins.
+# workspace member, so drop members that were not copied.
+# metadata (online) rewrites the lock for the reduced workspace; --locked then
+# pins that lock. Do not use --offline here: a fresh image has no crates cache.
 RUN sed -i 's/, "cli"//g; s/, "faucet"//g' Cargo.toml \
-    && cargo metadata --offline --format-version 1 >/dev/null \
+    && cargo metadata --format-version 1 >/dev/null \
     && cargo build --release --locked -p eld-node
 
 FROM debian:bookworm-slim
