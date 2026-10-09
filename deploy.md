@@ -105,7 +105,7 @@ The one-time copy uses the local working tree, which may be ahead of any release
 2. Push a tag. That only builds and publishes the image.
 
 ```sh
-git tag -a eld-app-v0.0.3 -m "eld-app v0.0.2"
+git tag -a eld-app-v0.0.3 -m "eld-app v0.0.3"
 git push origin eld-app-v0.0.3
 ```
 

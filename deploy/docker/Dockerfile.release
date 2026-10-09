@@ -17,10 +17,10 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
-# eld-cli runs on the host and talks to this node. Cargo still loads every
-# workspace member, so drop cli from the copied manifest. Refresh the lock
-# offline first; that only removes eld-cli, and --locked then keeps node pins.
-RUN sed -i 's/, "cli"//g' Cargo.toml \
+# eld-cli and faucet are separate images/processes. Cargo still loads every
+# workspace member, so drop members that were not copied. Refresh the lock
+# offline first; that only removes those crates, and --locked then keeps node pins.
+RUN sed -i 's/, "cli"//g; s/, "faucet"//g' Cargo.toml \
     && cargo metadata --offline --format-version 1 >/dev/null \
     && cargo build --release --locked -p eld-node
 
