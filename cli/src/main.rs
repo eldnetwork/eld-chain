@@ -118,6 +118,9 @@ fn command_name(cmd: &SubCommand) -> &'static str {
             cmd: PinboardCommand::ListByAddress(_),
         }
         | SubCommand::PinboardListByWallet(_) => "pinboard list-by-address",
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListByWalletName(_),
+        } => "pinboard list-by-wallet-name",
         SubCommand::Cado {
             cmd: CadoCommand::Get(_),
         }
@@ -508,6 +511,19 @@ async fn dispatch_online(
             commands::pinboard::list_by_wallet(
                 cli,
                 post.wallet.hex_with_prefix(),
+                post.page,
+                post.page_size,
+                mode,
+            )
+            .await
+        }
+        SubCommand::Pinboard {
+            cmd: PinboardCommand::ListByWalletName(post),
+        } => {
+            commands::pinboard::list_by_wallet_name(
+                cli,
+                wallets,
+                post.wallet_name,
                 post.page,
                 post.page_size,
                 mode,

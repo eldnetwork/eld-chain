@@ -246,6 +246,8 @@ pub(crate) enum PinboardCommand {
     ListTag(ListByTagArgs),
     /// List pinboard posts by wallet address.
     ListByAddress(ListByWalletArgs),
+    /// List pinboard posts by local wallet name.
+    ListByWalletName(ListByWalletNameArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -414,6 +416,18 @@ pub(crate) struct ListByWalletArgs {
     /// Wallet address (`0x` and 40 hex digits).
     #[arg(value_name = "ADDRESS", value_parser = parse_address)]
     pub(crate) wallet: Address,
+    /// Zero-based page index.
+    #[arg(long, default_value_t = 0)]
+    pub(crate) page: usize,
+    /// Number of posts per page.
+    #[arg(long, default_value_t = 100)]
+    pub(crate) page_size: usize,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct ListByWalletNameArgs {
+    /// Local wallet name from the wallets file.
+    pub(crate) wallet_name: String,
     /// Zero-based page index.
     #[arg(long, default_value_t = 0)]
     pub(crate) page: usize,
