@@ -122,8 +122,14 @@ To stop containers and the compose network (while keeping volumes):
 This always stops the faucet if it is running. For the rust-Tendermint GHCR stack (`compose.ghcr.tm-rs.yaml`, project `deploy-tm-rs`):
 
 ```sh
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh --with-faucet
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh --with-analytics
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh --with-faucet --with-analytics
 ./deploy/scripts/docker/local/cluster/cluster-stop.ghcr.tm-rs.sh
 ```
+
+`--with-analytics` starts the `eld-analytics` profile (builds `eld-analytics:local`). First disk sample is after 3 minutes, then hourly. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
 
 ## Ports (host)
 
