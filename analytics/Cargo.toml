@@ -22,6 +22,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { workspace = true, features = ["derive", "env"] }
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 libc = "0.2"
+reqwest = { workspace = true, features = ["json"] }
 rocksdb = "0.21"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

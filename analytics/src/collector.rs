@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 const TOP_FILES_N: usize = 5;
 
-pub fn collect_once(config: &Config) -> CollectionRun {
+pub fn collect_once(config: &Config, block_height: Option<u64>) -> CollectionRun {
     let mut tendermint_nodes = Vec::with_capacity(config.node_ids.len());
     let mut abci_apps = Vec::with_capacity(config.node_ids.len());
 
@@ -18,6 +18,7 @@ pub fn collect_once(config: &Config) -> CollectionRun {
 
     CollectionRun {
         collected_at: Utc::now(),
+        block_height,
         tendermint_nodes,
         abci_apps,
     }
@@ -105,9 +106,11 @@ mod tests {
             tendermint_path_prefix: format!("{}/tendermint-", base.display()),
             tendermint_data_subdir: "data".into(),
             abci_path_prefix: format!("{}/eld-", base.display()),
+            tendermint_rpc_url: "http://127.0.0.1:26657".into(),
         };
 
-        let run = collect_once(&config);
+        let run = collect_once(&config, Some(42));
+        assert_eq!(run.block_height, Some(42));
         assert_eq!(run.tendermint_nodes.len(), 1);
         assert_eq!(run.abci_apps.len(), 1);
         assert!(run.tendermint_nodes[0].blockstore_db_bytes > 0);

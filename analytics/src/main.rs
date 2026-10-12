@@ -4,11 +4,13 @@ mod config;
 mod disk;
 mod model;
 mod rocksdb_inventory;
+mod rpc;
 mod store;
 
 use crate::api::{router, AppState};
 use crate::collector::collect_once;
 use crate::config::Config;
+use crate::rpc::fetch_latest_block_height;
 use crate::store::AnalyticsStore;
 use clap::Parser;
 use std::sync::Arc;
@@ -58,14 +60,26 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_collection(config: &Config, store: &AnalyticsStore) {
+    let block_height = match fetch_latest_block_height(&config.tendermint_rpc_url).await {
+        Ok(height) => Some(height),
+        Err(e) => {
+            error!(
+                rpc_url = %config.tendermint_rpc_url,
+                "failed to fetch block height: {e:#}"
+            );
+            None
+        }
+    };
+
     let cfg = config.clone();
-    match tokio::task::spawn_blocking(move || collect_once(&cfg)).await {
+    match tokio::task::spawn_blocking(move || collect_once(&cfg, block_height)).await {
         Ok(run) => {
             if let Err(e) = store.put_run(&run) {
                 error!("failed to store run: {e:#}");
             } else {
                 info!(
                     collected_at = %run.collected_at,
+                    block_height = ?run.block_height,
                     tm_nodes = run.tendermint_nodes.len(),
                     abci_apps = run.abci_apps.len(),
                     "stored collection run"

@@ -229,6 +229,7 @@ services:
       TENDERMINT_PATH_PREFIX: /tendermint-
       TENDERMINT_DATA_SUBDIR: data
       ABCI_PATH_PREFIX: /eld-
+      TENDERMINT_RPC_URL: http://tendermint-1:26657
       RUST_LOG: eld_analytics=info
     volumes:
       - tendermint-data-1:/tendermint-1:ro

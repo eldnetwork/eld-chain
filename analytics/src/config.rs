@@ -41,4 +41,12 @@ pub struct Config {
 
     #[arg(long, env = "ABCI_PATH_PREFIX", default_value = "/eld-")]
     pub abci_path_prefix: String,
+
+    /// Tendermint / node RPC base URL used to read `latest_block_height`.
+    #[arg(
+        long,
+        env = "TENDERMINT_RPC_URL",
+        default_value = "http://tendermint-1:26657"
+    )]
+    pub tendermint_rpc_url: String,
 }

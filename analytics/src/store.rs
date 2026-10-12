@@ -28,16 +28,17 @@ impl AnalyticsStore {
     }
 
     pub fn latest(&self) -> Result<Option<CollectionRun>> {
-        let mut iter = self.db.iterator(IteratorMode::End);
-        match iter.next() {
-            Some(Ok((_key, value))) => {
-                let run: CollectionRun =
-                    bincode::deserialize(&value).context("deserialize CollectionRun")?;
-                Ok(Some(run))
+        // Skip legacy/unreadable rows (e.g. pre-block_height bincode).
+        for item in self.db.iterator(IteratorMode::End) {
+            let (_key, value) = item?;
+            match bincode::deserialize::<CollectionRun>(&value) {
+                Ok(run) => return Ok(Some(run)),
+                Err(e) => {
+                    tracing::warn!("skipping unreadable CollectionRun in latest: {e}");
+                }
             }
-            Some(Err(e)) => Err(e.into()),
-            None => Ok(None),
         }
+        Ok(None)
     }
 
     pub fn history(&self, limit: usize) -> Result<Vec<CollectionRun>> {
@@ -45,12 +46,17 @@ impl AnalyticsStore {
             return Ok(Vec::new());
         }
         let mut out = Vec::with_capacity(limit.min(64));
-        let mut iter = self.db.iterator(IteratorMode::End);
-        for item in iter.by_ref().take(limit) {
+        for item in self.db.iterator(IteratorMode::End) {
+            if out.len() >= limit {
+                break;
+            }
             let (_key, value) = item?;
-            let run: CollectionRun =
-                bincode::deserialize(&value).context("deserialize CollectionRun")?;
-            out.push(run);
+            match bincode::deserialize::<CollectionRun>(&value) {
+                Ok(run) => out.push(run),
+                Err(e) => {
+                    tracing::warn!("skipping unreadable CollectionRun in history: {e}");
+                }
+            }
         }
         Ok(out)
     }
@@ -66,6 +72,7 @@ mod tests {
     fn sample_run() -> CollectionRun {
         CollectionRun {
             collected_at: Utc::now(),
+            block_height: Some(100),
             tendermint_nodes: vec![TendermintDiskSnapshot {
                 node_id: "1".into(),
                 home_dir_bytes: 10,
@@ -99,6 +106,7 @@ mod tests {
         let run = sample_run();
         store.put_run(&run).unwrap();
         let latest = store.latest().unwrap().expect("latest");
+        assert_eq!(latest.block_height, Some(100));
         assert_eq!(latest.tendermint_nodes[0].node_id, "1");
         assert_eq!(latest.abci_apps[0].rocksdb_bytes, 15);
         let hist = store.history(10).unwrap();

@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CollectionRun {
     pub collected_at: DateTime<Utc>,
+    /// Chain tip at sample time (`sync_info.latest_block_height` from Tendermint status).
+    /// `None` when the RPC was unreachable or returned an unusable response.
+    pub block_height: Option<u64>,
     pub tendermint_nodes: Vec<TendermintDiskSnapshot>,
     pub abci_apps: Vec<AbciDiskSnapshot>,
 }
