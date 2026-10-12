@@ -1462,6 +1462,7 @@ dependencies = [
  "static_assertions",
  "tempfile",
  "tendermint",
+ "thiserror 2.0.20",
  "tracing",
 ]
 

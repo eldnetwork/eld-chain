@@ -45,6 +45,7 @@ rand.workspace = true
 sha2.workspace = true
 blake3.workspace = true
 serde_with = { version = "3.12.0", features = ["hex"] }
+thiserror = "2"
 
 [dev-dependencies]
 tempfile.workspace = true

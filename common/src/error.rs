@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use thiserror::Error;
+
 const REDACTED_VALIDATION_VALUE: &str = "[redacted]";
 
 /// Returns a display-safe validation `value` (secrets never echoed).
@@ -25,9 +27,10 @@ pub(crate) fn sanitize_validation_value(field: &str, value: &str) -> String {
 }
 
 /// Main error type for the Eld blockchain system.
-#[derive(Clone)]
+#[derive(Clone, Error)]
 pub enum EldError {
     /// Network connectivity issues.
+    #[error("network error during {operation}: {details}")]
     NetworkError {
         /// Operation that failed.
         operation: String,
@@ -35,6 +38,7 @@ pub enum EldError {
         details: String,
     },
     /// Authentication and authorization issues.
+    #[error("authentication error during {operation}: {details}")]
     AuthError {
         /// Operation that failed.
         operation: String,
@@ -42,6 +46,10 @@ pub enum EldError {
         details: String,
     },
     /// Data validation issues.
+    #[error(
+        "validation error for field '{field}' (value: {}): {details}",
+        sanitize_validation_value(.field, .value)
+    )]
     ValidationError {
         /// Field that failed validation.
         field: String,
@@ -51,11 +59,13 @@ pub enum EldError {
         details: String,
     },
     /// Basic validation issues with a single details message.
+    #[error("validation error: {details}")]
     BasicValidationError {
         /// Why validation failed.
         details: String,
     },
     /// Resource not found.
+    #[error("{resource_type} not found: {identifier}")]
     NotFoundError {
         /// Kind of resource.
         resource_type: String,
@@ -63,6 +73,7 @@ pub enum EldError {
         identifier: String,
     },
     /// Insufficient resources (balance, stake, etc.).
+    #[error("insufficient {resource_type}: required {required}, available {available}")]
     InsufficientResourceError {
         /// Kind of resource.
         resource_type: String,
@@ -72,6 +83,7 @@ pub enum EldError {
         available: String,
     },
     /// Configuration issues.
+    #[error("configuration error in {file}: {details}")]
     ConfigError {
         /// Config file path.
         file: String,
@@ -79,6 +91,7 @@ pub enum EldError {
         details: String,
     },
     /// File system operations.
+    #[error("file system error during {operation} (path: {path}): {details}")]
     FileSystemError {
         /// Operation that failed.
         operation: String,
@@ -88,6 +101,7 @@ pub enum EldError {
         details: String,
     },
     /// Transaction processing issues.
+    #[error("transaction error for {tx_type}: {details}")]
     TransactionError {
         /// Transaction kind.
         tx_type: String,
@@ -95,6 +109,7 @@ pub enum EldError {
         details: String,
     },
     /// Wallet management issues.
+    #[error("wallet error during {operation} for '{wallet_name}': {details}")]
     WalletError {
         /// Operation that failed.
         operation: String,
@@ -104,6 +119,13 @@ pub enum EldError {
         details: String,
     },
     /// Device-related issues.
+    #[error(
+        "device error during {operation}{}: {details}",
+        match .device_id {
+            Some(id) => format!(" (device id: {id})"),
+            None => String::new(),
+        }
+    )]
     DeviceError {
         /// Operation that failed.
         operation: String,
@@ -113,6 +135,7 @@ pub enum EldError {
         details: String,
     },
     /// System initialization issues.
+    #[error("initialization error for {component}: {details}")]
     InitializationError {
         /// Component that failed to start.
         component: String,
@@ -120,6 +143,7 @@ pub enum EldError {
         details: String,
     },
     /// Storage and database operations.
+    #[error("storage error during {operation}: {details}")]
     StorageError {
         /// Operation that failed.
         operation: String,
@@ -127,11 +151,13 @@ pub enum EldError {
         details: String,
     },
     /// Coin-related operations.
+    #[error("coin error: {details}")]
     CoinError {
         /// Failure detail.
         details: String,
     },
     /// Fee calculation and validation issues.
+    #[error("fee error during {operation}: {details}")]
     FeeError {
         /// Operation that failed.
         operation: String,
@@ -140,107 +166,11 @@ pub enum EldError {
     },
 }
 
-impl fmt::Display for EldError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EldError::NetworkError { operation, details } => {
-                write!(f, "network error during {operation}: {details}")
-            }
-            EldError::AuthError { operation, details } => {
-                write!(f, "authentication error during {operation}: {details}")
-            }
-            EldError::ValidationError {
-                field,
-                value,
-                details,
-            } => {
-                write!(
-                    f,
-                    "validation error for field '{field}' (value: {}): {details}",
-                    sanitize_validation_value(field, value)
-                )
-            }
-            EldError::BasicValidationError { details } => {
-                write!(f, "validation error: {details}")
-            }
-            EldError::NotFoundError {
-                resource_type,
-                identifier,
-            } => {
-                write!(f, "{resource_type} not found: {identifier}")
-            }
-            EldError::InsufficientResourceError {
-                resource_type,
-                required,
-                available,
-            } => {
-                write!(
-                    f,
-                    "insufficient {resource_type}: required {required}, available {available}"
-                )
-            }
-            EldError::ConfigError { file, details } => {
-                write!(f, "configuration error in {file}: {details}")
-            }
-            EldError::FileSystemError {
-                operation,
-                path,
-                details,
-            } => {
-                write!(
-                    f,
-                    "file system error during {operation} (path: {path}): {details}"
-                )
-            }
-            EldError::TransactionError { tx_type, details } => {
-                write!(f, "transaction error for {tx_type}: {details}")
-            }
-            EldError::WalletError {
-                operation,
-                wallet_name,
-                details,
-            } => {
-                write!(
-                    f,
-                    "wallet error during {operation} for '{wallet_name}': {details}"
-                )
-            }
-            EldError::DeviceError {
-                operation,
-                device_id,
-                details,
-            } => match device_id {
-                Some(id) => {
-                    write!(
-                        f,
-                        "device error during {operation} (device id: {id}): {details}"
-                    )
-                }
-                None => write!(f, "device error during {operation}: {details}"),
-            },
-            EldError::InitializationError { component, details } => {
-                write!(f, "initialization error for {component}: {details}")
-            }
-            EldError::StorageError { operation, details } => {
-                write!(f, "storage error during {operation}: {details}")
-            }
-            EldError::CoinError { details } => {
-                write!(f, "coin error: {details}")
-            }
-            EldError::FeeError { operation, details } => {
-                write!(f, "fee error during {operation}: {details}")
-            }
-        }
-    }
-}
-
 impl fmt::Debug for EldError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
-
-impl std::error::Error for EldError {}
 
 /// Convert PoisonError to EldError for automatic error conversion
 impl<T> From<std::sync::PoisonError<T>> for EldError {
