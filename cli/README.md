@@ -39,7 +39,7 @@ The CLI stores two files under the user account. They are not next to the binary
 | Linux: `~/.config/eld/eld-cli-config.json` (`$XDG_CONFIG_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/eld-cli-config.json`. | `--cli-config`, env `ELD_CLI_CONFIG` | Node address, optional faucet address, and `chain_id`. |
 | Linux: `~/.local/share/eld/wallets.json` (`$XDG_DATA_HOME/eld/` when that variable is set). macOS: `~/Library/Application Support/eld/wallets.json`. | `--wallets` | Local Ed25519 keys. |
 
-`wallet` commands stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, `pinboard` reads, `cado`) do not open the wallet file. `faucet` opens it only when the argument is a wallet name, to look up the address. The wallet file is opened for signing on `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
+`wallet` commands stay offline. They do not read the config file and they do not prompt. Query commands (`account`, `chain`, `namespace get`, most `pinboard` reads, `cado`) do not open the wallet file. `faucet` and `pinboard list-by-wallet-name` open it only to look up an address by wallet name. The wallet file is opened for signing on `tx transfer`, `tx stake`, `tx unstake`, `namespace add`, and `pinboard post`.
 
 The first command that talks to a node (`account`, `tx`, `faucet`, `chain`, `namespace`, `pinboard`, `cado`) asks on a terminal when the file is missing or has no node address:
 
@@ -118,7 +118,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `namespace get\|add` | Look up or register a namespace |
 | `pinboard post` | Post a message |
 | `pinboard get` | Fetch one post |
-| `pinboard list-tag` / `pinboard list-by-address` | Page posts |
+| `pinboard list-tag` / `pinboard list-by-address` / `pinboard list-by-wallet-name` | Page posts |
 | `cado get` / `cado list` | Read one CADO, or list paths |
 | `config node` / `config faucet` | Set the node or faucet address |
 | `reset` | Delete the client config and wallet file |

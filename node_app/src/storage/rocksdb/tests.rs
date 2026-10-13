@@ -50,8 +50,8 @@ fn test_snapshot_metadata(
 }
 
 fn put_test_epoch_record(storage: &RocksDBStorage, epoch: i64) {
+    use crate::app_state::latest_epoch_record_path;
     use eld_common::cado::{epoch_record_path_name, CADOMetadata, CadoPathKey, CadoType};
-    use eld_common::constants::cado::LATEST;
     use eld_common::validator::EpochRecord;
 
     let name = epoch_record_path_name(epoch).expect("epoch name");
@@ -72,10 +72,8 @@ fn put_test_epoch_record(storage: &RocksDBStorage, epoch: i64) {
         .put_cado_type(path, cado.clone())
         .expect("put epoch");
 
-    let latest_path =
-        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(LATEST)).expect("latest path");
     storage
-        .put_cado_type(latest_path, cado)
+        .put_cado_type(latest_epoch_record_path().clone(), cado)
         .expect("put latest");
 }
 

@@ -1,14 +1,10 @@
 use crate::abci_interface::snapshot::codec::{serialize_abci_snapshot, AbciSnapshot};
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::AppStateTip;
+use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
 use crate::storage::traits::{
     CADOStorage, SnapshotChunk, SnapshotMetadata, SnapshotStateCounts, SnapshotStorage,
 };
 use eld_common::error::EldError;
-use eld_common::{
-    cado::{CadoPath, CadoPathKey, CadoType},
-    constants::cado::LATEST,
-};
 use lz4::block::compress;
 #[cfg(test)]
 use lz4::block::decompress;
@@ -243,11 +239,9 @@ where
 
     /// Build and persist an ABCI snapshot from already committed state in RocksDB.
     pub async fn create_snapshot_from_latest_state(&self, height: i64) -> Result<(), EldError> {
-        let latest_app_state_tip_path =
-            CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST))?;
         let app_state_tip: AppStateTip = self
             .storage
-            .get_deserialized_cado_by_path(latest_app_state_tip_path)?;
+            .get_deserialized_cado_by_path(latest_app_state_tip_path().clone())?;
 
         if app_state_tip.block_height != height {
             return Err(EldError::ValidationError {
@@ -260,10 +254,9 @@ where
             });
         }
 
-        let app_state_snapshot_path = AppStateSnapshot::latest_path()?;
         let app_state_snapshot: AppStateSnapshot = self
             .storage
-            .get_deserialized_cado_by_path(app_state_snapshot_path)?;
+            .get_deserialized_cado_by_path(latest_app_state_snapshot_path().clone())?;
 
         if app_state_snapshot.block_height != height {
             return Err(EldError::ValidationError {
@@ -640,7 +633,7 @@ mod tests {
     {
         use crate::app_state::committed_cado_cache::CommittedCadoCache;
         use crate::app_state::state_trie::StateTrie;
-        use eld_common::cado::{CADOMetadata, CadoBody};
+        use eld_common::cado::{CADOMetadata, CadoBody, CadoType};
         use std::collections::{BTreeMap, BTreeSet};
 
         let state_trie_root = StateTrie::empty_root_hash();
@@ -649,14 +642,12 @@ mod tests {
             cado_root_hash: state_trie_root,
             app_hash,
         };
-        let tip_path =
-            CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("tip path");
         let tip_cado = CadoBody::immutable(
             bincode::serialize(&tip).expect("serialize tip"),
             CADOMetadata::new(CadoType::AppStateTip, "system"),
         );
         storage
-            .put_cado_type(tip_path, tip_cado)
+            .put_cado_type(latest_app_state_tip_path().clone(), tip_cado)
             .expect("persist tip");
 
         let snapshot = AppStateSnapshot {
@@ -675,7 +666,7 @@ mod tests {
         };
         storage
             .put_cado_type(
-                AppStateSnapshot::latest_path().expect("snapshot path"),
+                latest_app_state_snapshot_path().clone(),
                 snapshot.to_cado().expect("snapshot to cado"),
             )
             .expect("persist app state snapshot");

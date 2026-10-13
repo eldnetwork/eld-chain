@@ -3,6 +3,10 @@
 # Uses the same host config as compose.ghcr.yaml. Does not touch project `deploy` volumes.
 # App image is ghcr.io/eldnetwork/eld-chain. Rust Tendermint image is TM_RS_IMAGE
 # (full reference, including the version tag) from deploy/.env.
+#
+# Optional flags (combinable):
+#   --with-faucet      enable the faucet Compose profile
+#   --with-analytics   enable the analytics sidecar profile (builds the local image)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,20 +16,40 @@ COMPOSE_FILE="$DEPLOY_DIR/docker/local/cluster/compose.ghcr.tm-rs.yaml"
 require_env TM_RS_IMAGE
 
 FAUCET_PROFILE=()
-if [[ "${1:-}" == "--with-faucet" ]]; then
-  require_env FAUCET_VERSION_TAG
-  WALLET="$DEPLOY_DIR/docker/local/cluster/faucet/wallets.json"
-  if [[ ! -f "$WALLET" ]]; then
-    echo "Missing faucet wallet: $WALLET" >&2
-    echo "Create wallet-faucet-1 there before --with-faucet." >&2
-    exit 1
-  fi
-  FAUCET_PROFILE=(--profile faucet)
-fi
+ANALYTICS_PROFILE=()
+UP_ARGS=(-d)
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-faucet)
+      require_env FAUCET_VERSION_TAG
+      WALLET="$DEPLOY_DIR/docker/local/cluster/faucet/wallets.json"
+      if [[ ! -f "$WALLET" ]]; then
+        echo "Missing faucet wallet: $WALLET" >&2
+        echo "Create wallet-faucet-1 there before --with-faucet." >&2
+        exit 1
+      fi
+      FAUCET_PROFILE=(--profile faucet)
+      ;;
+    --with-analytics)
+      ANALYTICS_PROFILE=(--profile analytics)
+      # Local Dockerfile image; build so `up` does not require a prior manual build.
+      UP_ARGS=(-d --build)
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Usage: $0 [--with-faucet] [--with-analytics]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 compose() {
   # Bash 3.2 + set -u treats an empty "${arr[@]}" as unbound.
-  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} "$@"
+  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" \
+    ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} \
+    ${ANALYTICS_PROFILE[@]+"${ANALYTICS_PROFILE[@]}"} \
+    "$@"
 }
 
 echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ${TM_RS_IMAGE}"
@@ -37,6 +61,6 @@ for i in 1 2 3 4; do
     eld-tendermint unsafe-reset-all --home /tendermint-rs/.tendermint
 done
 
-compose up -d
+compose up "${UP_ARGS[@]}"
 
 echo "Started 4-node rust-Tendermint compose with fresh state (history wiped)."

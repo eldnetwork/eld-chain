@@ -1,10 +1,9 @@
 use crate::app_state::app_hash::AppHash;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
 use crate::app_state::envelope::AppStateEnvelope;
-use crate::app_state::tip::AppStateTip;
+use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::CADOStorage;
-use eld_common::cado::{CadoPath, CadoPathKey, CadoType};
 use eld_common::error::EldError;
 use eld_common::storage::AccountStorage;
 use serde::{Deserialize, Serialize};
@@ -51,12 +50,8 @@ impl AppState {
     ///
     /// `Commit` persists `AppStateTip` via `put_cado_type` (path_index), not `cado_map`.
     pub fn has_persisted_app_state_tip(storage: &impl CADOStorage) -> Result<bool, EldError> {
-        use eld_common::constants::cado::LATEST;
-
-        let latest_app_state_tip_path =
-            CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST))?;
         Ok(storage
-            .get_cado_by_path(latest_app_state_tip_path)?
+            .get_cado_by_path(latest_app_state_tip_path().clone())?
             .is_some())
     }
 
@@ -65,15 +60,10 @@ impl AppState {
         storage: &(impl AccountStorage + CADOStorage),
     ) -> Result<(), EldError> {
         self.envelope.init_empty_trie();
-        use eld_common::constants::cado::LATEST;
 
-        let latest_app_state_tip_path =
-            match CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)) {
-                Ok(path) => path,
-                Err(e) => handle_fatal_eld_error(e),
-            };
-
-        match storage.get_deserialized_cado_by_path::<AppStateTip>(latest_app_state_tip_path) {
+        match storage
+            .get_deserialized_cado_by_path::<AppStateTip>(latest_app_state_tip_path().clone())
+        {
             Ok(app_state_tip) => {
                 self.set_app_hash(app_state_tip.app_hash);
                 self.envelope.block_height = app_state_tip.block_height;
@@ -85,13 +75,7 @@ impl AppState {
 
                 // Restore epoch app state snapshot from storage
                 info!("Attempting to restore app state snapshot from storage...");
-                let app_state_snapshot_path = match AppStateSnapshot::latest_path() {
-                    Ok(path) => path,
-                    Err(e) => {
-                        error!("Failed to create app state snapshot path: {}", e);
-                        handle_fatal_eld_error(e);
-                    }
-                };
+                let app_state_snapshot_path = latest_app_state_snapshot_path().clone();
 
                 match storage.get_deserialized_cado_by_path::<AppStateSnapshot>(
                     app_state_snapshot_path.clone(),

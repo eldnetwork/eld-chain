@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn without_infrastructure_strips_snapshot_paths() {
-        use crate::app_state::app_state_snapshot::AppStateSnapshot;
+        use crate::app_state::latest_app_state_snapshot_path;
         use eld_common::constants::cado::PATH_PREFIX_ACCOUNT;
 
         let mut cache = CommittedCadoCache::new();
@@ -244,7 +244,7 @@ mod tests {
             create_test_cado(account_path.as_bytes(), "owner"),
         );
 
-        let infra_path = AppStateSnapshot::latest_path().expect("infra path");
+        let infra_path = latest_app_state_snapshot_path().clone();
         let infra_cado = CadoBody::immutable(
             vec![9, 9, 9],
             CADOMetadata::new(CadoType::AppStateSnapshot, "system"),

@@ -9,7 +9,7 @@ use eld_common::account::Account;
 use eld_common::address::Address;
 use eld_common::cado::{CADOMap, CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
 use eld_common::coin::Coin;
-use eld_common::constants::cado::{LATEST, PATH_PREFIX_ACCOUNT};
+use eld_common::constants::cado::PATH_PREFIX_ACCOUNT;
 use eld_common::error::EldError;
 use eld_common::namespace::{slug_to_namespace_cadopath, NamespaceRecord};
 use eld_common::nonce::Nonce;
@@ -175,11 +175,8 @@ fn has_cado_in_working_set_checks_staged_and_committed_cache() {
 
 #[test]
 fn update_cado_cache_refuses_infrastructure_paths() {
-    use crate::app_state::app_state_snapshot::AppStateSnapshot;
-    use eld_common::cado::{CADOMetadata, CadoBody, CadoType};
-
     let mut envelope = AppStateEnvelope::default();
-    let path = AppStateSnapshot::latest_path().expect("path");
+    let path = latest_app_state_snapshot_path().clone();
     let cado = CadoBody::immutable(
         vec![1],
         CADOMetadata::new(CadoType::AppStateSnapshot, "system"),
@@ -211,8 +208,7 @@ fn has_persisted_app_state_tip_detects_latest_app_state_tip_in_path_index() {
     let serialized = bincode::serialize(&app_state_tip).expect("serialize");
     let metadata = CADOMetadata::new(CadoType::AppStateTip, "system");
     let cado = CadoBody::immutable(serialized, metadata);
-    let latest_path =
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("path");
+    let latest_path = latest_app_state_tip_path().clone();
 
     storage
         .put_cado_type(latest_path.clone(), cado)
@@ -270,18 +266,16 @@ fn initialize_with_data_restores_committed_cado_objects_from_app_state_snapshot(
         cado_root_hash: original.envelope.state_trie.root_hash(),
         app_hash: original.app_hash().bytes().expect("app hash"),
     };
-    let latest_app_state_tip_path =
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("sv path");
     let app_state_tip_cado = CadoBody::immutable(
         bincode::serialize(&app_state_tip).expect("serialize app state tip"),
         CADOMetadata::new(CadoType::AppStateTip, "system"),
     );
     storage
-        .put_cado_type(latest_app_state_tip_path, app_state_tip_cado)
+        .put_cado_type(latest_app_state_tip_path().clone(), app_state_tip_cado)
         .expect("persist app state tip");
 
     let app_state_snapshot = AppStateSnapshot::new(&original).expect("snapshot");
-    let app_state_snapshot_path = AppStateSnapshot::latest_path().expect("app state snapshot path");
+    let app_state_snapshot_path = latest_app_state_snapshot_path().clone();
     storage
         .put_cado_type(
             app_state_snapshot_path,
@@ -345,11 +339,9 @@ fn initialize_with_data_strips_infrastructure_from_app_state_snapshot() {
         cado_root_hash: original.envelope.state_trie.root_hash(),
         app_hash: original.app_hash().bytes().expect("app hash"),
     };
-    let latest_app_state_tip_path =
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("sv path");
     storage
         .put_cado_type(
-            latest_app_state_tip_path,
+            latest_app_state_tip_path().clone(),
             CadoBody::immutable(
                 bincode::serialize(&app_state_tip).expect("serialize app state tip"),
                 CADOMetadata::new(CadoType::AppStateTip, "system"),
@@ -358,7 +350,7 @@ fn initialize_with_data_strips_infrastructure_from_app_state_snapshot() {
         .expect("persist app state tip");
 
     let mut app_state_snapshot = AppStateSnapshot::new(&original).expect("snapshot");
-    let infra_path = AppStateSnapshot::latest_path().expect("infra path");
+    let infra_path = latest_app_state_snapshot_path().clone();
     app_state_snapshot.committed_cado_cache.insert(
         infra_path.as_str().as_bytes(),
         CadoBody::immutable(
@@ -368,7 +360,7 @@ fn initialize_with_data_strips_infrastructure_from_app_state_snapshot() {
     );
     storage
         .put_cado_type(
-            AppStateSnapshot::latest_path().expect("app state path"),
+            latest_app_state_snapshot_path().clone(),
             app_state_snapshot
                 .to_cado()
                 .expect("app state snapshot cado"),
@@ -432,18 +424,16 @@ async fn app_state_snapshot_roundtrip_via_abci_payload_restores_original_state()
         cado_root_hash: original.envelope.state_trie.root_hash(),
         app_hash: original.app_hash().bytes().expect("app hash"),
     };
-    let latest_app_state_tip_path =
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("sv path");
     let app_state_tip_cado = CadoBody::immutable(
         bincode::serialize(&app_state_tip).expect("serialize app state tip"),
         CADOMetadata::new(CadoType::AppStateTip, "system"),
     );
     src_storage
-        .put_cado_type(latest_app_state_tip_path, app_state_tip_cado)
+        .put_cado_type(latest_app_state_tip_path().clone(), app_state_tip_cado)
         .expect("persist app state tip");
 
     let app_state_snapshot = AppStateSnapshot::new(&original).expect("snapshot");
-    let app_state_snapshot_path = AppStateSnapshot::latest_path().expect("app state snapshot path");
+    let app_state_snapshot_path = latest_app_state_snapshot_path().clone();
     src_storage
         .put_cado_type(
             app_state_snapshot_path,
@@ -484,8 +474,6 @@ async fn app_state_snapshot_roundtrip_via_abci_payload_restores_original_state()
         std::sync::Arc::new(RocksDBStorage::new(restore_dir.path()).expect("restore rocksdb"));
     let restore_storage = HybridStorage::new(restore_rocksdb.clone());
 
-    let restore_app_state_tip_path =
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)).expect("tip path");
     let restored_app_state_tip = AppStateTip {
         block_height: decoded.app_state_snapshot.block_height,
         cado_root_hash: decoded.app_state_snapshot.state_trie_root,
@@ -496,12 +484,15 @@ async fn app_state_snapshot_roundtrip_via_abci_payload_restores_original_state()
         CADOMetadata::new(CadoType::AppStateTip, "system"),
     );
     restore_storage
-        .put_cado_type(restore_app_state_tip_path, restore_app_state_tip_cado)
+        .put_cado_type(
+            latest_app_state_tip_path().clone(),
+            restore_app_state_tip_cado,
+        )
         .expect("persist restored app state tip");
 
     restore_storage
         .put_cado_type(
-            AppStateSnapshot::latest_path().expect("app state path"),
+            latest_app_state_snapshot_path().clone(),
             decoded
                 .app_state_snapshot
                 .to_cado()
@@ -663,7 +654,6 @@ fn resolve_namespace_prefers_block_cache() {
 #[test]
 fn insert_epoch_records_index_from_path_inserts_valid_epoch_paths_only() {
     use eld_common::cado::epoch_record_path_name;
-    use eld_common::constants::cado::LATEST;
 
     let mut envelope = AppStateEnvelope::default();
 
@@ -680,9 +670,7 @@ fn insert_epoch_records_index_from_path_inserts_valid_epoch_paths_only() {
         vec![4]
     );
 
-    let latest_path =
-        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(LATEST)).expect("latest");
-    envelope.insert_epoch_records_index_from_path(latest_path.as_str());
+    envelope.insert_epoch_records_index_from_path(latest_epoch_record_path().as_str());
     assert_eq!(
         envelope
             .epoch_records_index
@@ -769,10 +757,8 @@ fn epoch_records_index_collects_committed_and_staged_epochs() {
         path.as_str().to_string(),
         CadoBody::immutable(vec![], CADOMetadata::new(CadoType::EpochRecord, &key)),
     );
-    let latest_path =
-        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(LATEST)).expect("latest");
     current.cado_cache.insert(
-        latest_path.as_str().to_string(),
+        latest_epoch_record_path().as_str().to_string(),
         CadoBody::immutable(vec![], CADOMetadata::new(CadoType::EpochRecord, LATEST)),
     );
 

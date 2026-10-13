@@ -208,6 +208,45 @@ services:
       - ./faucet/config:/app/config:ro
       - ./faucet/wallets.json:/app/wallets/wallets.json:ro
 
+  eld-analytics:
+    profiles: ["analytics"]
+    image: eld-analytics:local
+    build:
+      context: ../../../../
+      dockerfile: analytics/Dockerfile
+    container_name: eld-analytics
+    restart: unless-stopped
+    networks:
+      - eld-network
+    ports:
+      - "9010:9002"
+    environment:
+      ANALYTICS_DB_PATH: /data/analytics.rocksdb
+      ANALYTICS_LISTEN: 0.0.0.0:9002
+      FIRST_COLLECTION_DELAY_SECS: "180"
+      COLLECTION_INTERVAL_SECS: "3600"
+      NODE_IDS: "1,2,3,4"
+      TENDERMINT_PATH_PREFIX: /tendermint-
+      TENDERMINT_DATA_SUBDIR: data
+      ABCI_PATH_PREFIX: /eld-
+      TENDERMINT_RPC_URL: http://tendermint-1:26657
+      RUST_LOG: eld_analytics=info
+    volumes:
+      - tendermint-data-1:/tendermint-1:ro
+      - tendermint-data-2:/tendermint-2:ro
+      - tendermint-data-3:/tendermint-3:ro
+      - tendermint-data-4:/tendermint-4:ro
+      - eld-data-1:/eld-1:ro
+      - eld-data-2:/eld-2:ro
+      - eld-data-3:/eld-3:ro
+      - eld-data-4:/eld-4:ro
+      - analytics-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "2"
+
 volumes:
   eld-data-1:
     driver: local
@@ -226,6 +265,8 @@ volumes:
   tendermint-data-4:
     driver: local
   faucet-data:
+    driver: local
+  analytics-data:
     driver: local
 
 networks:

@@ -294,9 +294,9 @@ impl KeyGenerator for AppStateTipKeyGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_state::latest_epoch_record_path;
     use eld_common::address::Address;
     use eld_common::cado::{epoch_record_path_name, CADOMetadata, CadoPathKey, CadoType};
-    use eld_common::constants::cado::LATEST;
     use eld_common::error::EldError;
     use eld_common::namespace::{slug_to_namespace_cadopath, NamespaceRecord};
     use eld_common::validator::EpochRecord;
@@ -320,9 +320,8 @@ mod tests {
         assert!(keys.latest_key.is_none());
         assert!(keys.original_key.starts_with("0x"));
 
-        let latest_path =
-            CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(LATEST)).expect("latest path");
-        let latest_keys = CADOKeyGenerator::generate(latest_path, &cado).expect("latest keys");
+        let latest_keys = CADOKeyGenerator::generate(latest_epoch_record_path().clone(), &cado)
+            .expect("latest keys");
         assert_ne!(keys.original_key, latest_keys.original_key);
     }
 
