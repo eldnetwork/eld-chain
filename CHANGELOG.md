@@ -19,6 +19,10 @@ Crates are unpublished (`publish = false`).
 - `eld-cli` asks for a node address the first time a command needs one, and for a faucet address only on `faucet`. `eld-cli config node` and `eld-cli config faucet` update those addresses later.
 - `eld-cli reset` deletes the client config and wallet file after a warning. Without a terminal it requires `--yes`.
 
+### Removed
+
+- Dependabot (`.github/dependabot.yml`).
+
 ### Changed
 
 - `eld-faucet` signs with the built-in fee schedule. It reads `config/faucet_config.json` for `node_host` and `chain_id`, binds `0.0.0.0:8080`, uses Tendermint port `26657`, and serves `/health` and `/faucet/request`.
