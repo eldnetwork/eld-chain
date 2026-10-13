@@ -9,7 +9,6 @@ use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
 use eld_common::constants::cado::LATEST;
 use eld_common::constants::pinboard::MAX_CHUNK_SIZE;
 use eld_common::error::EldError;
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -447,21 +446,9 @@ where
             }
         };
         let app_state_tip_meta = CADOMetadata::new(CadoType::AppStateTip, "system");
-        let app_state_tip_cado =
-            CadoBody::immutable(app_state_tip_serialized.clone(), app_state_tip_meta);
-        let app_state_tip_hash = Sha256::digest(&app_state_tip_serialized);
+        let app_state_tip_cado = CadoBody::immutable(app_state_tip_serialized, app_state_tip_meta);
 
-        // Store at hash-based path
-        let app_state_tip_id = format!("0x{}", hex::encode(app_state_tip_hash));
-        let app_state_tip_path =
-            match CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(&app_state_tip_id)) {
-                Ok(path) => path,
-                Err(e) => {
-                    handle_fatal_eld_error(e);
-                }
-            };
-
-        // Store at fixed "latest" path
+        // Only store at the fixed "latest" path (historical hash-based tips are unused)
         let latest_app_state_tip_path =
             match CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)) {
                 Ok(path) => path,
@@ -470,12 +457,6 @@ where
                 }
             };
 
-        // Store at both paths
-        if let Err(e) =
-            storage.put_cado_type_with_tx(app_state_tip_path, app_state_tip_cado.clone(), &tx)
-        {
-            handle_fatal_eld_error(e);
-        }
         if let Err(e) =
             storage.put_cado_type_with_tx(latest_app_state_tip_path, app_state_tip_cado, &tx)
         {
