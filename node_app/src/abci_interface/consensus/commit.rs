@@ -1,12 +1,11 @@
 use super::connection::ConsensusConnection;
 use crate::abci_interface::snapshot::manager::CreateSnapshotAndPruneOutcome;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::AppStateTip;
+use crate::app_state::{latest_app_state_tip_path, AppStateTip};
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::types::*;
-use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
-use eld_common::constants::cado::LATEST;
+use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoType};
 use eld_common::constants::pinboard::MAX_CHUNK_SIZE;
 use eld_common::error::EldError;
 use std::collections::{HashMap, HashSet};
@@ -449,17 +448,11 @@ where
         let app_state_tip_cado = CadoBody::immutable(app_state_tip_serialized, app_state_tip_meta);
 
         // Only store at the fixed "latest" path (historical hash-based tips are unused)
-        let latest_app_state_tip_path =
-            match CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST)) {
-                Ok(path) => path,
-                Err(e) => {
-                    handle_fatal_eld_error(e);
-                }
-            };
-
-        if let Err(e) =
-            storage.put_cado_type_with_tx(latest_app_state_tip_path, app_state_tip_cado, &tx)
-        {
+        if let Err(e) = storage.put_cado_type_with_tx(
+            latest_app_state_tip_path().clone(),
+            app_state_tip_cado,
+            &tx,
+        ) {
             handle_fatal_eld_error(e);
         }
 

@@ -12,7 +12,7 @@ mod tip;
 pub use app::AppState;
 pub use app_hash::AppHash;
 pub use cado_hash::{AccountWithCadoHash, StakingAccountWithCadoHash};
-pub use tip::AppStateTip;
+pub use tip::{latest_app_state_tip_path, AppStateTip};
 
 // Re-exported for `crate::app_state::…` paths; not named in other modules of this binary.
 #[allow(unused_imports)]
