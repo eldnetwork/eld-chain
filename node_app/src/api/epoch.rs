@@ -3,7 +3,7 @@
 use super::api_rate_limiting::{check_rate_limit, ApiEndpointType, RateLimitState};
 use super::cado::lookup_cado_by_path;
 use super::error::ApiError;
-use crate::app_state::AppState;
+use crate::app_state::{latest_epoch_record_path, AppState};
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::EpochRecordListOrder;
 use axum::{
@@ -12,7 +12,6 @@ use axum::{
     Json,
 };
 use eld_common::cado::{epoch_record_path_name, CadoPath, CadoPathKey, CadoType};
-use eld_common::constants::cado;
 use eld_common::protocol_constants::ProtocolHandle;
 use eld_common::validator::EpochRecord;
 use serde::{Deserialize, Serialize};
@@ -209,13 +208,7 @@ fn get_latest_epoch_record(
     committed_state: &Arc<Mutex<AppState>>,
     storage: &RocksDBStorage,
 ) -> Result<EpochRecord, ApiError> {
-    let path =
-        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(cado::LATEST)).map_err(|e| {
-            ApiError::InternalServerError {
-                message: "Failed to build latest epoch record path".to_string(),
-                details: Some(e.to_string()),
-            }
-        })?;
+    let path = latest_epoch_record_path().clone();
     match lookup_cado_by_path(current_state, committed_state, storage, &path)? {
         Some(cado) => {
             EpochRecord::deserialize_bin(cado.data()).map_err(|e| ApiError::InternalServerError {

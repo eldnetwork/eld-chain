@@ -1,7 +1,7 @@
 use super::connection::ConsensusConnection;
 use crate::abci_interface::snapshot::manager::CreateSnapshotAndPruneOutcome;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::{latest_app_state_tip_path, AppStateTip};
+use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::types::*;
@@ -470,20 +470,12 @@ where
                 Ok(cado) => cado,
                 Err(e) => handle_fatal_eld_error(e),
             };
-            let app_state_snapshot_path = match AppStateSnapshot::latest_path() {
-                Ok(path) => path,
-                Err(e) => handle_fatal_eld_error(e),
-            };
             if let Err(e) = storage.put_cado_type_with_tx(
-                app_state_snapshot_path.clone(),
+                latest_app_state_snapshot_path().clone(),
                 app_state_snapshot_cado,
                 &tx,
             ) {
-                error!(
-                    "COMMIT_ERROR: Failed to store app state snapshot at {}: {}",
-                    app_state_snapshot_path.as_str(),
-                    e
-                );
+                error!("COMMIT_ERROR: Failed to store app state snapshot: {}", e);
                 handle_fatal_eld_error(e);
             }
 

@@ -1,7 +1,7 @@
 use crate::app_state::app_hash::AppHash;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
 use crate::app_state::envelope::AppStateEnvelope;
-use crate::app_state::tip::{latest_app_state_tip_path, AppStateTip};
+use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::CADOStorage;
 use eld_common::error::EldError;
@@ -75,13 +75,7 @@ impl AppState {
 
                 // Restore epoch app state snapshot from storage
                 info!("Attempting to restore app state snapshot from storage...");
-                let app_state_snapshot_path = match AppStateSnapshot::latest_path() {
-                    Ok(path) => path,
-                    Err(e) => {
-                        error!("Failed to create app state snapshot path: {}", e);
-                        handle_fatal_eld_error(e);
-                    }
-                };
+                let app_state_snapshot_path = latest_app_state_snapshot_path().clone();
 
                 match storage.get_deserialized_cado_by_path::<AppStateSnapshot>(
                     app_state_snapshot_path.clone(),

@@ -2,12 +2,11 @@ use crate::app_state::committed_cado_cache::CommittedCadoCache;
 use crate::app_state::AppState;
 use crate::storage::traits::SnapshotStateCounts;
 use eld_common::cado::CadoType;
-use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, DeserializableBin};
+use eld_common::cado::{CADOMetadata, CadoBody, DeserializableBin};
 use eld_common::error::EldError;
 use eld_common::namespace::NamespaceRecord;
 use eld_common::validator::{ActiveCapacityValidator, CapacityValidatorInfo, ValidatorInfo};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 
@@ -162,18 +161,6 @@ impl AppStateSnapshot {
         let serialized = self.serialize()?;
         let meta = CADOMetadata::new(CadoType::AppStateSnapshot, "system");
         Ok(CadoBody::immutable(serialized, meta))
-    }
-
-    /// CADO path for storing the snapshot (hash of `identifier`, e.g. `"latest"`).
-    pub fn create_path(identifier: &str) -> Result<CadoPath, EldError> {
-        let hash = Sha256::digest(identifier.as_bytes());
-        let name_hex = format!("0x{}", hex::encode(hash));
-        CadoPath::new(CadoType::AppStateSnapshot, CadoPathKey::Name(&name_hex))
-    }
-
-    /// Path for the latest epoch app state snapshot.
-    pub fn latest_path() -> Result<CadoPath, EldError> {
-        Self::create_path("latest")
     }
 }
 
@@ -404,7 +391,7 @@ mod tests {
         let hash = test_cado.content_hash();
         state.envelope.state_trie.insert(b"test_key", &hash);
 
-        let infra_path = AppStateSnapshot::latest_path().expect("infra path");
+        let infra_path = crate::app_state::latest_app_state_snapshot_path().clone();
         let infra_cado = CadoBody::immutable(
             vec![9, 9, 9],
             CADOMetadata::new(CadoType::AppStateSnapshot, "system"),

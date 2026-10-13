@@ -1,6 +1,6 @@
 use crate::abci_interface::snapshot::codec::{serialize_abci_snapshot, AbciSnapshot};
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::{latest_app_state_tip_path, AppStateTip};
+use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
 use crate::storage::traits::{
     CADOStorage, SnapshotChunk, SnapshotMetadata, SnapshotStateCounts, SnapshotStorage,
 };
@@ -254,10 +254,9 @@ where
             });
         }
 
-        let app_state_snapshot_path = AppStateSnapshot::latest_path()?;
         let app_state_snapshot: AppStateSnapshot = self
             .storage
-            .get_deserialized_cado_by_path(app_state_snapshot_path)?;
+            .get_deserialized_cado_by_path(latest_app_state_snapshot_path().clone())?;
 
         if app_state_snapshot.block_height != height {
             return Err(EldError::ValidationError {
@@ -667,7 +666,7 @@ mod tests {
         };
         storage
             .put_cado_type(
-                AppStateSnapshot::latest_path().expect("snapshot path"),
+                latest_app_state_snapshot_path().clone(),
                 snapshot.to_cado().expect("snapshot to cado"),
             )
             .expect("persist app state snapshot");

@@ -1,11 +1,11 @@
 use super::connection::ConsensusConnection;
-use crate::app_state::AppState;
+use crate::app_state::{latest_epoch_record_path, AppState};
 use crate::storage::traits::ConsensusConnectionStorage;
 use eld_common::address::Address;
 use eld_common::cado::{
     epoch_record_path_name, CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType,
 };
-use eld_common::constants::{cado::LATEST, p2p::ELD_STORAGE_PROOF_TOPIC_PREFIX};
+use eld_common::constants::p2p::ELD_STORAGE_PROOF_TOPIC_PREFIX;
 use eld_common::error::EldError;
 use eld_common::validator::{ActiveCapacityValidator, EpochRecord, ValidatorInfo};
 use rand::rngs::StdRng;
@@ -177,8 +177,9 @@ where
             .envelope
             .update_cado_cache(epoch_path, cado.clone());
 
-        let latest_path = CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(LATEST))?;
-        current_state.envelope.update_cado_cache(latest_path, cado);
+        current_state
+            .envelope
+            .update_cado_cache(latest_epoch_record_path().clone(), cado);
 
         Ok(())
     }

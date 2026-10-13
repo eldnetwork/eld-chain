@@ -1,19 +1,7 @@
 use crate::app_state::state_trie::StateTrie;
-use eld_common::cado::{CadoPath, CadoPathKey, CadoType};
-use eld_common::constants::cado::LATEST;
 use eld_common::error::EldError;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::sync::OnceLock;
-
-/// Fixed path for the latest AppStateTip. Built once.
-pub fn latest_app_state_tip_path() -> &'static CadoPath {
-    static PATH: OnceLock<CadoPath> = OnceLock::new();
-    PATH.get_or_init(|| {
-        CadoPath::new(CadoType::AppStateTip, CadoPathKey::Name(LATEST))
-            .expect("LATEST is a valid AppStateTip name")
-    })
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppStateTip {
