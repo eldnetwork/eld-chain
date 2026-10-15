@@ -61,6 +61,8 @@ Create them locally. They are gitignored.
 ```sh
 ./deploy/scripts/build-docker-image-tendermint-macos
 ./deploy/scripts/build-docker-image-eld-node
+# Force a full cargo rebuild (no Docker layer cache):
+./deploy/scripts/build-docker-image-eld-node-no-cache
 ```
 
 The node script is a two-stage flow: `Dockerfile.eld-base` compiles `eld-node` (`eld-base:<NODE_APP_VERSION_TAG>`), then `Dockerfile.app` is `FROM eld_base` and tags `eld-app:<NODE_APP_VERSION_TAG>`. Compose only runs the runtime image; the base image is a build cache, not a compose service.
@@ -71,11 +73,11 @@ Tendermint is compiled `GOOS=linux` in `TENDERMINT_DIR` for the Mac’s CPU, the
 
 A tag matching `eld-app-v*.*.*` starts [`.github/workflows/eld-app-image.yml`](../.github/workflows/eld-app-image.yml). CI runs first. The image job then publishes `linux/amd64` and `linux/arm64` as one manifest:
 
-`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.7`
+`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.20`
 
 ```sh
-git tag -a eld-app-v0.0.7 -m "eld-app v0.0.7"
-git push origin eld-app-v0.0.7
+git tag -a eld-app-v0.0.20 -m "eld-app v0.0.20"
+git push origin eld-app-v0.0.20
 ```
 
 `Dockerfile.release` is a release build (`cargo build --release --locked -p eld-node`). The local `eld-app` image stays a debug build from `Dockerfile.eld-base` and `Dockerfile.app`. The process working directory is `/app`, so the same config, wallet, and data mounts apply.
@@ -131,6 +133,19 @@ This always stops the faucet if it is running. For the rust-Tendermint GHCR stac
 
 `--with-analytics` starts the `eld-analytics` profile (builds `eld-analytics:local`). First disk sample is after 3 minutes, then hourly. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
 
+### Local app + GHCR rust-Tendermint
+
+`compose.tm-rs.yaml` runs local `eld-app:${NODE_APP_VERSION_TAG}` with `${TM_RS_IMAGE}` from GHCR (same `deploy-tm-rs` project). Build the app image from this checkout first. Stop the Go-Tendermint `deploy` stack first (same container names and host ports).
+
+```sh
+./deploy/scripts/build-docker-image-eld-node
+# or force a full cargo rebuild:
+./deploy/scripts/build-docker-image-eld-node-no-cache
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.tm-rs.sh
+# optional: --with-faucet and/or --with-analytics
+./deploy/scripts/docker/local/cluster/cluster-stop.tm-rs.sh
+```
+
 ## Ports (host)
 
 | Pair | REST | ABCI | TM P2P | TM RPC |
@@ -156,7 +171,7 @@ Same three actions as the cluster, against the single Compose project (`eld-sing
 ./deploy/scripts/docker/local/single/single-stop.sh
 ```
 
-`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.7` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
+`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.20` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
 
 ```sh
 ./deploy/scripts/docker/local/single/single-start-without-history.ghcr.sh

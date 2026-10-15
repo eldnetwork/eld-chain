@@ -16,6 +16,8 @@ ignore = [
     { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.101 CRL panic is pinned by libp2p 0.53 and tendermint-rpc 0.40; fix is rustls-webpki >= 0.103.13" },
     { id = "RUSTSEC-2026-0119", reason = "hickory-proto 0.24 is pinned by libp2p-mdns 0.45; fix is hickory-proto >= 0.26.1" },
     { id = "RUSTSEC-2026-0258", reason = "h2 0.3 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is h2 >= 0.4.16" },
+    { id = "RUSTSEC-2026-0346", reason = "rustls 0.21 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is rustls >= 0.23.46" },
+    { id = "RUSTSEC-2026-0349", reason = "rustls 0.21 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is rustls >= 0.23.46" },
 ]
 
 [licenses]

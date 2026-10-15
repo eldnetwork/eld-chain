@@ -4,6 +4,10 @@
 # NODE_APP_VERSION_TAG comes from deploy/.env (or DEPLOY_ENV_FILE).
 # Builds eld-base first (Rust compile), then eld-app FROM that image — same split as
 # old eld Dockerfile.eld-base + Dockerfile.app-multi.
+#
+# Usage:
+#   ./deploy/scripts/build-docker-image-eld-node
+#   ./deploy/scripts/build-docker-image-eld-node --no-cache
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,14 +17,25 @@ source "${SCRIPT_DIR}/_env.sh"
 ELD_BASE_DOCKERFILE="${ELD_BASE_DOCKERFILE:-${DEPLOY_DIR}/docker/Dockerfile.eld-base}"
 ELD_APP_DOCKERFILE="${ELD_APP_DOCKERFILE:-${DEPLOY_DIR}/docker/Dockerfile.app}"
 
+NO_CACHE=()
+if [[ "${1:-}" == "--no-cache" ]]; then
+  NO_CACHE=(--no-cache)
+  echo "Building without Docker layer cache"
+elif [[ -n "${1:-}" ]]; then
+  echo "Unknown argument: $1 (expected --no-cache or nothing)" >&2
+  exit 1
+fi
+
 echo "Building compile image ${ELD_BASE_IMAGE} from ${ELD_BASE_DOCKERFILE}"
 docker build \
+  ${NO_CACHE[@]+"${NO_CACHE[@]}"} \
   -f "$ELD_BASE_DOCKERFILE" \
   -t "$ELD_BASE_IMAGE" \
   "$REPO_ROOT"
 
 echo "Building runtime image ${ELD_APP_IMAGE} FROM ${ELD_BASE_IMAGE}"
 DOCKER_BUILDKIT=1 docker build \
+  ${NO_CACHE[@]+"${NO_CACHE[@]}"} \
   --build-context "eld_base=docker-image://${ELD_BASE_IMAGE}" \
   -f "$ELD_APP_DOCKERFILE" \
   -t "$ELD_APP_IMAGE" \

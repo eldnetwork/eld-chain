@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Wipe deploy-tm-rs volumes and start the 4-node rust-Tendermint compose from genesis.
+# Uses the same host config as compose.yaml. Does not touch project `deploy` volumes.
+# App image is local eld-app:${NODE_APP_VERSION_TAG}. Rust Tendermint is TM_RS_IMAGE
+# (GHCR full reference, including the version tag) from deploy/.env.
+#
+# Optional flags (combinable):
+#   --with-faucet      enable the faucet Compose profile
+#   --with-analytics   enable the analytics sidecar profile (builds the local image)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy/scripts/_env.sh
+source "${SCRIPT_DIR}/../../../_env.sh"
+COMPOSE_FILE="$DEPLOY_DIR/docker/local/cluster/compose.tm-rs.yaml"
+require_env TM_RS_IMAGE
+
+FAUCET_PROFILE=()
+ANALYTICS_PROFILE=()
+UP_ARGS=(-d)
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-faucet)
+      require_env FAUCET_VERSION_TAG
+      WALLET="$DEPLOY_DIR/docker/local/cluster/faucet/wallets.json"
+      if [[ ! -f "$WALLET" ]]; then
+        echo "Missing faucet wallet: $WALLET" >&2
+        echo "Create wallet-faucet-1 there before --with-faucet." >&2
+        exit 1
+      fi
+      FAUCET_PROFILE=(--profile faucet)
+      ;;
+    --with-analytics)
+      ANALYTICS_PROFILE=(--profile analytics)
+      # Local Dockerfile image; build so `up` does not require a prior manual build.
+      UP_ARGS=(-d --build)
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Usage: $0 [--with-faucet] [--with-analytics]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+compose() {
+  # Bash 3.2 + set -u treats an empty "${arr[@]}" as unbound.
+  docker compose -f "$COMPOSE_FILE" --env-file "$DEPLOY_ENV_FILE" \
+    ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} \
+    ${ANALYTICS_PROFILE[@]+"${ANALYTICS_PROFILE[@]}"} \
+    "$@"
+}
+
+echo "Starting 4-node compose without history using ${ELD_APP_IMAGE} and ${TM_RS_IMAGE}"
+compose down --volumes --remove-orphans
+
+for i in 1 2 3 4; do
+  echo "eld-tendermint unsafe-reset-all on tendermint-${i}"
+  compose run --rm --no-deps "tendermint-${i}" \
+    eld-tendermint unsafe-reset-all --home /tendermint-rs/.tendermint
+done
+
+compose up "${UP_ARGS[@]}"
+
+echo "Started 4-node rust-Tendermint compose with fresh state (history wiped)."
