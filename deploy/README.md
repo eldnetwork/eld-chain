@@ -61,6 +61,8 @@ Create them locally. They are gitignored.
 ```sh
 ./deploy/scripts/build-docker-image-tendermint-macos
 ./deploy/scripts/build-docker-image-eld-node
+# Force a full cargo rebuild (no Docker layer cache):
+./deploy/scripts/build-docker-image-eld-node-no-cache
 ```
 
 The node script is a two-stage flow: `Dockerfile.eld-base` compiles `eld-node` (`eld-base:<NODE_APP_VERSION_TAG>`), then `Dockerfile.app` is `FROM eld_base` and tags `eld-app:<NODE_APP_VERSION_TAG>`. Compose only runs the runtime image; the base image is a build cache, not a compose service.
@@ -130,6 +132,19 @@ This always stops the faucet if it is running. For the rust-Tendermint GHCR stac
 ```
 
 `--with-analytics` starts the `eld-analytics` profile (builds `eld-analytics:local`). First disk sample is after 3 minutes, then hourly. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
+
+### Local app + GHCR rust-Tendermint
+
+`compose.tm-rs.yaml` runs local `eld-app:${NODE_APP_VERSION_TAG}` with `${TM_RS_IMAGE}` from GHCR (same `deploy-tm-rs` project). Build the app image from this checkout first. Stop the Go-Tendermint `deploy` stack first (same container names and host ports).
+
+```sh
+./deploy/scripts/build-docker-image-eld-node
+# or force a full cargo rebuild:
+./deploy/scripts/build-docker-image-eld-node-no-cache
+./deploy/scripts/docker/local/cluster/cluster-start-without-history.tm-rs.sh
+# optional: --with-faucet and/or --with-analytics
+./deploy/scripts/docker/local/cluster/cluster-stop.tm-rs.sh
+```
 
 ## Ports (host)
 
