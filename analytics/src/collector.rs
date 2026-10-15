@@ -1,7 +1,8 @@
 use crate::config::Config;
-use crate::disk::{directory_tree_size_bytes, file_or_dir_size, statvfs_for_path, top_n_files};
+use crate::disk::{directory_tree_size_bytes, statvfs_for_path, top_n_files};
 use crate::model::{AbciDiskSnapshot, CollectionRun, TendermintDiskSnapshot};
 use crate::rocksdb_inventory::collect_inventory;
+use crate::scan::scan;
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 
@@ -39,38 +40,60 @@ fn tendermint_data_dir(config: &Config, home: &Path) -> PathBuf {
 fn collect_tendermint(config: &Config, id: &str) -> TendermintDiskSnapshot {
     let home = tendermint_home(config, id);
     let data = tendermint_data_dir(config, &home);
-    let volume = statvfs_for_path(&home);
+    let volume = scan("tendermint volume", &home, None, {
+        let home = home.clone();
+        move || statvfs_for_path(&home)
+    });
 
     TendermintDiskSnapshot {
         node_id: id.to_string(),
-        home_dir_bytes: directory_tree_size_bytes(&home),
-        data_dir_bytes: directory_tree_size_bytes(&data),
-        blockstore_db_bytes: file_or_dir_size(&data.join("blockstore.db")),
-        state_db_bytes: file_or_dir_size(&data.join("state.db")),
-        cs_wal_bytes: file_or_dir_size(&data.join("cs.wal")),
-        evidence_db_bytes: file_or_dir_size(&data.join("evidence.db")),
-        tx_index_db_bytes: file_or_dir_size(&data.join("tx_index.db")),
-        volume_total_bytes: volume.map(|v| v.total_bytes),
-        volume_available_bytes: volume.map(|v| v.available_bytes),
-        top_files: top_n_files(&data, TOP_FILES_N),
+        home_dir_bytes: sized("tendermint home", &home),
+        data_dir_bytes: sized("tendermint data", &data),
+        blockstore_db_bytes: sized("tendermint blockstore", &data.join("blockstore.db")),
+        state_db_bytes: sized("tendermint state", &data.join("state.db")),
+        cs_wal_bytes: sized("tendermint cs.wal", &data.join("cs.wal")),
+        evidence_db_bytes: sized("tendermint evidence", &data.join("evidence.db")),
+        tx_index_db_bytes: sized("tendermint tx index", &data.join("tx_index.db")),
+        volume_total_bytes: volume.as_ref().map(|v| v.total_bytes),
+        volume_available_bytes: volume.as_ref().map(|v| v.available_bytes),
+        top_files: scan("tendermint top files", &data, Vec::new(), {
+            let data = data.clone();
+            move || top_n_files(&data, TOP_FILES_N)
+        }),
     }
+}
+
+fn sized(measurement: &'static str, path: &Path) -> u64 {
+    let path_buf = path.to_path_buf();
+    scan(measurement, path, 0, move || {
+        directory_tree_size_bytes(&path_buf)
+    })
 }
 
 fn collect_abci(config: &Config, id: &str) -> AbciDiskSnapshot {
     let root = PathBuf::from(format!("{}{}", config.abci_path_prefix, id));
     let rocks = root.join("rocksdb");
     let capacity = root.join("capacity");
-    let volume = statvfs_for_path(&root);
+    let volume = scan("abci volume", &root, None, {
+        let root = root.clone();
+        move || statvfs_for_path(&root)
+    });
 
     AbciDiskSnapshot {
         node_id: id.to_string(),
-        data_dir_bytes: directory_tree_size_bytes(&root),
-        rocksdb_bytes: directory_tree_size_bytes(&rocks),
-        capacity_bytes: directory_tree_size_bytes(&capacity),
-        volume_total_bytes: volume.map(|v| v.total_bytes),
-        volume_available_bytes: volume.map(|v| v.available_bytes),
-        top_files: top_n_files(&root, TOP_FILES_N),
-        rocksdb_inventory: collect_inventory(&rocks),
+        data_dir_bytes: sized("abci data", &root),
+        rocksdb_bytes: sized("abci rocksdb", &rocks),
+        capacity_bytes: sized("abci capacity", &capacity),
+        volume_total_bytes: volume.as_ref().map(|v| v.total_bytes),
+        volume_available_bytes: volume.as_ref().map(|v| v.available_bytes),
+        top_files: scan("abci top files", &root, Vec::new(), {
+            let root = root.clone();
+            move || top_n_files(&root, TOP_FILES_N)
+        }),
+        rocksdb_inventory: scan("abci rocksdb inventory", &rocks, None, {
+            let rocks = rocks.clone();
+            move || collect_inventory(&rocks)
+        }),
     }
 }
 

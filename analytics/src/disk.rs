@@ -1,42 +1,63 @@
 //! Filesystem size helpers for analytics collection.
 
 use crate::model::TopFile;
+use crate::scan::SCAN_BUDGET;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const TOP_FILES_MAX_DEPTH: usize = 12;
 const TOP_FILES_MAX_VISITED: usize = 50_000;
-const TOP_FILES_TIME_BUDGET: Duration = Duration::from_secs(30);
 
-/// Recursive sum of file sizes under `path`. Missing path → `0`.
-pub fn directory_tree_size_bytes(path: &Path) -> u64 {
-    directory_tree_size_bytes_inner(path).unwrap_or_default()
+enum Walk<T> {
+    Done(T),
+    TimedOut,
 }
 
-fn directory_tree_size_bytes_inner(path: &Path) -> std::io::Result<u64> {
-    let mut total = 0u64;
+/// Recursive sum of file sizes under `path`. Missing path → `0`.
+/// A walk that is still going at 30 seconds stops and returns `0` so the caller can move on.
+pub fn directory_tree_size_bytes(path: &Path) -> u64 {
+    let started = Instant::now();
+    match directory_tree_size_bytes_inner(path, started) {
+        Ok(Walk::Done(total)) => total,
+        Ok(Walk::TimedOut) => {
+            tracing::error!(
+                path = %path.display(),
+                "directory size scan exceeded 30s; skipping this measurement"
+            );
+            0
+        }
+        Err(_) => 0,
+    }
+}
+
+fn directory_tree_size_bytes_inner(path: &Path, started: Instant) -> std::io::Result<Walk<u64>> {
+    if started.elapsed() >= SCAN_BUDGET {
+        return Ok(Walk::TimedOut);
+    }
     if path.is_file() {
-        return Ok(path.metadata()?.len());
+        return Ok(Walk::Done(path.metadata()?.len()));
     }
     if !path.exists() {
-        return Ok(0);
+        return Ok(Walk::Done(0));
     }
+    let mut total = 0u64;
     for entry in std::fs::read_dir(path)? {
+        if started.elapsed() >= SCAN_BUDGET {
+            return Ok(Walk::TimedOut);
+        }
         let entry = entry?;
         let p = entry.path();
         let md = entry.metadata()?;
         if md.is_dir() {
-            total = total.saturating_add(directory_tree_size_bytes_inner(&p)?);
+            match directory_tree_size_bytes_inner(&p, started)? {
+                Walk::Done(bytes) => total = total.saturating_add(bytes),
+                Walk::TimedOut => return Ok(Walk::TimedOut),
+            }
         } else {
             total = total.saturating_add(md.len());
         }
     }
-    Ok(total)
-}
-
-/// Size of a file or directory tree. Missing path → `0`.
-pub fn file_or_dir_size(path: &Path) -> u64 {
-    directory_tree_size_bytes(path)
+    Ok(Walk::Done(total))
 }
 
 /// Bytes reported by `statvfs` for the filesystem containing `path`.
@@ -87,7 +108,12 @@ pub fn top_n_files(root: &Path, n: usize) -> Vec<TopFile> {
     let started = Instant::now();
     let mut heap: Vec<(u64, PathBuf)> = Vec::new();
     let mut visited = 0usize;
-    let _ = walk_top_files(root, 0, n, &mut heap, &mut visited, started);
+    if walk_top_files(root, 0, n, &mut heap, &mut visited, started) == WalkStop::TimedOut {
+        tracing::error!(
+            path = %root.display(),
+            "largest-file scan exceeded 30s; keeping files found so far"
+        );
+    }
     heap.sort_by(|a, b| b.0.cmp(&a.0));
     heap.into_iter()
         .take(n)
@@ -98,6 +124,13 @@ pub fn top_n_files(root: &Path, n: usize) -> Vec<TopFile> {
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WalkStop {
+    Done,
+    TimedOut,
+    VisitCap,
+}
+
 fn walk_top_files(
     path: &Path,
     depth: usize,
@@ -105,20 +138,26 @@ fn walk_top_files(
     heap: &mut Vec<(u64, PathBuf)>,
     visited: &mut usize,
     started: Instant,
-) -> bool {
-    if started.elapsed() > TOP_FILES_TIME_BUDGET || *visited >= TOP_FILES_MAX_VISITED {
-        return false;
+) -> WalkStop {
+    if started.elapsed() >= SCAN_BUDGET {
+        return WalkStop::TimedOut;
+    }
+    if *visited >= TOP_FILES_MAX_VISITED {
+        return WalkStop::VisitCap;
     }
     if depth > TOP_FILES_MAX_DEPTH {
-        return true;
+        return WalkStop::Done;
     }
     let entries = match std::fs::read_dir(path) {
         Ok(e) => e,
-        Err(_) => return true,
+        Err(_) => return WalkStop::Done,
     };
     for entry in entries.flatten() {
-        if started.elapsed() > TOP_FILES_TIME_BUDGET || *visited >= TOP_FILES_MAX_VISITED {
-            return false;
+        if started.elapsed() >= SCAN_BUDGET {
+            return WalkStop::TimedOut;
+        }
+        if *visited >= TOP_FILES_MAX_VISITED {
+            return WalkStop::VisitCap;
         }
         *visited = visited.saturating_add(1);
         let p = entry.path();
@@ -127,14 +166,15 @@ fn walk_top_files(
             Err(_) => continue,
         };
         if md.is_dir() {
-            if !walk_top_files(&p, depth + 1, n, heap, visited, started) {
-                return false;
+            match walk_top_files(&p, depth + 1, n, heap, visited, started) {
+                WalkStop::Done => {}
+                stop => return stop,
             }
         } else {
             insert_top(heap, n, md.len(), p);
         }
     }
-    true
+    WalkStop::Done
 }
 
 fn insert_top(heap: &mut Vec<(u64, PathBuf)>, n: usize, size: u64, path: PathBuf) {
@@ -168,7 +208,32 @@ mod tests {
         fs::create_dir(dir.path().join("sub")).unwrap();
         fs::write(dir.path().join("sub/b.txt"), b"world!").unwrap();
         assert_eq!(directory_tree_size_bytes(dir.path()), 11);
-        assert_eq!(file_or_dir_size(&dir.path().join("missing")), 0);
+        assert_eq!(directory_tree_size_bytes(&dir.path().join("missing")), 0);
+    }
+
+    #[test]
+    fn directory_tree_size_stops_when_the_budget_is_already_spent() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), b"hello").unwrap();
+        let started = Instant::now() - SCAN_BUDGET - std::time::Duration::from_secs(1);
+        assert!(matches!(
+            directory_tree_size_bytes_inner(dir.path(), started).unwrap(),
+            Walk::TimedOut
+        ));
+    }
+
+    #[test]
+    fn top_n_files_stops_when_the_budget_is_already_spent() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("big"), b"abcdefghij").unwrap();
+        let started = Instant::now() - SCAN_BUDGET - std::time::Duration::from_secs(1);
+        let mut heap = Vec::new();
+        let mut visited = 0usize;
+        assert_eq!(
+            walk_top_files(dir.path(), 0, 2, &mut heap, &mut visited, started),
+            WalkStop::TimedOut
+        );
+        assert!(heap.is_empty());
     }
 
     #[test]

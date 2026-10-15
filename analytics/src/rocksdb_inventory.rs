@@ -1,6 +1,7 @@
 //! Read-only inventory of an Eld ABCI RocksDB directory.
 
 use crate::model::{CadoTypeCount, CfSstBytes, RocksDbInventory};
+use crate::scan::SCAN_BUDGET;
 use eld_common::constants::cado::{
     PATH_PREFIX_ACCOUNT, PATH_PREFIX_APP_STATE_SNAPSHOT, PATH_PREFIX_APP_STATE_TIP,
     PATH_PREFIX_CADO_MAP, PATH_PREFIX_CHUNK_REFERENCE, PATH_PREFIX_EPOCH_RECORD,
@@ -12,7 +13,8 @@ use eld_common::constants::cado::{
 };
 use rocksdb::{ColumnFamilyDescriptor, Direction, IteratorMode, Options, DB};
 use std::path::Path;
-use tracing::warn;
+use std::time::Instant;
+use tracing::error;
 
 const ROCKSDB_TOTAL_SST_FILES_SIZE: &str = "rocksdb.total-sst-files-size";
 const INDEXED_TRANSACTIONS_PRIMARY_TOTAL_COUNT_KEY: &[u8] =
@@ -69,34 +71,68 @@ fn eld_column_family_descriptors() -> Vec<ColumnFamilyDescriptor> {
         .collect()
 }
 
-/// Collect inventory from an Eld RocksDB directory. Returns `None` on open/scan failure.
+enum InventoryError {
+    Failed(String),
+    TimedOut,
+}
+
+/// Collect inventory from an Eld RocksDB directory.
+/// Returns `None` when the path is missing or the database cannot be opened.
+/// A timeout or a later read error keeps the counts and sizes already finished.
 pub fn collect_inventory(rocksdb_path: &Path) -> Option<RocksDbInventory> {
-    match collect_inventory_inner(rocksdb_path) {
+    collect_inventory_until(rocksdb_path, Instant::now() + SCAN_BUDGET)
+}
+
+pub(crate) fn collect_inventory_until(
+    rocksdb_path: &Path,
+    deadline: Instant,
+) -> Option<RocksDbInventory> {
+    match collect_inventory_inner(rocksdb_path, deadline) {
         Ok(inv) => Some(inv),
-        Err(err) => {
-            warn!(
+        Err(InventoryError::TimedOut) => {
+            error!(
+                path = %rocksdb_path.display(),
+                "RocksDB inventory exceeded 30s before any counts were read"
+            );
+            None
+        }
+        Err(InventoryError::Failed(err)) => {
+            error!(
                 path = %rocksdb_path.display(),
                 error = %err,
-                "RocksDB inventory: read-only open or scan failed"
+                "RocksDB inventory: read-only open failed"
             );
             None
         }
     }
 }
 
-fn collect_inventory_inner(rocksdb_path: &Path) -> Result<RocksDbInventory, String> {
+fn collect_inventory_inner(
+    rocksdb_path: &Path,
+    deadline: Instant,
+) -> Result<RocksDbInventory, InventoryError> {
+    if Instant::now() >= deadline {
+        return Err(InventoryError::TimedOut);
+    }
     if !rocksdb_path.exists() {
-        return Err(format!("path does not exist: {}", rocksdb_path.display()));
+        return Err(InventoryError::Failed(format!(
+            "path does not exist: {}",
+            rocksdb_path.display()
+        )));
     }
 
     let opts = Options::default();
     let cfs = eld_column_family_descriptors();
     let db = DB::open_cf_descriptors_read_only(&opts, rocksdb_path, cfs, false)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| InventoryError::Failed(e.to_string()))?;
 
-    let cado_type_counts = count_cado_types(&db)?;
-    let indexed_transactions_count = count_indexed_transactions(&db);
-    let indexed_events_count = count_indexed_events(&db);
+    if Instant::now() >= deadline {
+        return Err(InventoryError::TimedOut);
+    }
+
+    let cado_type_counts = count_cado_types(&db, deadline);
+    let indexed_transactions_count = count_indexed_transactions(&db, deadline);
+    let indexed_events_count = count_indexed_events(&db, deadline);
 
     let mut cf_sst_bytes = Vec::new();
     let mut pinboard_blob = 0u64;
@@ -104,13 +140,27 @@ fn collect_inventory_inner(rocksdb_path: &Path) -> Result<RocksDbInventory, Stri
     let mut saw_any_sst = false;
 
     for &name in ELD_CF_NAMES {
+        if Instant::now() >= deadline {
+            error!(
+                path = %rocksdb_path.display(),
+                "RocksDB sst size scan exceeded 30s; keeping sizes already read"
+            );
+            break;
+        }
         let Some(cf) = db.cf_handle(name) else {
             continue;
         };
-        let sz = db
-            .property_int_value_cf(cf, ROCKSDB_TOTAL_SST_FILES_SIZE)
-            .map_err(|e| e.to_string())?
-            .unwrap_or(0);
+        let sz = match db.property_int_value_cf(cf, ROCKSDB_TOTAL_SST_FILES_SIZE) {
+            Ok(value) => value.unwrap_or(0),
+            Err(err) => {
+                error!(
+                    column_family = name,
+                    error = %err,
+                    "RocksDB sst size read failed; keeping sizes already read"
+                );
+                continue;
+            }
+        };
         saw_any_sst = true;
         cf_sst_bytes.push(CfSstBytes {
             column_family: name.to_string(),
@@ -133,31 +183,61 @@ fn collect_inventory_inner(rocksdb_path: &Path) -> Result<RocksDbInventory, Stri
     })
 }
 
-fn count_cado_types(db: &DB) -> Result<Vec<CadoTypeCount>, String> {
+fn count_cado_types(db: &DB, deadline: Instant) -> Vec<CadoTypeCount> {
     let Some(cf) = db.cf_handle("path_index") else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
     let mut out = Vec::with_capacity(CADO_TYPE_PREFIXES.len());
     for &(cado_type, prefix) in CADO_TYPE_PREFIXES {
-        let count = count_keys_with_prefix(db, cf, prefix.as_bytes())?;
-        out.push(CadoTypeCount {
-            cado_type: cado_type.to_string(),
-            count,
-        });
+        if Instant::now() >= deadline {
+            error!(
+                cado_type,
+                "cado type count exceeded 30s; keeping counts already finished"
+            );
+            break;
+        }
+        match count_keys_with_prefix(db, cf, prefix.as_bytes(), deadline) {
+            Ok(Some(count)) => out.push(CadoTypeCount {
+                cado_type: cado_type.to_string(),
+                count,
+            }),
+            Ok(None) => {
+                error!(
+                    cado_type,
+                    "cado type count exceeded 30s; keeping counts already finished"
+                );
+                break;
+            }
+            Err(err) => {
+                error!(
+                    cado_type,
+                    error = %err_label(&err),
+                    "cado type count failed; keeping counts already finished"
+                );
+            }
+        }
     }
-    Ok(out)
+    out
 }
 
+/// `Ok(None)` means the 30s budget ran out before this prefix finished.
 fn count_keys_with_prefix(
     db: &DB,
     cf: &rocksdb::ColumnFamily,
     prefix: &[u8],
-) -> Result<u64, String> {
+    deadline: Instant,
+) -> Result<Option<u64>, InventoryError> {
+    if Instant::now() >= deadline {
+        return Ok(None);
+    }
     let iter = db.iterator_cf(cf, IteratorMode::From(prefix, Direction::Forward));
     let mut count = 0u64;
     let mut visited = 0usize;
     for item in iter {
-        let (key, _) = item.map_err(|e| e.to_string())?;
+        if Instant::now() >= deadline {
+            return Ok(None);
+        }
+        let (key, _) = item.map_err(|e| InventoryError::Failed(e.to_string()))?;
         if !key.starts_with(prefix) {
             break;
         }
@@ -167,10 +247,14 @@ fn count_keys_with_prefix(
             break;
         }
     }
-    Ok(count)
+    Ok(Some(count))
 }
 
-fn count_indexed_transactions(db: &DB) -> Option<u64> {
+fn count_indexed_transactions(db: &DB, deadline: Instant) -> Option<u64> {
+    if Instant::now() >= deadline {
+        error!("indexed transaction count exceeded 30s; leaving that count unset");
+        return None;
+    }
     let cf = db.cf_handle("indexed_transactions")?;
     if let Ok(Some(bytes)) = db.get_cf(cf, INDEXED_TRANSACTIONS_PRIMARY_TOTAL_COUNT_KEY) {
         if bytes.len() == 8 {
@@ -179,28 +263,68 @@ fn count_indexed_transactions(db: &DB) -> Option<u64> {
             return Some(u64::from_le_bytes(arr));
         }
     }
+    if Instant::now() >= deadline {
+        error!("indexed transaction count exceeded 30s; leaving that count unset");
+        return None;
+    }
     // Fallback: count primary `0x…` keys without `:`.
     let mut iter = db.iterator_cf(cf, IteratorMode::From(b"0x", Direction::Forward));
     let mut count = 0u64;
     let mut visited = 0usize;
-    while let Some(Ok((key, _))) = iter.next() {
-        if !key.starts_with(b"0x") {
-            break;
+    loop {
+        if Instant::now() >= deadline {
+            error!("indexed transaction count exceeded 30s; leaving that count unset");
+            return None;
         }
-        if !key.contains(&b':') {
-            count = count.saturating_add(1);
-        }
-        visited = visited.saturating_add(1);
-        if visited >= MAX_KEYS_PER_PREFIX {
-            break;
+        match iter.next() {
+            Some(Ok((key, _))) => {
+                if !key.starts_with(b"0x") {
+                    break;
+                }
+                if !key.contains(&b':') {
+                    count = count.saturating_add(1);
+                }
+                visited = visited.saturating_add(1);
+                if visited >= MAX_KEYS_PER_PREFIX {
+                    break;
+                }
+            }
+            Some(Err(err)) => {
+                error!(
+                    error = %err,
+                    "indexed transaction count failed; leaving that count unset"
+                );
+                return None;
+            }
+            None => break,
         }
     }
     Some(count)
 }
 
-fn count_indexed_events(db: &DB) -> Option<u64> {
+fn count_indexed_events(db: &DB, deadline: Instant) -> Option<u64> {
     let cf = db.cf_handle("indexed_events")?;
-    count_keys_with_prefix(db, cf, INDEXED_EVENTS_PRIMARY_PREFIX).ok()
+    match count_keys_with_prefix(db, cf, INDEXED_EVENTS_PRIMARY_PREFIX, deadline) {
+        Ok(Some(count)) => Some(count),
+        Ok(None) => {
+            error!("indexed event count exceeded 30s; leaving that count unset");
+            None
+        }
+        Err(err) => {
+            error!(
+                error = %err_label(&err),
+                "indexed event count failed; leaving that count unset"
+            );
+            None
+        }
+    }
+}
+
+fn err_label(err: &InventoryError) -> String {
+    match err {
+        InventoryError::Failed(message) => message.clone(),
+        InventoryError::TimedOut => "scan exceeded 30s".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -269,5 +393,14 @@ mod tests {
     fn missing_path_returns_none() {
         let dir = tempdir().unwrap();
         assert!(collect_inventory(&dir.path().join("nope")).is_none());
+    }
+
+    #[test]
+    fn spent_budget_skips_inventory_without_opening() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rocksdb");
+        let _db = open_test_db(&path);
+        let deadline = Instant::now() - std::time::Duration::from_secs(1);
+        assert!(collect_inventory_until(&path, deadline).is_none());
     }
 }

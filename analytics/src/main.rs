@@ -5,6 +5,7 @@ mod disk;
 mod model;
 mod rocksdb_inventory;
 mod rpc;
+mod scan;
 mod store;
 
 use crate::api::{router, AppState};
@@ -15,6 +16,7 @@ use crate::store::AnalyticsStore;
 use clap::Parser;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::MissedTickBehavior;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -41,14 +43,46 @@ async fn main() -> anyhow::Result<()> {
             );
             tokio::time::sleep(Duration::from_secs(delay_secs)).await;
         }
-        run_collection(&collector_config, &collector_store).await;
-
         let mut interval =
             tokio::time::interval(Duration::from_secs(collector_config.interval_secs.max(1)));
-        interval.tick().await; // consume the immediate first tick
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
         loop {
             interval.tick().await;
-            run_collection(&collector_config, &collector_store).await;
+            let config = collector_config.clone();
+            let store = collector_store.clone();
+            tokio::spawn(async move {
+                let block_height = match fetch_latest_block_height(&config.tendermint_rpc_url).await
+                {
+                    Ok(height) => Some(height),
+                    Err(e) => {
+                        error!(
+                            rpc_url = %config.tendermint_rpc_url,
+                            "failed to fetch block height: {e:#}"
+                        );
+                        None
+                    }
+                };
+                let cfg = config.clone();
+                let joined =
+                    tokio::task::spawn_blocking(move || collect_once(&cfg, block_height)).await;
+                match joined {
+                    Ok(run) => {
+                        if let Err(e) = store.put_run(&run) {
+                            error!("failed to store collection run: {e:#}");
+                        } else {
+                            info!(
+                                collected_at = %run.collected_at,
+                                block_height = ?run.block_height,
+                                tm_nodes = run.tendermint_nodes.len(),
+                                abci_apps = run.abci_apps.len(),
+                                "stored collection run"
+                            );
+                        }
+                    }
+                    Err(e) => error!("collection worker failed: {e}"),
+                }
+            });
         }
     });
 
@@ -57,35 +91,4 @@ async fn main() -> anyhow::Result<()> {
     info!("listening on {}", config.listen);
     axum::serve(listener, app).await?;
     Ok(())
-}
-
-async fn run_collection(config: &Config, store: &AnalyticsStore) {
-    let block_height = match fetch_latest_block_height(&config.tendermint_rpc_url).await {
-        Ok(height) => Some(height),
-        Err(e) => {
-            error!(
-                rpc_url = %config.tendermint_rpc_url,
-                "failed to fetch block height: {e:#}"
-            );
-            None
-        }
-    };
-
-    let cfg = config.clone();
-    match tokio::task::spawn_blocking(move || collect_once(&cfg, block_height)).await {
-        Ok(run) => {
-            if let Err(e) = store.put_run(&run) {
-                error!("failed to store run: {e:#}");
-            } else {
-                info!(
-                    collected_at = %run.collected_at,
-                    block_height = ?run.block_height,
-                    tm_nodes = run.tendermint_nodes.len(),
-                    abci_apps = run.abci_apps.len(),
-                    "stored collection run"
-                );
-            }
-        }
-        Err(e) => error!("collection task join failed: {e}"),
-    }
 }
