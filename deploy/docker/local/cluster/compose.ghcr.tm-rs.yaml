@@ -210,10 +210,8 @@ services:
 
   eld-analytics:
     profiles: ["analytics"]
-    image: eld-analytics:local
-    build:
-      context: ../../../../
-      dockerfile: analytics/Dockerfile
+    image: ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}
+    pull_policy: always
     container_name: eld-analytics
     restart: unless-stopped
     networks:

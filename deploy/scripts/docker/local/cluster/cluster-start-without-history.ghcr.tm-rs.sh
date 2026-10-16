@@ -6,7 +6,8 @@
 #
 # Optional flags (combinable):
 #   --with-faucet      enable the faucet Compose profile
-#   --with-analytics   enable the analytics sidecar profile (builds the local image)
+#   --with-analytics   enable the analytics sidecar profile
+#                      (ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR})
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +18,6 @@ require_env TM_RS_IMAGE
 
 FAUCET_PROFILE=()
 ANALYTICS_PROFILE=()
-UP_ARGS=(-d)
 
 for arg in "$@"; do
   case "$arg" in
@@ -32,9 +32,8 @@ for arg in "$@"; do
       FAUCET_PROFILE=(--profile faucet)
       ;;
     --with-analytics)
+      require_env ANALYTICS_TAG_GHCR
       ANALYTICS_PROFILE=(--profile analytics)
-      # Local Dockerfile image; build so `up` does not require a prior manual build.
-      UP_ARGS=(-d --build)
       ;;
     *)
       echo "Unknown option: $arg" >&2
@@ -53,6 +52,9 @@ compose() {
 }
 
 echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ${TM_RS_IMAGE}"
+if [[ ${#ANALYTICS_PROFILE[@]} -gt 0 ]]; then
+  echo "Analytics image ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}"
+fi
 compose down --volumes --remove-orphans
 
 for i in 1 2 3 4; do
@@ -61,6 +63,6 @@ for i in 1 2 3 4; do
     eld-tendermint unsafe-reset-all --home /tendermint-rs/.tendermint
 done
 
-compose up "${UP_ARGS[@]}"
+compose up -d
 
 echo "Started 4-node rust-Tendermint compose with fresh state (history wiped)."
