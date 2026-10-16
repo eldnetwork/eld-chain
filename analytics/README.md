@@ -31,7 +31,7 @@ Each measurement gives up after 30 seconds and logs an error. Directory sizes th
 Each `CollectionRun` stores `block_height` from Tendermint `status`
 (`sync_info.latest_block_height`), the same field the block explorer uses.
 
-A git tag `eld-analytics-v*` (for example `eld-analytics-v0.0.2`) publishes `ghcr.io/eldnetwork/eld-analytics` with that same tag. On the tm-rs local stack, enable with:
+A git tag `eld-analytics-v*` (for example `eld-analytics-v0.0.3`) publishes `ghcr.io/eldnetwork/eld-analytics` with that same tag. On the tm-rs local stack, enable with:
 
 ```sh
 ./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh --with-analytics
