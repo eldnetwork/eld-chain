@@ -2,6 +2,7 @@ mod api;
 mod collector;
 mod config;
 mod disk;
+mod memory;
 mod model;
 mod rocksdb_inventory;
 mod rpc;
@@ -11,6 +12,7 @@ mod store;
 use crate::api::{router, AppState};
 use crate::collector::collect_once;
 use crate::config::Config;
+use crate::memory::collect_memory;
 use crate::rpc::fetch_latest_block_height;
 use crate::store::AnalyticsStore;
 use clap::Parser;
@@ -39,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         if delay_secs > 0 {
             info!(
                 delay_secs,
-                "waiting before first disk collection (lets the cluster settle)"
+                "waiting before first collection (lets the cluster settle)"
             );
             tokio::time::sleep(Duration::from_secs(delay_secs)).await;
         }
@@ -67,7 +69,11 @@ async fn main() -> anyhow::Result<()> {
                 let joined =
                     tokio::task::spawn_blocking(move || collect_once(&cfg, block_height)).await;
                 match joined {
-                    Ok(run) => {
+                    Ok(mut run) => {
+                        let memory = collect_memory(&config).await;
+                        run.vm_memory = memory.vm;
+                        run.tendermint_memory = memory.tendermint;
+                        run.abci_memory = memory.abci;
                         if let Err(e) = store.put_run(&run) {
                             error!("failed to store collection run: {e:#}");
                         } else {
@@ -76,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
                                 block_height = ?run.block_height,
                                 tm_nodes = run.tendermint_nodes.len(),
                                 abci_apps = run.abci_apps.len(),
+                                vm_mem_available_bytes = run.vm_memory.map(|m| m.mem_available_bytes),
                                 "stored collection run"
                             );
                         }

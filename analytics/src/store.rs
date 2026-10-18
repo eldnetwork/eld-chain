@@ -65,7 +65,10 @@ impl AnalyticsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AbciDiskSnapshot, TendermintDiskSnapshot};
+    use crate::model::{
+        AbciDiskSnapshot, AbciMemorySnapshot, ProcessMemory, TendermintDiskSnapshot,
+        TendermintMemorySnapshot, VmMemorySnapshot,
+    };
     use chrono::Utc;
     use tempfile::tempdir;
 
@@ -73,6 +76,14 @@ mod tests {
         CollectionRun {
             collected_at: Utc::now(),
             block_height: Some(100),
+            vm_memory: Some(VmMemorySnapshot {
+                mem_total_bytes: 8,
+                mem_available_bytes: 3,
+                swap_total_bytes: 2,
+                swap_free_bytes: 1,
+                anon_pages_bytes: 4,
+                cached_bytes: 1,
+            }),
             tendermint_nodes: vec![TendermintDiskSnapshot {
                 node_id: "1".into(),
                 home_dir_bytes: 10,
@@ -96,6 +107,30 @@ mod tests {
                 top_files: vec![],
                 rocksdb_inventory: None,
             }],
+            tendermint_memory: vec![TendermintMemorySnapshot {
+                node_id: "1".into(),
+                memory: ProcessMemory {
+                    usage_bytes: Some(90),
+                    anon_bytes: Some(70),
+                    file_bytes: Some(20),
+                    swap_bytes: Some(0),
+                    limit_bytes: None,
+                    peak_bytes: Some(100),
+                },
+                mempool_txs: Some(2),
+                mempool_bytes: Some(400),
+            }],
+            abci_memory: vec![AbciMemorySnapshot {
+                node_id: "1".into(),
+                memory: ProcessMemory {
+                    usage_bytes: Some(50),
+                    anon_bytes: Some(40),
+                    file_bytes: Some(10),
+                    swap_bytes: None,
+                    limit_bytes: Some(1_000),
+                    peak_bytes: None,
+                },
+            }],
         }
     }
 
@@ -109,6 +144,9 @@ mod tests {
         assert_eq!(latest.block_height, Some(100));
         assert_eq!(latest.tendermint_nodes[0].node_id, "1");
         assert_eq!(latest.abci_apps[0].rocksdb_bytes, 15);
+        assert_eq!(latest.vm_memory.map(|m| m.mem_available_bytes), Some(3));
+        assert_eq!(latest.tendermint_memory[0].mempool_bytes, Some(400));
+        assert_eq!(latest.abci_memory[0].memory.anon_bytes, Some(40));
         let hist = store.history(10).unwrap();
         assert_eq!(hist.len(), 1);
     }

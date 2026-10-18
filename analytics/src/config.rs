@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "eld-analytics",
-    about = "Hourly disk usage analytics for Eld nodes"
+    about = "Hourly disk and memory analytics for Eld nodes"
 )]
 pub struct Config {
     #[arg(
@@ -49,4 +49,46 @@ pub struct Config {
         default_value = "http://tendermint-1:26657"
     )]
     pub tendermint_rpc_url: String,
+
+    /// Docker Engine socket. Per-container memory is left empty when this cannot be opened.
+    #[arg(long, env = "DOCKER_SOCKET", default_value = "/var/run/docker.sock")]
+    pub docker_socket: PathBuf,
+
+    #[arg(
+        long,
+        env = "TENDERMINT_CONTAINER_PREFIX",
+        default_value = "tendermint-"
+    )]
+    pub tendermint_container_prefix: String,
+
+    #[arg(long, env = "ABCI_CONTAINER_PREFIX", default_value = "eld-app-")]
+    pub abci_container_prefix: String,
+
+    /// Hostname prefix for per-node mempool RPC: `http://{prefix}{id}:{port}`.
+    #[arg(
+        long,
+        env = "TENDERMINT_RPC_HOST_PREFIX",
+        default_value = "tendermint-"
+    )]
+    pub tendermint_rpc_host_prefix: String,
+
+    #[arg(long, env = "TENDERMINT_RPC_PORT", default_value = "26657")]
+    pub tendermint_rpc_port: u16,
+}
+
+impl Config {
+    pub fn tendermint_container_name(&self, id: &str) -> String {
+        format!("{}{id}", self.tendermint_container_prefix)
+    }
+
+    pub fn abci_container_name(&self, id: &str) -> String {
+        format!("{}{id}", self.abci_container_prefix)
+    }
+
+    pub fn tendermint_rpc_url_for(&self, id: &str) -> String {
+        format!(
+            "http://{}{id}:{}",
+            self.tendermint_rpc_host_prefix, self.tendermint_rpc_port
+        )
+    }
 }

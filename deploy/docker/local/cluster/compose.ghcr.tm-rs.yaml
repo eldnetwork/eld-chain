@@ -229,6 +229,8 @@ services:
       ABCI_PATH_PREFIX: /eld-
       TENDERMINT_RPC_URL: http://tendermint-1:26657
       RUST_LOG: eld_analytics=info
+    group_add:
+      - "0"
     volumes:
       - tendermint-data-1:/tendermint-1:ro
       - tendermint-data-2:/tendermint-2:ro
@@ -238,6 +240,7 @@ services:
       - eld-data-2:/eld-2:ro
       - eld-data-3:/eld-3:ro
       - eld-data-4:/eld-4:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - analytics-data:/data
     logging:
       driver: json-file

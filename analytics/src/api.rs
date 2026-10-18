@@ -16,8 +16,8 @@ pub struct AppState {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
-        .route("/analytics/disk/latest", get(latest))
-        .route("/analytics/disk/history", get(history))
+        .route("/analytics/usage/latest", get(latest))
+        .route("/analytics/usage/history", get(history))
         .with_state(state)
 }
 
