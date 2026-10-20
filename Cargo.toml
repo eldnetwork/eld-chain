@@ -34,3 +34,8 @@ url = "2.5.4"
 
 [workspace.lints.rust]
 warnings = "deny"
+
+# Eld ABCI extension on ResponseEndBlock (updated_frontier). Only replaces 0.23.7;
+# tendermint 0.40 still uses crates.io tendermint-proto 0.40.x.
+[patch.crates-io]
+tendermint-proto = { path = "vendor/tendermint-proto" }
