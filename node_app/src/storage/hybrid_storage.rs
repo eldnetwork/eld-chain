@@ -221,6 +221,10 @@ impl PinboardQueryStorage for HybridStorage {
     fn get_pinboard_gc_metrics(&self) -> Result<PinboardGcMetrics, EldError> {
         self.rocks_db.get_pinboard_gc_metrics()
     }
+
+    fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError> {
+        self.rocks_db.list_pinboard_pins()
+    }
 }
 
 impl AccountStorage for HybridStorage {

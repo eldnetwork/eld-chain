@@ -33,8 +33,8 @@ where
     pub(crate) capacity_manager: Arc<CapacityManager>,
     /// Paired Tendermint validator identity (from `/status`); not part of app state.
     pub(crate) local_identity: Arc<RwLock<LocalNodeIdentity>>,
-    /// Still-live pinboard posts for EndBlock frontier. Not cloned with `AppState`.
-    /// Updated in EndBlock from staged pinboard_meta_cache; rebuilt on startup.
+    /// Pinboard posts for the EndBlock frontier. Not cloned with `AppState`.
+    /// Startup restores every stored pin. EndBlock drops expired ones and applies new pins.
     pub(crate) live_pins: Arc<Mutex<LivePinSet>>,
 }
 
@@ -54,6 +54,7 @@ where
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    pub live_pins: Arc<Mutex<LivePinSet>>,
 }
 
 impl<S> ConsensusConnection<S>
@@ -76,7 +77,7 @@ where
             ready_tx: Arc::new(Mutex::new(ctx.ready_tx)),
             capacity_manager: ctx.capacity_manager,
             local_identity: ctx.local_identity,
-            live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+            live_pins: ctx.live_pins,
         }
     }
 

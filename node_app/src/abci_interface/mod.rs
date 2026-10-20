@@ -18,7 +18,7 @@ use eld_common::error::{EldError, ErrorBuilder};
 use tokio::sync::oneshot;
 use tracing::{error, info};
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
@@ -149,6 +149,16 @@ where
         }
     }
 
+    let stored_pins = match storage.list_pinboard_pins() {
+        Ok(pins) => pins,
+        Err(e) => handle_fatal_eld_error(e),
+    };
+    info!(
+        pins = stored_pins.len(),
+        "Restored pinboard pins into LivePinSet"
+    );
+    let live_pins = Arc::new(Mutex::new(LivePinSet::from(stored_pins)));
+
     let chain_id = {
         let config = match consensus_config.lock() {
             Ok(config) => config,
@@ -172,6 +182,7 @@ where
         ready_tx,
         capacity_manager,
         local_identity,
+        live_pins,
     });
 
     let mempool = MempoolConnection::new(

@@ -319,6 +319,52 @@ fn test_pinboard_namespace_secondary_path_key() {
 }
 
 #[test]
+fn test_list_pinboard_pins_keeps_expired_and_dedups_namespace_key() {
+    let storage = create_test_storage();
+    let addr = Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").unwrap();
+
+    let live = PinboardMessageMetadata {
+        message_id: "live".to_string(),
+        original_signer: addr,
+        content_key: "aa".to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height: 100,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec![],
+        committed_height: 10,
+        received_timestamp: 1,
+        namespace: Some("captainhook".to_string()),
+    };
+    let expired = PinboardMessageMetadata {
+        message_id: "expired".to_string(),
+        expires_height: 40,
+        namespace: None,
+        content_key: "bb".to_string(),
+        ..live.clone()
+    };
+
+    let tx = storage.begin_transaction();
+    storage
+        .put_pinboard_metadata_with_tx(&live.message_id, &live, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_metadata_with_tx(&expired.message_id, &expired, &tx)
+        .unwrap();
+    tx.commit().unwrap();
+
+    let mut pins = storage.list_pinboard_pins().unwrap();
+    pins.sort();
+    assert_eq!(
+        pins,
+        vec![
+            (10, 40, "expired".to_string()),
+            (10, 100, "live".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn test_pinboard_refcount_update() {
     let storage = create_test_storage();
     let ck = "aa";

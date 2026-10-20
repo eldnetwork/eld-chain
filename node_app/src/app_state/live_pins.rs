@@ -67,6 +67,21 @@ impl LivePinSet {
     }
 }
 
+/// Build a set from stored pinboard pins.
+///
+/// Each item is `(creation_height, expires_height, message_id)`. Expired pins
+/// stay in the set; EndBlock drops them. Pins that never live
+/// (`expires_height <= creation_height`) are ignored.
+impl From<Vec<(u64, u64, String)>> for LivePinSet {
+    fn from(pins: Vec<(u64, u64, String)>) -> Self {
+        let mut set = Self::new();
+        for (creation_height, expires_height, message_id) in pins {
+            set.insert(creation_height, expires_height, message_id);
+        }
+        set
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +131,16 @@ mod tests {
         set.insert(10, 100, "a".into());
         set.expire_up_to(100);
         assert_eq!(set.oldest_creation_height(), None);
+    }
+
+    #[test]
+    fn from_stored_pins_keeps_expired_and_skips_never_live() {
+        let set = LivePinSet::from(vec![
+            (10, 10, "dead".into()),
+            (5, 40, "expired".into()),
+            (20, 80, "live".into()),
+        ]);
+        assert_eq!(set.oldest_creation_height(), Some(5));
     }
 
     #[test]

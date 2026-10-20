@@ -329,6 +329,12 @@ pub trait PinboardQueryStorage: Send + Sync + 'static {
     ) -> Result<crate::api::pagination::PaginatedResult<String>, EldError>;
 
     fn get_pinboard_gc_metrics(&self) -> Result<PinboardGcMetrics, EldError>;
+
+    /// Every stored pinboard post. Does not drop expired posts; EndBlock does that.
+    ///
+    /// Each item is `(committed_height, expires_height, message_id)`. A namespace
+    /// path key stores the same metadata again; each `message_id` is returned once.
+    fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError>;
 }
 
 /// Chain-wide dedup for rewarded [`VerifiedProof`](eld_common::tx::VerifiedProofTx) challenges.

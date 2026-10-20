@@ -5,6 +5,7 @@ use eld_common::pinboard::PinboardMessageMetadata;
 use eld_common::tx::canonicalize_post_message_tags;
 use rocksdb::Transaction;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tracing::warn;
 
 use super::RocksDBStorage;
@@ -77,6 +78,35 @@ impl RocksDBStorage {
             }
         }
         Ok(refs)
+    }
+
+    /// Every stored pinboard post.
+    ///
+    /// Scans `pinboard_meta` and does not drop expired posts. EndBlock does that.
+    /// A namespace path key stores the same metadata again; each `message_id` is
+    /// returned once. Each item is `(committed_height, expires_height, message_id)`.
+    pub fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError> {
+        let mut seen = HashSet::new();
+        let mut pins = Vec::new();
+        let iter = self
+            .db
+            .iterator_cf(self.pinboard_meta_cf()?, rocksdb::IteratorMode::Start);
+        for item in iter {
+            let (_k, v) = item.map_err(|e| EldError::StorageError {
+                operation: "list_pinboard_pins_iter".to_string(),
+                details: format!("Failed to iterate pinboard metadata CF: {e}"),
+            })?;
+            let meta: PinboardMessageMetadata =
+                bincode::deserialize(&v).map_err(|e| EldError::StorageError {
+                    operation: "list_pinboard_pins_deserialize".to_string(),
+                    details: format!("Failed to deserialize pinboard metadata: {e}"),
+                })?;
+            if !seen.insert(meta.message_id.clone()) {
+                continue;
+            }
+            pins.push((meta.committed_height, meta.expires_height, meta.message_id));
+        }
+        Ok(pins)
     }
 
     fn read_pinboard_temp_blob_record(
@@ -665,5 +695,9 @@ impl crate::storage::traits::PinboardQueryStorage for RocksDBStorage {
 
     fn get_pinboard_gc_metrics(&self) -> Result<PinboardGcMetrics, EldError> {
         self.get_pinboard_gc_metrics()
+    }
+
+    fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError> {
+        self.list_pinboard_pins()
     }
 }
