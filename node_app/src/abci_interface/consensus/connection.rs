@@ -1,7 +1,7 @@
 use super::rewards::ValidatorRewardManager;
 use crate::abci_interface::chain_tip::ChainTip;
 use crate::abci_interface::snapshot::SnapshotManager;
-use crate::app_state::AppState;
+use crate::app_state::{AppState, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::content::sync::P2pCoordinatorTrait;
@@ -33,6 +33,10 @@ where
     pub(crate) capacity_manager: Arc<CapacityManager>,
     /// Paired Tendermint validator identity (from `/status`); not part of app state.
     pub(crate) local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    /// Still-live pinboard posts for EndBlock frontier. Not cloned with `AppState`.
+    /// Filled by PostMessage / startup rebuild (steps 6–8).
+    #[allow(dead_code)]
+    pub(crate) live_pins: Arc<Mutex<LivePinSet>>,
 }
 
 /// Construction inputs for [`ConsensusConnection::new`].
@@ -73,6 +77,7 @@ where
             ready_tx: Arc::new(Mutex::new(ctx.ready_tx)),
             capacity_manager: ctx.capacity_manager,
             local_identity: ctx.local_identity,
+            live_pins: Arc::new(Mutex::new(LivePinSet::new())),
         }
     }
 
