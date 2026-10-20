@@ -32,6 +32,8 @@ pub struct AppStateSnapshot {
     pub capacity_validators: Vec<CapacityValidatorInfo>,
     #[serde(alias = "active_storage_validator")]
     pub active_capacity_validator: Option<ActiveCapacityValidator>,
+    /// Highest height such that every block ≤ this height is safe to summarize.
+    pub frontier: u64,
 }
 
 impl AppStateSnapshot {
@@ -53,6 +55,7 @@ impl AppStateSnapshot {
             active_validators: envelope.active_validators.clone(),
             capacity_validators: envelope.capacity_validators.clone(),
             active_capacity_validator: envelope.active_capacity_validator.clone(),
+            frontier: envelope.frontier,
         })
     }
 
@@ -92,6 +95,7 @@ impl AppStateSnapshot {
         state.envelope.active_validators = self.active_validators.clone();
         state.envelope.capacity_validators = self.capacity_validators.clone();
         state.envelope.active_capacity_validator = self.active_capacity_validator.clone();
+        state.envelope.frontier = self.frontier;
 
         state.envelope.rebuild_state_trie_from_cache();
         let rebuilt_root = state.envelope.state_trie.root_hash();
@@ -275,6 +279,8 @@ mod tests {
             subscribed_topics: vec!["capacity.proof".to_string()],
         });
 
+        state.envelope.frontier = 17;
+
         state
     }
 
@@ -318,6 +324,7 @@ mod tests {
             bincode::serialize(&expected.active_capacity_validator)
                 .expect("serialize expected active_capacity_validator")
         );
+        assert_eq!(restored.frontier, expected.frontier);
     }
 
     #[test]
@@ -411,5 +418,28 @@ mod tests {
             .committed_cado_cache
             .get(infra_path.as_str().as_bytes())
             .is_none());
+    }
+
+    #[test]
+    fn frontier_changes_app_hash() {
+        let mut state = AppState::default();
+        state.envelope.init_empty_trie();
+        let before = state.envelope.calculate_app_hash();
+        state.envelope.frontier = 9;
+        let after = state.envelope.calculate_app_hash();
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn apply_to_state_restores_frontier() {
+        let state = sample_app_state_for_snapshot();
+        let snapshot = AppStateSnapshot::new(&state).expect("snapshot");
+        assert_eq!(snapshot.frontier, 17);
+        let tip_root = state.envelope.state_trie.root_hash();
+        let mut restored = AppState::default();
+        snapshot
+            .apply_to_state(&mut restored, tip_root)
+            .expect("apply");
+        assert_eq!(restored.envelope.frontier, 17);
     }
 }

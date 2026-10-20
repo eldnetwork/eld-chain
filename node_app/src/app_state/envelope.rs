@@ -90,6 +90,10 @@ pub struct AppStateEnvelope {
     /// Failed `VerifiedProof` challenges per capacity provider. Hashed. Reset to zero on slash.
     #[serde(default)]
     pub failed_proof_counts: BTreeMap<Address, u32>,
+
+    /// Highest height such that every block ≤ this height is safe to summarize.
+    /// Starts at 0. Hashed into `app_hash`.
+    pub frontier: u64,
 }
 
 impl Hash for AppStateEnvelope {
@@ -111,6 +115,7 @@ impl Hash for AppStateEnvelope {
             storage_validator.hash(state);
         }
         self.failed_proof_counts.hash(state);
+        self.frontier.hash(state);
     }
 }
 

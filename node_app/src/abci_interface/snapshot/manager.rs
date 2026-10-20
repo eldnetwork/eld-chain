@@ -663,6 +663,7 @@ mod tests {
             active_validators: Vec::new(),
             capacity_validators: Vec::new(),
             active_capacity_validator: None,
+            frontier: 0,
         };
         storage
             .put_cado_type(
