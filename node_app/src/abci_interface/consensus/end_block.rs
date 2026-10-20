@@ -51,6 +51,7 @@ where
         let validator_updates;
         let mut epoch_challenge_plan: Option<(Address, Vec<Address>, i64)> = None;
         let current_epoch: i64;
+        let mut updated_frontier = 0u64;
 
         // Scope for mutex lock
         {
@@ -146,7 +147,35 @@ where
                 validator_updates = None;
             }
 
-            // Calculate app hash before releasing lock
+            // Apply this block's staged PostMessage pins, then advance the frontier.
+            // DeliverTx only stages into the envelope; LivePinSet updates here (before Commit).
+            let height = new_block_height as u64;
+            {
+                let mut live_pins = match self.live_pins.lock() {
+                    Ok(lock) => lock,
+                    Err(e) => {
+                        handle_fatal_eld_error(e.into());
+                    }
+                };
+                for meta in current_state.envelope.pinboard_meta_cache.values() {
+                    live_pins.insert(
+                        meta.committed_height,
+                        meta.expires_height,
+                        meta.message_id.clone(),
+                    );
+                }
+                live_pins.expire_up_to(height);
+                let candidate = live_pins
+                    .oldest_creation_height()
+                    .map(|h| h.saturating_sub(1))
+                    .unwrap_or(height);
+                if candidate > current_state.envelope.frontier {
+                    current_state.envelope.frontier = candidate;
+                    updated_frontier = candidate;
+                }
+            }
+
+            // Calculate app hash before releasing lock (includes frontier when it advanced).
             let app_hash = current_state.envelope.calculate_app_hash();
             current_state.set_app_hash(app_hash);
 
@@ -233,6 +262,7 @@ where
         if let Some(updates) = validator_updates {
             resp.validator_updates = updates;
         }
+        resp.updated_frontier = updated_frontier;
 
         resp
     }

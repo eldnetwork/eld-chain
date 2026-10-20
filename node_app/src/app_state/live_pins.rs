@@ -23,17 +23,12 @@ pub struct LivePin {
 /// Pins are ordered by expiry height (then creation height, then message id) so
 /// finished pins can be dropped from the front. The oldest live creation height
 /// is found by scanning the remaining pins when asked.
-///
-/// Methods are wired from PostMessage / EndBlock in later frontier steps; until then
-/// only unit tests call them, so the binary build allows dead_code here.
 #[derive(Debug, Default)]
-#[allow(dead_code)]
 pub struct LivePinSet {
     /// Ordered by expiry height, then creation height, then message id.
     by_expiry: BTreeSet<LivePin>,
 }
 
-#[allow(dead_code)]
 impl LivePinSet {
     pub fn new() -> Self {
         Self::default()

@@ -34,8 +34,7 @@ where
     /// Paired Tendermint validator identity (from `/status`); not part of app state.
     pub(crate) local_identity: Arc<RwLock<LocalNodeIdentity>>,
     /// Still-live pinboard posts for EndBlock frontier. Not cloned with `AppState`.
-    /// Filled by PostMessage / startup rebuild (steps 6–8).
-    #[allow(dead_code)]
+    /// Updated in EndBlock from staged pinboard_meta_cache; rebuilt on startup.
     pub(crate) live_pins: Arc<Mutex<LivePinSet>>,
 }
 
