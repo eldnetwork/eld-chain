@@ -128,6 +128,7 @@ Compose reads this file. The deploy workflow rewrites it on every run. Do not pu
 | `ELD_TENDERMINT_IMAGE` | `ghcr.io/eldnetwork/eld-tendermint:v0.34.24-eld.1` | Tendermint image, including tag |
 | `NODE_APP_VERSION_TAG_GHCR` | `eld-app-v0.0.20` | Recorded app tag. Compose does not interpolate it |
 | `TENDERMINT_VERSION_TAG_GHCR` | `v0.34.24-eld.1` | Recorded Tendermint tag. Compose does not interpolate it |
+| `ELD_SNAPSHOT_QUERY_TOKEN` | | Token for query `/eld/state_snapshot`. The app and Tendermint containers both receive it. Deploy exits when it is empty |
 
 `GHCR_PULL_TOKEN` and `GHCR_USERNAME` are passed only for `docker login` during a deploy. They are not written to `.env`.
 
@@ -155,6 +156,7 @@ Create the GitHub Environment named `testnet` before the first run. The job does
 | `EC2_SSH_PORT` | secret | `22` | SSH port |
 | `GHCR_PULL_TOKEN` | secret | GitHub PAT | `read:packages` for `eld-chain` and `eld-tendermint` |
 | `GHCR_USERNAME` | secret | GitHub user | Owner of that PAT |
+| `ELD_SNAPSHOT_QUERY_TOKEN` | secret | | Same value written into `/opt/eld-chain/.env` for the app and Tendermint |
 | `TENDERMINT_VERSION_TAG_GHCR` | variable | `v0.34.24-eld.1` | Tendermint tag when the workflow input is empty |
 
 There is no GitHub variable for the app image. The developer types the published release tag into `app_tag` each time.

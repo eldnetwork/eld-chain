@@ -53,6 +53,7 @@ services:
       ELD_DB_PATH: /app/data/rocksdb
       TENDERMINT_RPC_URL: http://tendermint-1:26657
       ELD_CAPACITY_VALIDATOR_WALLET_NAME: wallet-capacity-validator-1
+      ELD_SNAPSHOT_QUERY_TOKEN: ${ELD_SNAPSHOT_QUERY_TOKEN}
 
   tendermint-1:
     <<: *tendermint-common
@@ -67,6 +68,7 @@ services:
     environment:
       - TMHOME=/tendermint/.tendermint
       - PROXY_APP=tcp://eld-app-1:26658
+      - ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
     depends_on:
       eld-app-1:
         condition: service_started

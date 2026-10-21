@@ -9,6 +9,7 @@ use super::{
     pinboard_query_processor, staking_account_query_processor,
 };
 use crate::abci_interface::chain_tip::ChainTip;
+use crate::app_state::app_state_snapshot::AppStateSnapshot;
 use crate::app_state::AppState;
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::{async_api::Info, async_trait, types::*};
@@ -18,8 +19,15 @@ use eld_common::error::EldError;
 use eld_common::protocol_constants::ProtocolHandle;
 use serde::{Deserialize, Serialize};
 use std::str;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
+
+/// ABCI query path for a zstd-compressed [`AppStateSnapshot`].
+pub const STATE_SNAPSHOT_PATH: &str = "/eld/state_snapshot";
+
+/// Name of the `/eld/state_snapshot` query token variable.
+pub const SNAPSHOT_QUERY_TOKEN_KEY: &str = "ELD_SNAPSHOT_QUERY_TOKEN";
 
 /// Deploy/image version from `ELD_APP_VERSION`, or `"0.0.0"` if unset/empty.
 pub fn resolve_eld_app_version() -> String {
@@ -363,6 +371,8 @@ where
     global_rate_limiter: Arc<GlobalAbciRateLimiter>,
     result_limiter: Arc<ResultLimiter>,
     query_rate_limiter: Arc<QueryBasedRateLimiter>,
+    /// Held while this connection is compressing a state snapshot.
+    snapshot_in_progress: AtomicBool,
 }
 
 impl<S> InfoConnection<S>
@@ -386,6 +396,7 @@ where
             global_rate_limiter: Arc::new(GlobalAbciRateLimiter::new()),
             result_limiter: Arc::new(ResultLimiter::new()),
             query_rate_limiter: Arc::new(QueryBasedRateLimiter::new()),
+            snapshot_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -427,6 +438,81 @@ where
     }
 }
 
+/// Clears the in-progress flag when a snapshot query finishes or panics.
+struct SnapshotInProgressGuard<'a>(&'a AtomicBool);
+
+impl Drop for SnapshotInProgressGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Handles `/eld/state_snapshot`. Returns `None` for every other path.
+///
+/// A missing or empty `ELD_SNAPSHOT_QUERY_TOKEN`, or request data that does not match it,
+/// is code 403. A query already compressing state is code 503. The token is not copied
+/// into the response or the log.
+fn state_snapshot_query(
+    state: &Mutex<AppState>,
+    in_progress: &AtomicBool,
+    path: &str,
+    data: &[u8],
+) -> Option<ResponseQuery> {
+    if path != STATE_SNAPSHOT_PATH {
+        return None;
+    }
+    if !snapshot_token_matches(data) {
+        return Some(snapshot_response(
+            403,
+            "snapshot query forbidden",
+            Vec::new(),
+        ));
+    }
+    if in_progress
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Some(snapshot_response(
+            503,
+            "snapshot already in progress",
+            Vec::new(),
+        ));
+    }
+    let _guard = SnapshotInProgressGuard(in_progress);
+    let snapshot = {
+        let state = state.lock().expect("Failed to lock state for info");
+        AppStateSnapshot::new(&state)
+    };
+    match snapshot.and_then(|snapshot| snapshot.compress_snapshot()) {
+        Ok(value) => Some(snapshot_response(0, "", value)),
+        Err(err) => {
+            error!(%err, "state snapshot query failed");
+            Some(snapshot_response(1, "snapshot unavailable", Vec::new()))
+        }
+    }
+}
+
+fn snapshot_token_matches(data: &[u8]) -> bool {
+    let Ok(expected) = std::env::var(SNAPSHOT_QUERY_TOKEN_KEY) else {
+        return false;
+    };
+    !expected.is_empty() && data == expected.as_bytes()
+}
+
+fn snapshot_response(code: u32, log: &str, value: Vec<u8>) -> ResponseQuery {
+    ResponseQuery {
+        code,
+        log: log.to_string(),
+        key: Vec::new(),
+        value,
+        height: 0,
+        codespace: STATE_SNAPSHOT_PATH.to_string(),
+        info: String::new(),
+        index: 0,
+        proof_ops: None,
+    }
+}
+
 #[async_trait]
 impl<S> Info for InfoConnection<S>
 where
@@ -448,6 +534,15 @@ where
 
     async fn query(&self, query_request: RequestQuery) -> ResponseQuery {
         info!("path: {}", query_request.path.as_str());
+
+        if let Some(response) = state_snapshot_query(
+            &self.state,
+            &self.snapshot_in_progress,
+            query_request.path.as_str(),
+            query_request.data.as_slice(),
+        ) {
+            return response;
+        }
 
         // Check global rate limit
         if let Some(error_response) = self.global_rate_limiter.check_rate_limit(&query_request) {
@@ -543,5 +638,114 @@ mod tests {
         if std::env::var("ELD_APP_VERSION").is_err() {
             assert_eq!(version, "0.0.0");
         }
+    }
+
+    fn with_snapshot_token<T>(token: Option<&str>, body: impl FnOnce() -> T) -> T {
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _guard = LOCK.lock().expect("snapshot token test lock");
+        match token {
+            Some(value) => std::env::set_var(SNAPSHOT_QUERY_TOKEN_KEY, value),
+            None => std::env::remove_var(SNAPSHOT_QUERY_TOKEN_KEY),
+        }
+        let result = body();
+        std::env::remove_var(SNAPSHOT_QUERY_TOKEN_KEY);
+        result
+    }
+
+    fn snapshot_query_state() -> Mutex<AppState> {
+        let mut state = AppState::default();
+        state.set_app_hash([0x11; 32]);
+        state.chain_id = "eld-dev".to_string();
+        state.envelope.init_empty_trie();
+        state.envelope.block_height = 4;
+        state.envelope.frontier = 4;
+        Mutex::new(state)
+    }
+
+    #[test]
+    fn state_snapshot_query_returns_compressed_state_for_matching_token() {
+        let state = snapshot_query_state();
+        let in_progress = AtomicBool::new(false);
+        let response = with_snapshot_token(Some("correct-snapshot"), || {
+            state_snapshot_query(
+                &state,
+                &in_progress,
+                STATE_SNAPSHOT_PATH,
+                b"correct-snapshot",
+            )
+            .expect("snapshot path")
+        });
+        assert_eq!(response.code, 0);
+        assert!(response.key.is_empty());
+        assert!(response.log.is_empty());
+        let restored = AppStateSnapshot::decompress_snapshot(&response.value).expect("decompress");
+        assert_eq!(restored.block_height, 4);
+        assert_eq!(restored.frontier, 4);
+        assert_eq!(restored.app_hash, [0x11; 32]);
+        assert_eq!(restored.chain_id, "eld-dev");
+        assert!(!in_progress.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn state_snapshot_query_rejects_wrong_token() {
+        let state = snapshot_query_state();
+        let in_progress = AtomicBool::new(false);
+        let response = with_snapshot_token(Some("correct-snapshot"), || {
+            state_snapshot_query(&state, &in_progress, STATE_SNAPSHOT_PATH, b"other-snapshot")
+                .expect("snapshot path")
+        });
+        assert_eq!(response.code, 403);
+        assert_eq!(response.log, "snapshot query forbidden");
+        assert!(response.value.is_empty());
+        assert!(response.key.is_empty());
+        assert!(!in_progress.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn state_snapshot_query_rejects_missing_token() {
+        let state = snapshot_query_state();
+        let in_progress = AtomicBool::new(false);
+        let response = with_snapshot_token(None, || {
+            state_snapshot_query(
+                &state,
+                &in_progress,
+                STATE_SNAPSHOT_PATH,
+                b"correct-snapshot",
+            )
+            .expect("snapshot path")
+        });
+        assert_eq!(response.code, 403);
+        assert_eq!(response.log, "snapshot query forbidden");
+        assert!(response.value.is_empty());
+        assert!(response.key.is_empty());
+    }
+
+    #[test]
+    fn state_snapshot_query_returns_503_when_already_in_progress() {
+        let state = snapshot_query_state();
+        let in_progress = AtomicBool::new(true);
+        let response = with_snapshot_token(Some("correct-snapshot"), || {
+            state_snapshot_query(
+                &state,
+                &in_progress,
+                STATE_SNAPSHOT_PATH,
+                b"correct-snapshot",
+            )
+            .expect("snapshot path")
+        });
+        assert_eq!(response.code, 503);
+        assert_eq!(response.log, "snapshot already in progress");
+        assert!(response.value.is_empty());
+        assert!(in_progress.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn state_snapshot_query_ignores_other_paths() {
+        let state = snapshot_query_state();
+        let in_progress = AtomicBool::new(false);
+        let response = with_snapshot_token(Some("correct-snapshot"), || {
+            state_snapshot_query(&state, &in_progress, "account_view", b"correct-snapshot")
+        });
+        assert!(response.is_none());
     }
 }

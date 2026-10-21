@@ -167,7 +167,6 @@ impl AppStateSnapshot {
     ///
     /// The stored app hash is the envelope hash, not a hash of these bytes.
     /// Check `app_hash` after [`Self::decompress_snapshot`].
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn compress_snapshot(&self) -> Result<Vec<u8>, EldError> {
         let raw = self.serialize()?;
         zstd::stream::encode_all(&raw[..], SNAPSHOT_ZSTD_LEVEL).map_err(|err| {

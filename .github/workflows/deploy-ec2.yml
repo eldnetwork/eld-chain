@@ -89,12 +89,13 @@ jobs:
           TM_TAG: ${{ steps.meta.outputs.tm_tag }}
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          ELD_SNAPSHOT_QUERY_TOKEN: ${{ secrets.ELD_SNAPSHOT_QUERY_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT }}
-          envs: APP_TAG,TM_TAG,GHCR_TOKEN,GHCR_USERNAME
+          envs: APP_TAG,TM_TAG,GHCR_TOKEN,GHCR_USERNAME,ELD_SNAPSHOT_QUERY_TOKEN
           script: |
             set -euo pipefail
             ROOT=/opt/eld-chain
@@ -115,6 +116,7 @@ jobs:
               "TENDERMINT_VERSION_TAG_GHCR=${TM_TAG}" \
               "ELD_CHAIN_IMAGE=ghcr.io/eldnetwork/eld-chain:${APP_TAG}" \
               "ELD_TENDERMINT_IMAGE=ghcr.io/eldnetwork/eld-tendermint:${TM_TAG}" \
+              "ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}" \
               > "$ROOT/.env"
             export ELD_DEPLOY_ROOT="$ROOT"
             export GHCR_TOKEN GHCR_USERNAME
