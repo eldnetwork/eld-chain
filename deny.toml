@@ -18,6 +18,7 @@ ignore = [
     { id = "RUSTSEC-2026-0258", reason = "h2 0.3 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is h2 >= 0.4.16" },
     { id = "RUSTSEC-2026-0346", reason = "rustls 0.21 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is rustls >= 0.23.46" },
     { id = "RUSTSEC-2026-0349", reason = "rustls 0.21 is pinned by tendermint-rpc 0.40 via reqwest 0.11; fix is rustls >= 0.23.46" },
+    { id = "RUSTSEC-2026-0382", reason = "rustls-webpki 0.101 is pinned by libp2p 0.53 and tendermint-rpc 0.40; fix is rustls-webpki >= 0.103.16, which the 0.101 line cannot reach" },
 ]
 
 [licenses]

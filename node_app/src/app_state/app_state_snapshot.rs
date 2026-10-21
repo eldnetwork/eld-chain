@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 
+/// zstd effort for a summary snapshot.
+const SNAPSHOT_ZSTD_LEVEL: i32 = 3;
+
 /// Canonical epoch-boundary snapshot of committed [`AppState`](crate::app_state::AppState) fields.
 ///
 /// Persisted as a CADO at epoch boundaries. Staging caches (`cado_cache`, pinboard staging,
@@ -158,6 +161,31 @@ impl AppStateSnapshot {
     /// Same as [`Self::deserialize`] — CADO payload bytes for [`CadoType::AppStateSnapshot`].
     pub fn deserialize_bin(data: &[u8]) -> Result<Self, EldError> {
         Self::deserialize(data)
+    }
+
+    /// Bincode-encodes this snapshot, then compresses it with zstd level 3.
+    ///
+    /// The stored app hash is the envelope hash, not a hash of these bytes.
+    /// Check `app_hash` after [`Self::decompress_snapshot`].
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn compress_snapshot(&self) -> Result<Vec<u8>, EldError> {
+        let raw = self.serialize()?;
+        zstd::stream::encode_all(&raw[..], SNAPSHOT_ZSTD_LEVEL).map_err(|err| {
+            EldError::StorageError {
+                operation: "compress_app_state_snapshot".to_string(),
+                details: err.to_string(),
+            }
+        })
+    }
+
+    /// Decompresses a zstd snapshot and decodes the bincode payload.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn decompress_snapshot(compressed: &[u8]) -> Result<Self, EldError> {
+        let raw = zstd::stream::decode_all(compressed).map_err(|err| EldError::StorageError {
+            operation: "decompress_app_state_snapshot".to_string(),
+            details: err.to_string(),
+        })?;
+        Self::deserialize(&raw)
     }
 
     /// Converts the snapshot to a CADO for storage.
@@ -428,6 +456,44 @@ mod tests {
         state.envelope.frontier = 9;
         let after = state.envelope.calculate_app_hash();
         assert_ne!(before, after);
+    }
+
+    #[test]
+    fn compressed_snapshot_round_trip_restores_trie_and_app_hash() {
+        let state = sample_app_state_for_snapshot();
+        let snapshot = AppStateSnapshot::new(&state).expect("snapshot");
+        let tip_root = state.envelope.state_trie.root_hash();
+        let stored_app_hash = state.app_hash().bytes().expect("stored app hash");
+        let envelope_hash = state.envelope.calculate_app_hash();
+
+        let compressed = snapshot.compress_snapshot().expect("compress");
+        let raw = snapshot.serialize().expect("raw snapshot");
+        assert_ne!(compressed, raw);
+
+        let restored_snapshot =
+            AppStateSnapshot::decompress_snapshot(&compressed).expect("decompress");
+        assert_app_state_snapshot_fields_equal(&snapshot, &restored_snapshot);
+
+        let mut restored = AppState::default();
+        restored_snapshot
+            .apply_to_state(&mut restored, tip_root)
+            .expect("apply");
+        assert_eq!(restored.envelope.state_trie.root_hash(), tip_root);
+        assert_eq!(
+            restored.app_hash().bytes().expect("restored app hash"),
+            stored_app_hash
+        );
+        assert_eq!(restored.envelope.calculate_app_hash(), envelope_hash);
+        assert_eq!(restored.envelope.frontier, snapshot.frontier);
+    }
+
+    #[test]
+    fn decompress_snapshot_rejects_truncated_bytes() {
+        let state = sample_app_state_for_snapshot();
+        let snapshot = AppStateSnapshot::new(&state).expect("snapshot");
+        let compressed = snapshot.compress_snapshot().expect("compress");
+        let err = AppStateSnapshot::decompress_snapshot(&compressed[..4]).expect_err("truncated");
+        assert!(matches!(err, EldError::StorageError { .. }));
     }
 
     #[test]
