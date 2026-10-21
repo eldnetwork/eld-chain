@@ -171,7 +171,11 @@ where
                     .unwrap_or(height);
                 if candidate > current_state.envelope.frontier {
                     current_state.envelope.frontier = candidate;
-                    updated_frontier = candidate;
+                }
+                // A summary is expensive, so report the frontier only when this
+                // height is a multiple of the epoch length.
+                if new_block_height % self.protocol_constants().blocks_per_epoch == 0 {
+                    updated_frontier = current_state.envelope.frontier;
                 }
             }
 

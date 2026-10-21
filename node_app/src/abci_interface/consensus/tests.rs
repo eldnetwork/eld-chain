@@ -595,7 +595,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
             height: creation_height as i64,
         })
         .await;
-    assert_eq!(created.updated_frontier, creation_height - 1);
+    assert_eq!(created.updated_frontier, 0);
     {
         let current = consensus.current_state.lock().expect("current lock");
         let frontier = current.as_ref().expect("current state").envelope.frontier;
@@ -631,7 +631,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
             height: expires_height as i64,
         })
         .await;
-    assert_eq!(expired.updated_frontier, expires_height);
+    assert_eq!(expired.updated_frontier, 0);
     {
         let current = consensus.current_state.lock().expect("current lock");
         assert_eq!(
@@ -646,6 +646,101 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
         })
         .await;
     assert_eq!(again.updated_frontier, 0);
+}
+
+#[tokio::test]
+async fn end_block_reports_frontier_only_at_epoch_boundary() {
+    use abci::async_api::Consensus;
+    use eld_common::pinboard::PinboardMessageMetadata;
+
+    let consensus = mock_consensus_connection();
+    let blocks_per_epoch = consensus.protocol_constants().blocks_per_epoch as u64;
+    let creation_height = 5u64;
+    let expires_height = blocks_per_epoch.saturating_mul(3);
+    let signer =
+        Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").expect("signer");
+    let meta = PinboardMessageMetadata {
+        message_id: "pin-epoch".to_string(),
+        original_signer: signer,
+        content_key: "aa".to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec![],
+        committed_height: creation_height,
+        received_timestamp: 1,
+        namespace: None,
+    };
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        current
+            .as_mut()
+            .expect("current state")
+            .envelope
+            .pinboard_meta_cache
+            .insert(meta.message_id.clone(), meta);
+    }
+
+    let created = consensus
+        .end_block(RequestEndBlock {
+            height: creation_height as i64,
+        })
+        .await;
+    assert_eq!(created.updated_frontier, 0);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        current
+            .as_mut()
+            .expect("current state")
+            .envelope
+            .pinboard_meta_cache
+            .clear();
+    }
+
+    let first_boundary = consensus
+        .end_block(RequestEndBlock {
+            height: blocks_per_epoch as i64,
+        })
+        .await;
+    assert_eq!(first_boundary.updated_frontier, creation_height - 1);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
+
+    let mid_epoch = consensus
+        .end_block(RequestEndBlock {
+            height: (blocks_per_epoch + 1) as i64,
+        })
+        .await;
+    assert_eq!(mid_epoch.updated_frontier, 0);
+
+    let second_boundary = consensus
+        .end_block(RequestEndBlock {
+            height: (blocks_per_epoch * 2) as i64,
+        })
+        .await;
+    assert_eq!(second_boundary.updated_frontier, creation_height - 1);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
 }
 
 #[test]
