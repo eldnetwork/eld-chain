@@ -51,7 +51,7 @@ where
         let validator_updates;
         let mut epoch_challenge_plan: Option<(Address, Vec<Address>, i64)> = None;
         let current_epoch: i64;
-        let mut updated_frontier = 0u64;
+        let mut updated_frontier = 0i64;
 
         // Scope for mutex lock
         {
@@ -149,7 +149,6 @@ where
 
             // Apply this block's staged PostMessage pins, then advance the frontier.
             // DeliverTx only stages into the envelope; LivePinSet updates here (before Commit).
-            let height = new_block_height as u64;
             {
                 let mut live_pins = match self.live_pins.lock() {
                     Ok(lock) => lock,
@@ -158,17 +157,19 @@ where
                     }
                 };
                 for meta in current_state.envelope.pinboard_meta_cache.values() {
-                    live_pins.insert(
-                        meta.committed_height,
-                        meta.expires_height,
-                        meta.message_id.clone(),
-                    );
+                    let Ok(committed_height) = i64::try_from(meta.committed_height) else {
+                        continue;
+                    };
+                    let Ok(expires_height) = i64::try_from(meta.expires_height) else {
+                        continue;
+                    };
+                    live_pins.insert(committed_height, expires_height, meta.message_id.clone());
                 }
-                live_pins.expire_up_to(height);
+                live_pins.expire_up_to(new_block_height);
                 let candidate = live_pins
                     .oldest_creation_height()
                     .map(|h| h.saturating_sub(1))
-                    .unwrap_or(height);
+                    .unwrap_or(new_block_height);
                 if candidate > current_state.envelope.frontier {
                     current_state.envelope.frontier = candidate;
                 }

@@ -563,8 +563,8 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
     use eld_common::pinboard::PinboardMessageMetadata;
 
     let consensus = mock_consensus_connection();
-    let creation_height = 5u64;
-    let expires_height = 8u64;
+    let creation_height = 5i64;
+    let expires_height = 8i64;
     let signer =
         Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").expect("signer");
     let meta = PinboardMessageMetadata {
@@ -572,11 +572,11 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
         original_signer: signer,
         content_key: "aa".to_string(),
         content_type: "text/plain".to_string(),
-        expires_height,
+        expires_height: expires_height as u64, //TODO: change to i64
         visibility: "Public".to_string(),
         topic: None,
         tags: vec![],
-        committed_height: creation_height,
+        committed_height: creation_height as u64, // TODO: change to i64
         received_timestamp: 1,
         namespace: None,
     };
@@ -592,7 +592,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
 
     let created = consensus
         .end_block(RequestEndBlock {
-            height: creation_height as i64,
+            height: creation_height,
         })
         .await;
     assert_eq!(created.updated_frontier, 0);
@@ -615,7 +615,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
 
     let still_live = consensus
         .end_block(RequestEndBlock {
-            height: (expires_height - 1) as i64,
+            height: expires_height - 1,
         })
         .await;
     assert_eq!(still_live.updated_frontier, 0);
@@ -628,7 +628,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
 
     let expired = consensus
         .end_block(RequestEndBlock {
-            height: expires_height as i64,
+            height: expires_height,
         })
         .await;
     assert_eq!(expired.updated_frontier, 0);
@@ -642,7 +642,7 @@ async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expire
 
     let again = consensus
         .end_block(RequestEndBlock {
-            height: expires_height as i64,
+            height: expires_height,
         })
         .await;
     assert_eq!(again.updated_frontier, 0);
@@ -654,8 +654,8 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
     use eld_common::pinboard::PinboardMessageMetadata;
 
     let consensus = mock_consensus_connection();
-    let blocks_per_epoch = consensus.protocol_constants().blocks_per_epoch as u64;
-    let creation_height = 5u64;
+    let blocks_per_epoch = consensus.protocol_constants().blocks_per_epoch;
+    let creation_height = 5i64;
     let expires_height = blocks_per_epoch.saturating_mul(3);
     let signer =
         Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").expect("signer");
@@ -664,11 +664,11 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
         original_signer: signer,
         content_key: "aa".to_string(),
         content_type: "text/plain".to_string(),
-        expires_height,
+        expires_height: expires_height as u64,
         visibility: "Public".to_string(),
         topic: None,
         tags: vec![],
-        committed_height: creation_height,
+        committed_height: creation_height as u64,
         received_timestamp: 1,
         namespace: None,
     };
@@ -685,7 +685,7 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
 
     let created = consensus
         .end_block(RequestEndBlock {
-            height: creation_height as i64,
+            height: creation_height,
         })
         .await;
     assert_eq!(created.updated_frontier, 0);
@@ -709,7 +709,7 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
 
     let first_boundary = consensus
         .end_block(RequestEndBlock {
-            height: blocks_per_epoch as i64,
+            height: blocks_per_epoch,
         })
         .await;
     assert_eq!(first_boundary.updated_frontier, creation_height - 1);
@@ -723,14 +723,14 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
 
     let mid_epoch = consensus
         .end_block(RequestEndBlock {
-            height: (blocks_per_epoch + 1) as i64,
+            height: blocks_per_epoch + 1,
         })
         .await;
     assert_eq!(mid_epoch.updated_frontier, 0);
 
     let second_boundary = consensus
         .end_block(RequestEndBlock {
-            height: (blocks_per_epoch * 2) as i64,
+            height: blocks_per_epoch * 2,
         })
         .await;
     assert_eq!(second_boundary.updated_frontier, creation_height - 1);

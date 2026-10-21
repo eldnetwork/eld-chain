@@ -36,7 +36,7 @@ pub struct AppStateSnapshot {
     #[serde(alias = "active_storage_validator")]
     pub active_capacity_validator: Option<ActiveCapacityValidator>,
     /// Highest height such that every block ≤ this height is safe to summarize.
-    pub frontier: u64,
+    pub frontier: i64,
 }
 
 impl AppStateSnapshot {

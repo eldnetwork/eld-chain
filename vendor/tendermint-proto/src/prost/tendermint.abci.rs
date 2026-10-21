@@ -342,8 +342,9 @@ pub struct ResponseEndBlock {
     #[prost(message, repeated, tag="3")]
     pub events: ::prost::alloc::vec::Vec<Event>,
     /// Eld extension. 0 means the frontier did not advance this block.
-    #[prost(uint64, tag="4")]
-    pub updated_frontier: u64,
+    /// Same type as Tendermint block height (int64).
+    #[prost(int64, tag="4")]
+    pub updated_frontier: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseCommit {

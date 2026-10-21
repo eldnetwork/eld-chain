@@ -13,8 +13,8 @@ use std::collections::BTreeSet;
 /// pin; it does not rewrite the heights on that pin.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct LivePin {
-    pub expires_height: u64,
-    pub creation_height: u64,
+    pub expires_height: i64,
+    pub creation_height: i64,
     pub message_id: String,
 }
 
@@ -37,7 +37,7 @@ impl LivePinSet {
     /// Record a new live pin.
     ///
     /// Ignores pins that never live (expiry at or before creation).
-    pub fn insert(&mut self, creation_height: u64, expires_height: u64, message_id: String) {
+    pub fn insert(&mut self, creation_height: i64, expires_height: i64, message_id: String) {
         if expires_height <= creation_height {
             return;
         }
@@ -52,7 +52,7 @@ impl LivePinSet {
     ///
     /// Iterate pins in expiry order until the next pin expires after this height,
     /// removing each expired pin from the front.
-    pub fn expire_up_to(&mut self, height: u64) {
+    pub fn expire_up_to(&mut self, height: i64) {
         while let Some(pin) = self.by_expiry.first() {
             if pin.expires_height > height {
                 break;
@@ -62,7 +62,7 @@ impl LivePinSet {
     }
 
     /// Minimum creation height among pins that are still live.
-    pub fn oldest_creation_height(&self) -> Option<u64> {
+    pub fn oldest_creation_height(&self) -> Option<i64> {
         self.by_expiry.iter().map(|p| p.creation_height).min()
     }
 }
@@ -76,6 +76,12 @@ impl From<Vec<(u64, u64, String)>> for LivePinSet {
     fn from(pins: Vec<(u64, u64, String)>) -> Self {
         let mut set = Self::new();
         for (creation_height, expires_height, message_id) in pins {
+            let Ok(creation_height) = i64::try_from(creation_height) else {
+                continue;
+            };
+            let Ok(expires_height) = i64::try_from(expires_height) else {
+                continue;
+            };
             set.insert(creation_height, expires_height, message_id);
         }
         set

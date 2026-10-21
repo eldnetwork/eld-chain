@@ -93,7 +93,7 @@ pub struct AppStateEnvelope {
 
     /// Highest height such that every block ≤ this height is safe to summarize.
     /// Starts at 0. Hashed into `app_hash`.
-    pub frontier: u64,
+    pub frontier: i64,
 }
 
 impl Hash for AppStateEnvelope {

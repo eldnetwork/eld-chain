@@ -9,7 +9,7 @@ Eld adds one wire field so the app can tell the node when the safe summarization
 (the “frontier”) advances:
 
 ```text
-uint64 updated_frontier = 4;   // 0 = no change this block
+int64 updated_frontier = 4;   // 0 = no change this block; same type as block height
 ```
 
 Cargo’s `[patch.crates-io]` replaces a whole package, not a single file. So this tree is a
@@ -37,7 +37,7 @@ Everything from the published 0.23.7 crate (Apache-2.0), for example:
 
 Eld-only changes (also listed in [`ELD_PATCH.md`](ELD_PATCH.md)):
 
-1. `ResponseEndBlock.updated_frontier` (`uint64`, protobuf tag 4) in
+1. `ResponseEndBlock.updated_frontier` (`int64`, protobuf tag 4) in
    `src/prost/tendermint.abci.rs`
 2. Drop unused `prelude` re-exports so the crate builds under current rustc with upstream’s
    `#![deny(warnings)]`
