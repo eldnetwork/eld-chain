@@ -13,7 +13,7 @@ dependencies = [
  "cfg-if",
  "integer-encoding",
  "prost 0.10.4",
- "prost-types",
+ "prost-types 0.10.1",
  "tendermint-proto 0.23.7",
  "tokio",
  "tracing",
@@ -1192,7 +1192,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54e03a951783e8b327515db3f2a2fd0e3bed362a96b066f341ce66ed49b4ead"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1521,6 +1521,7 @@ dependencies = [
  "ed25519-dalek",
  "eld-client",
  "eld-common",
+ "eld-tendermint-proto",
  "futures-util",
  "hash-db",
  "hash256-std-hasher",
@@ -1530,6 +1531,7 @@ dependencies = [
  "lz4",
  "memory-db",
  "patricia_tree",
+ "prost 0.13.5",
  "rand 0.9.5",
  "reference-trie",
  "reqwest 0.12.28",
@@ -1547,6 +1549,15 @@ dependencies = [
  "trie-db",
  "url",
  "zstd",
+]
+
+[[package]]
+name = "eld-tendermint-proto"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "prost 0.13.5",
+ "prost-types 0.13.5",
 ]
 
 [[package]]
@@ -3947,6 +3958,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-types"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
+dependencies = [
+ "prost 0.13.5",
+]
+
+[[package]]
 name = "quick-protobuf"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5101,7 +5121,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5158,7 +5178,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "prost 0.10.4",
- "prost-types",
+ "prost-types 0.10.1",
  "serde",
  "serde_bytes",
  "subtle-encoding",

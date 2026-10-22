@@ -18,7 +18,7 @@ use eld_common::error::{EldError, ErrorBuilder};
 use tokio::sync::oneshot;
 use tracing::{error, info};
 
-use crate::app_state::{AppState, LivePinSet};
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
@@ -170,6 +170,7 @@ where
     let chain_tip = Arc::new(ChainTip::from_app_state(&committed_state));
     drop(committed_state);
 
+    let frontier_snapshot_store = FrontierSnapshotStore::new();
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
         protocol: protocol.clone(),
@@ -183,6 +184,7 @@ where
         capacity_manager,
         local_identity,
         live_pins,
+        frontier_snapshot_store,
     });
 
     let mempool = MempoolConnection::new(

@@ -4,7 +4,7 @@ use crate::abci_interface::chain_tip::ChainTip;
 use crate::abci_interface::mempool::MempoolConnection;
 use crate::abci_interface::snapshot::SnapshotManager;
 use crate::abci_interface::ConsensusConnection;
-use crate::app_state::{AppState, LivePinSet};
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::config::FeeConfig;
@@ -142,6 +142,7 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         capacity_manager,
         local_identity,
         live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        frontier_snapshot_store: FrontierSnapshotStore::new(),
     })
 }
 
@@ -879,6 +880,7 @@ fn in_process_harness() -> InProcessHarness {
         capacity_manager,
         local_identity,
         live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        frontier_snapshot_store: FrontierSnapshotStore::new(),
     });
 
     InProcessHarness {

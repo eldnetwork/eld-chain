@@ -22,6 +22,7 @@ async-trait = "0.1.77"
 axum = { version = "0.8.1", features = ["ws"] }
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
+eld-tendermint-proto = { path = "../../eld-tendermint-rs/crates/proto", version = "0.0.1" }
 base64.workspace = true
 bincode.workspace = true
 bytes = "1.5.0"
@@ -44,6 +45,7 @@ rand.workspace = true
 ed25519-dalek = { workspace = true, features = ["pem", "pkcs8"] }
 lz4 = "1.24.0"
 zstd = "0.13"
+prost = "0.13"
 tower = { version = "0.4", features = ["util", "limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
 reqwest = { workspace = true, features = ["json"] }

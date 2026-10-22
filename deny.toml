@@ -75,6 +75,7 @@ skip = [
     { crate = "itertools@0.10.5", reason = "tendermint 0.40 / libp2p 0.53" },
     { crate = "openssl-probe@0.1.6", reason = "tendermint-rpc 0.40 reqwest 0.11" },
     { crate = "prost@0.10.4", reason = "tendermint-proto 0.23" },
+    { crate = "prost-types@0.10.1", reason = "tendermint-proto 0.23" },
     { crate = "prost@0.13.5", reason = "libp2p 0.53" },
     { crate = "prost-derive@0.10.1", reason = "prost 0.10" },
     { crate = "prost-derive@0.13.5", reason = "prost 0.13" },

@@ -1,7 +1,7 @@
 use super::rewards::ValidatorRewardManager;
 use crate::abci_interface::chain_tip::ChainTip;
 use crate::abci_interface::snapshot::SnapshotManager;
-use crate::app_state::{AppState, LivePinSet};
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::content::sync::P2pCoordinatorTrait;
@@ -36,6 +36,8 @@ where
     /// Pinboard posts for the EndBlock frontier. Not cloned with `AppState`.
     /// Startup restores every stored pin. EndBlock drops expired ones and applies new pins.
     pub(crate) live_pins: Arc<Mutex<LivePinSet>>,
+    /// Compressed snapshots keyed by frontier. Epoch commit fills this in the background.
+    pub(crate) frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 /// Construction inputs for [`ConsensusConnection::new`].
@@ -55,6 +57,7 @@ where
     pub capacity_manager: Arc<CapacityManager>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
     pub live_pins: Arc<Mutex<LivePinSet>>,
+    pub frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 impl<S> ConsensusConnection<S>
@@ -78,6 +81,7 @@ where
             capacity_manager: ctx.capacity_manager,
             local_identity: ctx.local_identity,
             live_pins: ctx.live_pins,
+            frontier_snapshot_store: ctx.frontier_snapshot_store,
         }
     }
 
