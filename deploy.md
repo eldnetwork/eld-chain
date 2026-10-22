@@ -128,7 +128,7 @@ Compose reads this file. The deploy workflow rewrites it on every run. Do not pu
 | `ELD_TENDERMINT_IMAGE` | `ghcr.io/eldnetwork/eld-tendermint:v0.34.24-eld.1` | Tendermint image, including tag |
 | `NODE_APP_VERSION_TAG_GHCR` | `eld-app-v0.0.20` | Recorded app tag. Compose does not interpolate it |
 | `TENDERMINT_VERSION_TAG_GHCR` | `v0.34.24-eld.1` | Recorded Tendermint tag. Compose does not interpolate it |
-| `ELD_SNAPSHOT_QUERY_TOKEN` | | Token for query `/eld/state_snapshot`. The app and Tendermint containers both receive it. Deploy exits when it is empty |
+| `ELD_SNAPSHOT_QUERY_TOKEN` | | Token for query `/frontier_appstate`. The app and Tendermint containers both receive it. Deploy exits when it is empty |
 
 `GHCR_PULL_TOKEN` and `GHCR_USERNAME` are passed only for `docker login` during a deploy. They are not written to `.env`.
 

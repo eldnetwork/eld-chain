@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, info};
 
 /// zstd effort for a summary snapshot.
+#[cfg_attr(not(test), allow(dead_code))]
 const SNAPSHOT_ZSTD_LEVEL: i32 = 3;
 
 /// Canonical epoch-boundary snapshot of committed [`AppState`](crate::app_state::AppState) fields.
@@ -167,6 +168,7 @@ impl AppStateSnapshot {
     ///
     /// The stored app hash is the envelope hash, not a hash of these bytes.
     /// Check `app_hash` after [`Self::decompress_snapshot`].
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn compress_snapshot(&self) -> Result<Vec<u8>, EldError> {
         let raw = self.serialize()?;
         zstd::stream::encode_all(&raw[..], SNAPSHOT_ZSTD_LEVEL).map_err(|err| {

@@ -184,7 +184,7 @@ where
         capacity_manager,
         local_identity,
         live_pins,
-        frontier_snapshot_store,
+        frontier_snapshot_store: frontier_snapshot_store.clone(),
     });
 
     let mempool = MempoolConnection::new(
@@ -198,6 +198,7 @@ where
         chain_tip.clone(),
         storage,
         protocol,
+        frontier_snapshot_store,
     );
     let snapshot = SnapshotConnection::new(snapshot_manager);
 

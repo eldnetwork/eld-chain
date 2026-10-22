@@ -91,6 +91,8 @@ pub mod abci_query {
     pub const OTHER: &str = "other";
     pub const ESTIMATE_FEE: &str = "estimate_fee";
     pub const CADO_PATHS: &str = "cado_paths";
+    /// Compressed frontier snapshot. Request data is the query token plus a little-endian i64 frontier.
+    pub const FRONTIER_APPSTATE: &str = "/frontier_appstate";
 }
 
 /// Constants for CADO path validation and security

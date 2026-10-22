@@ -5,12 +5,11 @@ use super::{
     account_count_query_processor, account_view_query_processor, active_validators_query_processor,
     cado_list_query_processor, cado_paths_query_processor, cado_query_processor,
     capacity_provider_query_processor, capacity_validators_query_processor,
-    epoch_info_query_processor, estimate_fee_query_processor, pinboard_feed_query_processor,
-    pinboard_query_processor, staking_account_query_processor,
+    epoch_info_query_processor, estimate_fee_query_processor, frontier_appstate_query_processor,
+    pinboard_feed_query_processor, pinboard_query_processor, staking_account_query_processor,
 };
 use crate::abci_interface::chain_tip::ChainTip;
-use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::AppState;
+use crate::app_state::{AppState, FrontierSnapshotStore};
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::{async_api::Info, async_trait, types::*};
 use eld_common::address::Address;
@@ -19,15 +18,8 @@ use eld_common::error::EldError;
 use eld_common::protocol_constants::ProtocolHandle;
 use serde::{Deserialize, Serialize};
 use std::str;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
-
-/// ABCI query path for a zstd-compressed [`AppStateSnapshot`].
-pub const STATE_SNAPSHOT_PATH: &str = "/eld/state_snapshot";
-
-/// Name of the `/eld/state_snapshot` query token variable.
-pub const SNAPSHOT_QUERY_TOKEN_KEY: &str = "ELD_SNAPSHOT_QUERY_TOKEN";
 
 /// Deploy/image version from `ELD_APP_VERSION`, or `"0.0.0"` if unset/empty.
 pub fn resolve_eld_app_version() -> String {
@@ -166,6 +158,7 @@ pub enum EldAbciQuery {
     AccountView { path: String, data: Vec<u8> },
     Pinboard { path: String, data: Vec<u8> },
     PinboardFeed { path: String, data: Vec<u8> },
+    FrontierAppState { path: String, data: Vec<u8> },
     Unknown { path: String, _data: Vec<u8> },
 }
 
@@ -220,6 +213,7 @@ impl EldAbciQuery {
             abci_query::ACCOUNT_VIEW => Self::AccountView { path, data },
             abci_query::PINBOARD => Self::Pinboard { path, data },
             abci_query::PINBOARD_FEED => Self::PinboardFeed { path, data },
+            abci_query::FRONTIER_APPSTATE => Self::FrontierAppState { path, data },
             _ => Self::Unknown { path, _data: data },
         }
     }
@@ -239,12 +233,15 @@ impl EldAbciQuery {
             | Self::AccountView { path, .. }
             | Self::Pinboard { path, .. }
             | Self::PinboardFeed { path, .. }
+            | Self::FrontierAppState { path, .. }
             | Self::Unknown { path, .. } => path,
         }
     }
 
     /// Processes the incoming ABCI Info Query.
-    pub fn process<S>(self, conn: &InfoConnection<S>) -> QueryProcessorResult
+    ///
+    /// `block_height` is the committed block height. Existing processors do not read it.
+    pub fn process<S>(self, conn: &InfoConnection<S>, block_height: i64) -> QueryProcessorResult
     where
         S: ConsensusConnectionStorage,
     {
@@ -346,6 +343,14 @@ impl EldAbciQuery {
                     data,
                 )
             }
+            Self::FrontierAppState { path, data } => {
+                frontier_appstate_query_processor::process_frontier_appstate_query(
+                    &conn.frontier_snapshot_store,
+                    block_height,
+                    path,
+                    data,
+                )
+            }
             Self::Unknown { path, _data } => {
                 warn!("unknown path: {path}");
                 Err(EldError::ValidationError {
@@ -371,8 +376,8 @@ where
     global_rate_limiter: Arc<GlobalAbciRateLimiter>,
     result_limiter: Arc<ResultLimiter>,
     query_rate_limiter: Arc<QueryBasedRateLimiter>,
-    /// Held while this connection is compressing a state snapshot.
-    snapshot_in_progress: AtomicBool,
+    /// Compressed frontier snapshots. Shared with consensus commit.
+    frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 impl<S> InfoConnection<S>
@@ -384,6 +389,7 @@ where
         chain_tip: Arc<ChainTip>,
         storage: Arc<S>,
         protocol: ProtocolHandle,
+        frontier_snapshot_store: FrontierSnapshotStore,
     ) -> Self {
         let eld_app_version = resolve_eld_app_version();
         info!(eld_app_version = %eld_app_version, "Cached ELD_APP_VERSION for abci_info");
@@ -396,7 +402,7 @@ where
             global_rate_limiter: Arc::new(GlobalAbciRateLimiter::new()),
             result_limiter: Arc::new(ResultLimiter::new()),
             query_rate_limiter: Arc::new(QueryBasedRateLimiter::new()),
-            snapshot_in_progress: AtomicBool::new(false),
+            frontier_snapshot_store,
         }
     }
 
@@ -438,81 +444,6 @@ where
     }
 }
 
-/// Clears the in-progress flag when a snapshot query finishes or panics.
-struct SnapshotInProgressGuard<'a>(&'a AtomicBool);
-
-impl Drop for SnapshotInProgressGuard<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
-/// Handles `/eld/state_snapshot`. Returns `None` for every other path.
-///
-/// A missing or empty `ELD_SNAPSHOT_QUERY_TOKEN`, or request data that does not match it,
-/// is code 403. A query already compressing state is code 503. The token is not copied
-/// into the response or the log.
-fn state_snapshot_query(
-    state: &Mutex<AppState>,
-    in_progress: &AtomicBool,
-    path: &str,
-    data: &[u8],
-) -> Option<ResponseQuery> {
-    if path != STATE_SNAPSHOT_PATH {
-        return None;
-    }
-    if !snapshot_token_matches(data) {
-        return Some(snapshot_response(
-            403,
-            "snapshot query forbidden",
-            Vec::new(),
-        ));
-    }
-    if in_progress
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Some(snapshot_response(
-            503,
-            "snapshot already in progress",
-            Vec::new(),
-        ));
-    }
-    let _guard = SnapshotInProgressGuard(in_progress);
-    let snapshot = {
-        let state = state.lock().expect("Failed to lock state for info");
-        AppStateSnapshot::new(&state)
-    };
-    match snapshot.and_then(|snapshot| snapshot.compress_snapshot()) {
-        Ok(value) => Some(snapshot_response(0, "", value)),
-        Err(err) => {
-            error!(%err, "state snapshot query failed");
-            Some(snapshot_response(1, "snapshot unavailable", Vec::new()))
-        }
-    }
-}
-
-fn snapshot_token_matches(data: &[u8]) -> bool {
-    let Ok(expected) = std::env::var(SNAPSHOT_QUERY_TOKEN_KEY) else {
-        return false;
-    };
-    !expected.is_empty() && data == expected.as_bytes()
-}
-
-fn snapshot_response(code: u32, log: &str, value: Vec<u8>) -> ResponseQuery {
-    ResponseQuery {
-        code,
-        log: log.to_string(),
-        key: Vec::new(),
-        value,
-        height: 0,
-        codespace: STATE_SNAPSHOT_PATH.to_string(),
-        info: String::new(),
-        index: 0,
-        proof_ops: None,
-    }
-}
-
 #[async_trait]
 impl<S> Info for InfoConnection<S>
 where
@@ -535,15 +466,6 @@ where
     async fn query(&self, query_request: RequestQuery) -> ResponseQuery {
         info!("path: {}", query_request.path.as_str());
 
-        if let Some(response) = state_snapshot_query(
-            &self.state,
-            &self.snapshot_in_progress,
-            query_request.path.as_str(),
-            query_request.data.as_slice(),
-        ) {
-            return response;
-        }
-
         // Check global rate limit
         if let Some(error_response) = self.global_rate_limiter.check_rate_limit(&query_request) {
             error!("error_response: {:?}", error_response);
@@ -558,10 +480,11 @@ where
 
         let path = query_request.path.clone();
         let key = query_request.data.clone();
+        let block_height = self.chain_tip.snapshot().committed_height;
         let query = EldAbciQuery::from_abci_query_request(query_request);
         info!("path.as_str(): {}", query.path());
 
-        match query.process(self) {
+        match query.process(self, block_height) {
             Ok(payload) => Self::to_query_response(path, key, payload),
             Err(err) => Self::map_query_error(path, key, err),
         }
@@ -640,112 +563,16 @@ mod tests {
         }
     }
 
-    fn with_snapshot_token<T>(token: Option<&str>, body: impl FnOnce() -> T) -> T {
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _guard = LOCK.lock().expect("snapshot token test lock");
-        match token {
-            Some(value) => std::env::set_var(SNAPSHOT_QUERY_TOKEN_KEY, value),
-            None => std::env::remove_var(SNAPSHOT_QUERY_TOKEN_KEY),
-        }
-        let result = body();
-        std::env::remove_var(SNAPSHOT_QUERY_TOKEN_KEY);
-        result
-    }
-
-    fn snapshot_query_state() -> Mutex<AppState> {
-        let mut state = AppState::default();
-        state.set_app_hash([0x11; 32]);
-        state.chain_id = "eld-dev".to_string();
-        state.envelope.init_empty_trie();
-        state.envelope.block_height = 4;
-        state.envelope.frontier = 4;
-        Mutex::new(state)
-    }
-
     #[test]
-    fn state_snapshot_query_returns_compressed_state_for_matching_token() {
-        let state = snapshot_query_state();
-        let in_progress = AtomicBool::new(false);
-        let response = with_snapshot_token(Some("correct-snapshot"), || {
-            state_snapshot_query(
-                &state,
-                &in_progress,
-                STATE_SNAPSHOT_PATH,
-                b"correct-snapshot",
-            )
-            .expect("snapshot path")
+    fn frontier_appstate_query_is_not_selected_for_other_paths() {
+        let mut data = b"correct-snapshot".to_vec();
+        data.extend_from_slice(&4_i64.to_le_bytes());
+        let query = EldAbciQuery::from_abci_query_request(RequestQuery {
+            path: "account_view".to_string(),
+            data,
+            height: 0,
+            prove: false,
         });
-        assert_eq!(response.code, 0);
-        assert!(response.key.is_empty());
-        assert!(response.log.is_empty());
-        let restored = AppStateSnapshot::decompress_snapshot(&response.value).expect("decompress");
-        assert_eq!(restored.block_height, 4);
-        assert_eq!(restored.frontier, 4);
-        assert_eq!(restored.app_hash, [0x11; 32]);
-        assert_eq!(restored.chain_id, "eld-dev");
-        assert!(!in_progress.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn state_snapshot_query_rejects_wrong_token() {
-        let state = snapshot_query_state();
-        let in_progress = AtomicBool::new(false);
-        let response = with_snapshot_token(Some("correct-snapshot"), || {
-            state_snapshot_query(&state, &in_progress, STATE_SNAPSHOT_PATH, b"other-snapshot")
-                .expect("snapshot path")
-        });
-        assert_eq!(response.code, 403);
-        assert_eq!(response.log, "snapshot query forbidden");
-        assert!(response.value.is_empty());
-        assert!(response.key.is_empty());
-        assert!(!in_progress.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn state_snapshot_query_rejects_missing_token() {
-        let state = snapshot_query_state();
-        let in_progress = AtomicBool::new(false);
-        let response = with_snapshot_token(None, || {
-            state_snapshot_query(
-                &state,
-                &in_progress,
-                STATE_SNAPSHOT_PATH,
-                b"correct-snapshot",
-            )
-            .expect("snapshot path")
-        });
-        assert_eq!(response.code, 403);
-        assert_eq!(response.log, "snapshot query forbidden");
-        assert!(response.value.is_empty());
-        assert!(response.key.is_empty());
-    }
-
-    #[test]
-    fn state_snapshot_query_returns_503_when_already_in_progress() {
-        let state = snapshot_query_state();
-        let in_progress = AtomicBool::new(true);
-        let response = with_snapshot_token(Some("correct-snapshot"), || {
-            state_snapshot_query(
-                &state,
-                &in_progress,
-                STATE_SNAPSHOT_PATH,
-                b"correct-snapshot",
-            )
-            .expect("snapshot path")
-        });
-        assert_eq!(response.code, 503);
-        assert_eq!(response.log, "snapshot already in progress");
-        assert!(response.value.is_empty());
-        assert!(in_progress.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn state_snapshot_query_ignores_other_paths() {
-        let state = snapshot_query_state();
-        let in_progress = AtomicBool::new(false);
-        let response = with_snapshot_token(Some("correct-snapshot"), || {
-            state_snapshot_query(&state, &in_progress, "account_view", b"correct-snapshot")
-        });
-        assert!(response.is_none());
+        assert!(matches!(query, EldAbciQuery::AccountView { .. }));
     }
 }

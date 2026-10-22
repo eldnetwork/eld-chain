@@ -55,7 +55,7 @@ Do not commit `wallets.json`, `p2p_keypair.json`, or Tendermint validator keys.
 | `ELD_DB_PATH` | RocksDB directory (default `./data/rocksdb`) |
 | `ELD_CONSENSUS_CONFIG_PATH` | Consensus JSON path (default `./config/consensus_config.json`) |
 | `ELD_ADMIN_TOKEN` | If set, required on `/admin/v1/status` |
-| `ELD_SNAPSHOT_QUERY_TOKEN` | Request bytes for query `/eld/state_snapshot`. Empty or unset refuses the query, and the compose start scripts exit. Not the ABCI snapshot connection. |
+| `ELD_SNAPSHOT_QUERY_TOKEN` | Token for query `/frontier_appstate`. Request data is the token followed by the frontier as 8 little-endian bytes. The response is a `SummaryBody`. Empty value means that frontier is not ready. Empty or unset token refuses the query, and the compose start scripts exit. Not the ABCI snapshot connection. |
 | `ELD_CAPACITY_VALIDATOR_WALLET_NAME` | Wallet name in `wallets.json` for capacity registration |
 | `RUST_LOG` | Tracing filter. Targets are crate names (`eld_node`, not `eld-node` or `eld`). Default when unset: `eld_node=info,eld_common=info,eld_client=info,abci=warn`. Debug example: `RUST_LOG=eld_node=debug,eld_common=info,eld_client=info,abci=warn`. If you use a global `info` instead, quiet noisy crates with `hyper=warn,tower=warn,h2=warn,tokio=warn,rustls=warn`. |
 
