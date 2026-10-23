@@ -22,6 +22,8 @@ async-trait = "0.1.77"
 axum = { version = "0.8.1", features = ["ws"] }
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
+# Sibling of this repo. CI checks out v0.34.24-eld-tm-rs.8
+# (0e4f9d73a24d153094c4d57b5c46f8bce1cb853e) there.
 eld-tendermint-proto = { path = "../../eld-tendermint-rs/crates/proto", version = "0.0.1" }
 base64.workspace = true
 bincode.workspace = true

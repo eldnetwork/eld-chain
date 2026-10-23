@@ -1,6 +1,8 @@
 # Release image published to GHCR (linux/amd64 and linux/arm64).
 # Local debug images stay on Dockerfile.eld-base + Dockerfile.app.
 # Build context is the repository root.
+# Named context eld_tm is the eld-tendermint-rs checkout (CI passes the tag
+# checkout; node_app resolves ../../eld-tendermint-rs from /app/node_app).
 FROM rust:1.88.0-bookworm AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +19,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
+COPY --from=eld_tm . /eld-tendermint-rs
 # eld-cli, faucet, and analytics are separate images/processes. Cargo still
 # loads every workspace member, so drop members that were not copied.
 # metadata (online) rewrites the lock for the reduced workspace; --locked then

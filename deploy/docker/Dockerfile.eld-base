@@ -1,4 +1,6 @@
 # Build context is the eld-chain repository root.
+# Named context eld_tm is the sibling eld-tendermint-rs checkout.
+# node_app resolves ../../eld-tendermint-rs from /app/node_app.
 FROM rust:1.88.0-bookworm
 
 RUN apt-get update && apt-get install -y \
@@ -15,6 +17,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
+COPY --from=eld_tm . /eld-tendermint-rs
 # eld-cli, faucet, and analytics are separate images/processes. Cargo still
 # loads every workspace member, so drop members that were not copied before building.
 RUN sed -i 's/, "cli"//g; s/, "faucet"//g; s/, "analytics"//g' Cargo.toml \

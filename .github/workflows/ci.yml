@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout eld-tendermint-rs
+        uses: ./.github/actions/checkout-eld-tendermint-rs
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.88.0
         with:

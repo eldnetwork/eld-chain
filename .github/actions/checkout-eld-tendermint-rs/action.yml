@@ -1,0 +1,35 @@
+name: Checkout eld-tendermint-rs
+description: >
+  Place eld-tendermint-rs beside this checkout. node_app depends on
+  eld-tendermint-proto at ../../eld-tendermint-rs/crates/proto.
+
+outputs:
+  path:
+    description: Absolute path of the eld-tendermint-rs checkout
+    value: ${{ steps.place.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout eld-tendermint-rs
+      uses: actions/checkout@v4
+      with:
+        repository: eldnetwork/eld-tendermint-rs
+        # v0.34.24-eld-tm-rs.8 (SummaryBody / AppStateSnapshot).
+        ref: 0e4f9d73a24d153094c4d57b5c46f8bce1cb853e
+        path: eld-tendermint-rs-src
+
+    # actions/checkout refuses a path outside $GITHUB_WORKSPACE. node_app's
+    # path is the sibling of this repo, so move the checkout there before
+    # cargo or gitleaks run.
+    - name: Place eld-tendermint-rs beside this repo
+      id: place
+      shell: bash
+      run: |
+        set -euo pipefail
+        parent="$(cd "$GITHUB_WORKSPACE/.." && pwd)"
+        dest="${parent}/eld-tendermint-rs"
+        rm -rf "$dest"
+        mv "$GITHUB_WORKSPACE/eld-tendermint-rs-src" "$dest"
+        test -f "$dest/crates/proto/Cargo.toml"
+        echo "path=${dest}" >> "$GITHUB_OUTPUT"
