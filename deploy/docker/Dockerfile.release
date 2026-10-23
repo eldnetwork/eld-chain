@@ -19,6 +19,8 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY client ./client
 COPY node_app ./node_app
+# Workspace [patch.crates-io] replaces tendermint-proto 0.23.7 with this tree.
+COPY vendor/tendermint-proto ./vendor/tendermint-proto
 COPY --from=eld_tm . /eld-tendermint-rs
 # eld-cli, faucet, and analytics are separate images/processes. Cargo still
 # loads every workspace member, so drop members that were not copied.
