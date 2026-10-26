@@ -608,7 +608,7 @@ Commands:
   account    Balances and nonces
   tx         Sign and broadcast
   faucet     Request tokens from the dev faucet
-  chain      Epoch, validators, and ABCI info
+  chain      Epoch, validators, summary, and ABCI info
   namespace  Namespace registry
   pinboard   Ephemeral posts
   cado       Content-addressed objects
