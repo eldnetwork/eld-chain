@@ -7,6 +7,7 @@ mod epoch;
 mod namespace;
 mod pinboard;
 mod submitted_tx;
+mod summary;
 mod transactions;
 mod util;
 pub(crate) mod wallets;
@@ -25,4 +26,5 @@ pub(crate) use pinboard::{
     get_content, pinboard_get_post, pinboard_list_by_tag, pinboard_list_by_wallet,
     post_pinboard_message,
 };
+pub(crate) use summary::view_summary;
 pub(crate) use transactions::{list_all_transactions, stake, transfer, unstake};

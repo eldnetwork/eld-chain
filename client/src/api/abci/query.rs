@@ -1,6 +1,6 @@
 //! Read-only RPC / HTTP query helpers against the configured node URL.
 
-use super::{AbciHttpApi, AbciInfoWrapper};
+use super::{AbciHttpApi, AbciInfoWrapper, SummaryHeader};
 use crate::config::client_config::ClientConfig;
 use eld_common::account::Account;
 use eld_common::address::Address;
@@ -43,6 +43,11 @@ pub async fn get_block(config: &ClientConfig, height: u64) -> Result<Response, E
 pub async fn get_abci_info(config: &ClientConfig) -> Result<AbciInfoWrapper, EldError> {
     let api = abci_http_api(config)?;
     api.get_latest_abci_info().await
+}
+
+pub async fn get_summary(config: &ClientConfig) -> Result<SummaryHeader, EldError> {
+    let api = abci_http_api(config)?;
+    api.get_summary().await
 }
 
 pub async fn get_staking_account(

@@ -56,7 +56,7 @@ pub(crate) enum SubCommand {
         after_help = "Example:\n  eld-cli faucet 0x1234567890abcdef1234567890abcdef12345678\n  eld-cli faucet my-wallet"
     )]
     Faucet(FaucetArgs),
-    /// Epoch, validators, and ABCI info.
+    /// Epoch, validators, summary, and ABCI info.
     Chain {
         #[command(subcommand)]
         cmd: ChainCommand,
@@ -130,6 +130,9 @@ pub(crate) enum SubCommand {
     /// Show epoch metadata and the validator set.
     #[command(hide = true)]
     ViewEpoch,
+    /// Show the current chain summary.
+    #[command(hide = true)]
+    ViewSummary,
     /// Look up a namespace slug.
     #[command(hide = true)]
     GetNamespace(NamespaceSlugArgs),
@@ -221,6 +224,8 @@ pub(crate) enum ChainCommand {
     AbciInfo,
     /// Show epoch metadata and the validator set.
     Epoch,
+    /// Show the current chain summary.
+    Summary,
     /// List validators in the current epoch.
     Validators,
 }

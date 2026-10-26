@@ -320,3 +320,71 @@ async fn chain_client_get_namespace_via_rest() {
     assert_eq!(lookup.canonical_slug, "demo");
     assert!(lookup.registered.is_some());
 }
+
+fn summary_header_response() -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "end_height": "10",
+            "summary_hash": "AA",
+            "last_block_id": { "hash": "BB", "parts": { "total": 1, "hash": "CC" } },
+            "last_results_hash": "DD",
+            "app_hash": "EE",
+            "body_hash": "FF",
+            "validators_hash": "11",
+            "next_validators_hash": "22",
+            "consensus_hash": "33",
+            "last_height_validators_changed": "1",
+            "last_height_consensus_params_changed": "1",
+            "validators": { "validators": [], "proposer": null },
+            "next_validators": { "validators": [], "proposer": null },
+            "consensus_params": {
+                "block": { "max_bytes": "1", "max_gas": "-1", "time_iota_ms": "1000" },
+                "evidence": {
+                    "max_age_num_blocks": "1",
+                    "max_age_duration": "2",
+                    "max_bytes": "3"
+                },
+                "validator": { "pub_key_types": ["ed25519"] },
+                "version": { "app_version": "0" }
+            }
+        }
+    })
+}
+
+#[tokio::test]
+async fn chain_client_view_summary_reads_the_header() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("summary"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(summary_header_response()))
+        .mount(&server)
+        .await;
+
+    let config = mock_client_config(&server.uri(), &server.uri(), &server.uri());
+    let client = ChainClient::new(config, FeeConfig::default());
+    let header = client.view_summary().await.unwrap();
+    assert_eq!(header.end_height, "10");
+    assert_eq!(header.summary_hash, "AA");
+    assert_eq!(header.consensus_params.version.app_version, "0");
+}
+
+#[tokio::test]
+async fn chain_client_view_summary_reports_a_missing_header() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("summary"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": { "code": -32603, "message": "Internal error", "data": "summary not found" }
+        })))
+        .mount(&server)
+        .await;
+
+    let config = mock_client_config(&server.uri(), &server.uri(), &server.uri());
+    let client = ChainClient::new(config, FeeConfig::default());
+    let err = client.view_summary().await.unwrap_err();
+    assert_eq!(err.to_string(), "Summary not found: current");
+}

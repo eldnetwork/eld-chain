@@ -114,6 +114,7 @@ Grouped commands are the ones `--help` lists. Amounts are base units. Addresses 
 | `faucet` | Dev faucet. Argument is a hex address or a local wallet name (`request-faucet` is the same command) |
 | `chain abci-info` | Tendermint ABCI info |
 | `chain epoch` | Epoch metadata and validator set |
+| `chain summary` | Current chain summary header |
 | `chain validators` | Validators in the current epoch |
 | `namespace get\|add` | Look up or register a namespace |
 | `pinboard post` | Post a message |
@@ -130,6 +131,8 @@ eld-cli --output json wallet list
 eld-cli faucet 0x1234567890abcdef1234567890abcdef12345678
 eld-cli faucet my-wallet
 eld-cli account get 0x1234567890abcdef1234567890abcdef12345678
+eld-cli chain summary
+eld-cli --output json chain summary
 eld-cli tx transfer my-wallet 0x1234567890abcdef1234567890abcdef12345678 1000
 eld-cli pinboard post my-wallet ./message.txt --content-type text/plain
 ```
@@ -153,6 +156,7 @@ The old flat names still parse. They are hidden from `--help`.
 | `unstake` | `tx unstake` |
 | `view-active-validators` | `chain validators` |
 | `view-epoch` | `chain epoch` |
+| `view-summary` | `chain summary` |
 | `get-namespace` | `namespace get` |
 | `add-namespace` | `namespace add` |
 | `post-pinboard-message` | `pinboard post` |

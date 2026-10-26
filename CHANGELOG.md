@@ -11,6 +11,7 @@ Crates are unpublished (`publish = false`).
 
 ### Added
 
+- `eld-cli chain summary` shows the current chain summary header from the node `summary` RPC. `view-summary` is the hidden alias.
 - `eld-faucet` — HTTP server that signs test-fund transfers from a local wallet ([faucet/README.md](faucet/README.md)).
 - `eld-cli` — command-line client over `ChainClient` ([cli/README.md](cli/README.md)).
 - Grouped `eld-cli` commands (`wallet`, `account`, `tx`, `chain`, `namespace`, `pinboard`, `cado`). The old flat verbs stay as hidden aliases.
