@@ -39,6 +39,7 @@ Crates are unpublished (`publish = false`).
 
 ### Fixed
 
+- `zstd` is 0.14.3, which drops the vulnerable 0.13 line. `eld-faucet` uses `actix-web` 4.17 so its compression dependency is that same `zstd`.
 - `eld-cli` query commands no longer open the wallet file. `chain validators` and the other reads work when `wallets.json` is missing. The file is opened only when a command signs.
 
 ## [0.0.1] - 2026-09-26

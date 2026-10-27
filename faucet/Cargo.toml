@@ -18,7 +18,10 @@ path = "src/main.rs"
 
 [dependencies]
 actix-cors = "0.7.1"
-actix-web = "4.11.0"
+# 4.17.0 is the newest actix-web that builds on Rust 1.88, and the first 4.x on zstd 0.14.
+actix-web = "=4.17.0"
+# 4.17 allows actix-http 3.20, which needs Rust 1.89.
+actix-http = "=3.19.0"
 chrono = "0.4.40"
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
