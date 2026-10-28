@@ -22,7 +22,7 @@ jobs:
     # failed CI job cannot publish. workflow_dispatch stays in CI only.
     # Each arch builds on a native runner: RocksDB under QEMU does not finish
     # reliably. The manifest job publishes one multi-arch image.
-    # The image tag is the full git tag (eld-analytics-v0.0.3), which is what
+    # The image tag is the full git tag (eld-analytics-v0.0.4), which is what
     # ANALYTICS_TAG_GHCR uses.
     if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/eld-analytics-v')
     needs: ci

@@ -46,7 +46,7 @@ It also stores memory from the same hourly tick:
 
 The local compose file mounts the Docker socket and adds group `0` so the sidecar user can open it. The socket can start and stop every container on the machine.
 
-A git tag `eld-analytics-v*` (for example `eld-analytics-v0.0.3`) publishes `ghcr.io/eldnetwork/eld-analytics` with that same tag. On the tm-rs local stack, enable with:
+A git tag `eld-analytics-v*` (for example `eld-analytics-v0.0.4`) publishes `ghcr.io/eldnetwork/eld-analytics` with that same tag. On the tm-rs local stack, enable with:
 
 ```sh
 ./deploy/scripts/docker/local/cluster/cluster-start-without-history.ghcr.tm-rs.sh --with-analytics
