@@ -31,7 +31,9 @@ Eld ABCI data volumes, stores each run in RocksDB, and serves a small REST API.
 | `ABCI_CONTAINER_PREFIX` | `eld-app-` | Container name prefix for ABCI memory |
 | `RUST_LOG` | — | Tracing filter |
 
-Each measurement gives up after 30 seconds and logs an error. Directory sizes that run out of time are skipped. Largest-file scans and RocksDB inventories keep what they already finished, including when a RocksDB read fails. The rest of the run is still stored.
+Each folder size gives up after 30 seconds and is stored as `0`. The rest of the run is still stored.
+
+Per node, disk collection is folder sizes only. Tendermint: `data/`, `data/tx_index.db`, and `data/evidence.db`. ABCI: the data directory, `rocksdb/`, and `capacity/`. The live RocksDB is not opened.
 
 Each `CollectionRun` stores `block_height` from Tendermint `status`
 (`sync_info.latest_block_height`), the same field the block explorer uses.

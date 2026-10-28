@@ -1408,8 +1408,6 @@ dependencies = [
  "bincode",
  "chrono",
  "clap",
- "eld-common",
- "libc",
  "reqwest 0.12.28",
  "rocksdb",
  "serde",

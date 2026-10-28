@@ -1,12 +1,9 @@
 use crate::config::Config;
-use crate::disk::{directory_tree_size_bytes, statvfs_for_path, top_n_files};
+use crate::disk::directory_tree_size_bytes;
 use crate::model::{AbciDiskSnapshot, CollectionRun, TendermintDiskSnapshot};
-use crate::rocksdb_inventory::collect_inventory;
 use crate::scan::scan;
 use chrono::Utc;
 use std::path::{Path, PathBuf};
-
-const TOP_FILES_N: usize = 5;
 
 pub fn collect_once(config: &Config, block_height: Option<u64>) -> CollectionRun {
     let mut tendermint_nodes = Vec::with_capacity(config.node_ids.len());
@@ -43,26 +40,12 @@ fn tendermint_data_dir(config: &Config, home: &Path) -> PathBuf {
 fn collect_tendermint(config: &Config, id: &str) -> TendermintDiskSnapshot {
     let home = tendermint_home(config, id);
     let data = tendermint_data_dir(config, &home);
-    let volume = scan("tendermint volume", &home, None, {
-        let home = home.clone();
-        move || statvfs_for_path(&home)
-    });
 
     TendermintDiskSnapshot {
         node_id: id.to_string(),
-        home_dir_bytes: sized("tendermint home", &home),
         data_dir_bytes: sized("tendermint data", &data),
-        blockstore_db_bytes: sized("tendermint blockstore", &data.join("blockstore.db")),
-        state_db_bytes: sized("tendermint state", &data.join("state.db")),
-        cs_wal_bytes: sized("tendermint cs.wal", &data.join("cs.wal")),
-        evidence_db_bytes: sized("tendermint evidence", &data.join("evidence.db")),
         tx_index_db_bytes: sized("tendermint tx index", &data.join("tx_index.db")),
-        volume_total_bytes: volume.as_ref().map(|v| v.total_bytes),
-        volume_available_bytes: volume.as_ref().map(|v| v.available_bytes),
-        top_files: scan("tendermint top files", &data, Vec::new(), {
-            let data = data.clone();
-            move || top_n_files(&data, TOP_FILES_N)
-        }),
+        evidence_db_bytes: sized("tendermint evidence", &data.join("evidence.db")),
     }
 }
 
@@ -77,26 +60,12 @@ fn collect_abci(config: &Config, id: &str) -> AbciDiskSnapshot {
     let root = PathBuf::from(format!("{}{}", config.abci_path_prefix, id));
     let rocks = root.join("rocksdb");
     let capacity = root.join("capacity");
-    let volume = scan("abci volume", &root, None, {
-        let root = root.clone();
-        move || statvfs_for_path(&root)
-    });
 
     AbciDiskSnapshot {
         node_id: id.to_string(),
         data_dir_bytes: sized("abci data", &root),
         rocksdb_bytes: sized("abci rocksdb", &rocks),
         capacity_bytes: sized("abci capacity", &capacity),
-        volume_total_bytes: volume.as_ref().map(|v| v.total_bytes),
-        volume_available_bytes: volume.as_ref().map(|v| v.available_bytes),
-        top_files: scan("abci top files", &root, Vec::new(), {
-            let root = root.clone();
-            move || top_n_files(&root, TOP_FILES_N)
-        }),
-        rocksdb_inventory: scan("abci rocksdb inventory", &rocks, None, {
-            let rocks = rocks.clone();
-            move || collect_inventory(&rocks)
-        }),
     }
 }
 
@@ -112,10 +81,10 @@ mod tests {
         let base = dir.path();
 
         let tm = base.join("tendermint-1").join("data");
-        fs::create_dir_all(tm.join("blockstore.db")).unwrap();
-        fs::write(tm.join("blockstore.db/CURRENT"), b"MANIFEST-000001").unwrap();
-        fs::create_dir_all(tm.join("cs.wal")).unwrap();
-        fs::write(tm.join("cs.wal/wal"), b"wal-bytes").unwrap();
+        fs::create_dir_all(tm.join("tx_index.db")).unwrap();
+        fs::write(tm.join("tx_index.db/CURRENT"), b"MANIFEST-000001").unwrap();
+        fs::create_dir_all(tm.join("evidence.db")).unwrap();
+        fs::write(tm.join("evidence.db/CURRENT"), b"ev").unwrap();
 
         let eld = base.join("eld-1");
         fs::create_dir_all(eld.join("rocksdb")).unwrap();
@@ -144,11 +113,10 @@ mod tests {
         assert_eq!(run.block_height, Some(42));
         assert_eq!(run.tendermint_nodes.len(), 1);
         assert_eq!(run.abci_apps.len(), 1);
-        assert!(run.tendermint_nodes[0].blockstore_db_bytes > 0);
-        assert!(run.tendermint_nodes[0].cs_wal_bytes > 0);
+        assert!(run.tendermint_nodes[0].data_dir_bytes > 0);
+        assert!(run.tendermint_nodes[0].tx_index_db_bytes > 0);
+        assert!(run.tendermint_nodes[0].evidence_db_bytes > 0);
         assert!(run.abci_apps[0].rocksdb_bytes > 0);
         assert!(run.abci_apps[0].capacity_bytes > 0);
-        // Empty / non-Eld RocksDB layout → inventory None
-        assert!(run.abci_apps[0].rocksdb_inventory.is_none());
     }
 }

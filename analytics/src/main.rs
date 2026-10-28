@@ -4,7 +4,6 @@ mod config;
 mod disk;
 mod memory;
 mod model;
-mod rocksdb_inventory;
 mod rpc;
 mod scan;
 mod store;
