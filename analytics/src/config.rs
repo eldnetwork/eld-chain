@@ -18,7 +18,7 @@ pub struct Config {
     #[arg(long, env = "FIRST_COLLECTION_DELAY_SECS", default_value = "180")]
     pub first_collection_delay_secs: u64,
 
-    #[arg(long, env = "COLLECTION_INTERVAL_SECS", default_value = "3600")]
+    #[arg(long, env = "COLLECTION_INTERVAL_SECS", default_value = "1800")]
     pub interval_secs: u64,
 
     #[arg(

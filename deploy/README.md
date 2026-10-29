@@ -131,7 +131,7 @@ This always stops the faucet if it is running. For the rust-Tendermint GHCR stac
 ./deploy/scripts/docker/local/cluster/cluster-stop.ghcr.tm-rs.sh
 ```
 
-`--with-analytics` on the GHCR script pulls `ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}`. A tag `eld-analytics-v*` publishes that image. The local rust-Tendermint script still builds `eld-analytics:local`. First disk sample is after 3 minutes, then hourly. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
+`--with-analytics` on the GHCR script pulls `ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}`. A tag `eld-analytics-v*` publishes that image. The local rust-Tendermint script still builds `eld-analytics:local`. First disk sample is after 3 minutes, then every 30 minutes. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
 
 ### Local app + GHCR rust-Tendermint
 

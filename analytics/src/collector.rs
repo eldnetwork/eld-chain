@@ -93,7 +93,7 @@ mod tests {
             db_path: base.join("analytics.db"),
             listen: "127.0.0.1:0".into(),
             first_collection_delay_secs: 180,
-            interval_secs: 3600,
+            interval_secs: 1800,
             node_ids: vec!["1".into()],
             tendermint_path_prefix: format!("{}/tendermint-", base.display()),
             tendermint_data_subdir: "data".into(),
