@@ -1,6 +1,7 @@
 use eld_common::tx::Tx;
 use serde::{Deserialize, Serialize};
 
+pub mod prune;
 pub mod sync;
 pub mod transaction_indexer;
 

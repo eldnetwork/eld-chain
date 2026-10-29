@@ -466,6 +466,16 @@ pub trait TransactionIndexerStorage: Send + Sync {
     /// Whether the chronological `block_pos:` secondary index exists for `(height, index)`.
     fn block_position_indexed(&self, block_height: u64, block_index: u32)
         -> Result<bool, EldError>;
+
+    /// Delete indexed transactions, events, and secondary-index entries for heights
+    /// `h` where `start_exclusive < h < end_exclusive`.
+    ///
+    /// Idempotent. Safe to call from a background thread.
+    fn prune_indexed_data_between(
+        &self,
+        start_exclusive: u64,
+        end_exclusive: u64,
+    ) -> Result<(), EldError>;
 }
 
 /// Persisted deduplication for outbound [`VerifiedProof`](eld_common::tx::VerifiedProofTx) submissions.

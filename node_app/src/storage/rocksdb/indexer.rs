@@ -5,7 +5,7 @@ use eld_common::address::Address;
 use eld_common::error::EldError;
 use eld_common::tx::{HasSender, PayloadInner, Tx};
 use hex;
-use rocksdb::{ColumnFamily, Direction, IteratorMode, TransactionDB};
+use rocksdb::{ColumnFamily, Direction, IteratorMode, ReadOptions, TransactionDB};
 use serde_json;
 use sha2::{Digest, Sha256};
 use tracing::debug;
@@ -872,5 +872,281 @@ impl TransactionIndexerStorage for RocksDBStorage {
                     "Failed to read block_pos index at {block_height}:{block_index}: {e}"
                 ),
             })
+    }
+
+    fn prune_indexed_data_between(
+        &self,
+        start_exclusive: u64,
+        end_exclusive: u64,
+    ) -> Result<(), EldError> {
+        // Heights deleted are start_exclusive < h < end_exclusive.
+        let Some(first_height) = start_exclusive.checked_add(1) else {
+            return Ok(());
+        };
+        if first_height >= end_exclusive {
+            return Ok(());
+        }
+
+        let lower = Self::block_position_chron_index_key_bytes(first_height, 0);
+        let upper = Self::block_position_chron_index_key_bytes(end_exclusive, 0);
+
+        let mut readopts = ReadOptions::default();
+        readopts.set_iterate_lower_bound(lower.clone());
+        readopts.set_iterate_upper_bound(upper);
+        readopts.set_total_order_seek(true);
+
+        let tx_cf = self.indexed_transactions_cf()?;
+        let events_cf = self.indexed_events_cf()?;
+
+        let iter = self.db.iterator_cf_opt(
+            tx_cf,
+            readopts,
+            IteratorMode::From(lower.as_slice(), Direction::Forward),
+        );
+
+        struct PruneRow {
+            chron_key: Vec<u8>,
+            indexed: Option<IndexedTransaction>,
+            events: Vec<IndexedEvent>,
+            had_vp_index: bool,
+        }
+
+        let mut rows = Vec::new();
+        for res in iter {
+            let (key, value) = res.map_err(|e| EldError::StorageError {
+                operation: "prune_indexed_data_between_iterate".to_string(),
+                details: format!("Failed to iterate block_pos keys: {e}"),
+            })?;
+            let key_str = std::str::from_utf8(&key).map_err(|e| EldError::StorageError {
+                operation: "prune_indexed_data_between_key_utf8".to_string(),
+                details: format!("{e}"),
+            })?;
+            if !key_str.starts_with("block_pos:") {
+                continue;
+            }
+            let (height, _) = Self::parse_block_position_chron_key(key_str).ok_or_else(|| {
+                EldError::StorageError {
+                    operation: "prune_indexed_data_between_parse_block_pos".to_string(),
+                    details: format!("Malformed block_pos key: {key_str}"),
+                }
+            })?;
+            if height <= start_exclusive || height >= end_exclusive {
+                continue;
+            }
+
+            let indexed =
+                match Self::load_primary_indexed_transaction_by_cf(tx_cf, &self.db, &value) {
+                    Ok(ix) => Some(ix),
+                    Err(EldError::StorageError {
+                        operation,
+                        details: _,
+                    }) if operation == "missing_primary_for_block_pos_row" => None,
+                    Err(e) => return Err(e),
+                };
+
+            let (events, had_vp_index) = if let Some(ref ix) = indexed {
+                let mut events = self.get_events_by_tx_id(&ix.id)?;
+                if events.is_empty() && !ix.events.is_empty() {
+                    events = ix.events.clone();
+                }
+                let had_vp = if ix.status == TransactionStatus::Success {
+                    if let PayloadInner::VerifiedProof(vp_tx) = &ix.tx.payload.inner {
+                        if !vp_tx.failed {
+                            let provider_key = vp_tx.capacity_provider.to_string().to_lowercase();
+                            let vp_key = Self::verified_proof_reward_index_key(
+                                &provider_key,
+                                ix.block_height,
+                                ix.block_index,
+                            );
+                            self.db
+                                .get_cf(tx_cf, &vp_key)
+                                .map_err(|e| EldError::StorageError {
+                                    operation: "prune_indexed_data_between_get_vp".to_string(),
+                                    details: e.to_string(),
+                                })?
+                                .is_some()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                (events, had_vp)
+            } else {
+                (Vec::new(), false)
+            };
+
+            rows.push(PruneRow {
+                chron_key: key.to_vec(),
+                indexed,
+                events,
+                had_vp_index,
+            });
+        }
+
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        // Hold the primary-total mutex for the rest of this function (RAII). The guard
+        // is not read; dropping it at the end unlocks. Same serialization as
+        // bump_indexed_transaction_primary_total_count against the sync thread.
+        let _guard = self
+            .indexed_transaction_primary_total_mutex
+            .lock()
+            .map_err(|_| EldError::StorageError {
+                operation: "prune_indexed_data_between_mutex".to_string(),
+                details: "Mutex poisoned while pruning indexed transactions".to_string(),
+            })?;
+
+        let mut removed_primary = 0u64;
+        let mut removed_vp = 0u64;
+        for row in &rows {
+            if row.indexed.is_some() {
+                removed_primary = removed_primary.saturating_add(1);
+            }
+            if row.had_vp_index {
+                removed_vp = removed_vp.saturating_add(1);
+            }
+        }
+
+        let current_primary = self.indexed_transaction_primary_total_count()?;
+        let new_primary = current_primary.saturating_sub(removed_primary);
+        let current_vp = self.read_verified_proof_global_rewards_count(tx_cf)?;
+        let new_vp = current_vp.saturating_sub(removed_vp);
+
+        let txn = self.begin_transaction();
+
+        for row in &rows {
+            // Chronological secondary: `block_pos:{height:016x}:{index:08x}` → tx_id.
+            txn.delete_cf(tx_cf, &row.chron_key)
+                .map_err(|e| EldError::StorageError {
+                    operation: "prune_indexed_data_between_delete_block_pos".to_string(),
+                    details: e.to_string(),
+                })?;
+
+            let Some(ix) = &row.indexed else {
+                continue;
+            };
+
+            // Primary body: `0x…` tx_id → IndexedTransaction JSON.
+            txn.delete_cf(tx_cf, ix.id.as_bytes())
+                .map_err(|e| EldError::StorageError {
+                    operation: "prune_indexed_data_between_delete_primary".to_string(),
+                    details: e.to_string(),
+                })?;
+
+            // Legacy block secondary: `block_height:{h}:tx_index:{i}` → tx_id.
+            let legacy_block_key = format!(
+                "block_height:{}:tx_index:{}",
+                ix.block_height, ix.block_index
+            );
+            txn.delete_cf(tx_cf, legacy_block_key.as_bytes())
+                .map_err(|e| EldError::StorageError {
+                    operation: "prune_indexed_data_between_delete_legacy_block".to_string(),
+                    details: e.to_string(),
+                })?;
+
+            // Sender secondary: `sender:{address}:nonce:{nonce}` → tx_id.
+            let sender = ix.tx.payload.inner.sender();
+            let sender_key = format!("sender:{}:nonce:{}", sender, ix.tx.nonce.value());
+            txn.delete_cf(tx_cf, sender_key.as_bytes())
+                .map_err(|e| EldError::StorageError {
+                    operation: "prune_indexed_data_between_delete_sender".to_string(),
+                    details: e.to_string(),
+                })?;
+
+            // Payload-type secondary: `type:{payload_type}:{tx_id}` → tx_id.
+            let type_key = format!("type:{}:{}", ix.tx.payload.r#type, ix.id);
+            txn.delete_cf(tx_cf, type_key.as_bytes())
+                .map_err(|e| EldError::StorageError {
+                    operation: "prune_indexed_data_between_delete_type".to_string(),
+                    details: e.to_string(),
+                })?;
+
+            // Verified-proof reward secondary: `vp:{provider}:{height:016x}:{index:08x}`.
+            if row.had_vp_index {
+                if let PayloadInner::VerifiedProof(vp_tx) = &ix.tx.payload.inner {
+                    let provider_key = vp_tx.capacity_provider.to_string().to_lowercase();
+                    let vp_key = Self::verified_proof_reward_index_key(
+                        &provider_key,
+                        ix.block_height,
+                        ix.block_index,
+                    );
+                    txn.delete_cf(tx_cf, &vp_key)
+                        .map_err(|e| EldError::StorageError {
+                            operation: "prune_indexed_data_between_delete_vp".to_string(),
+                            details: e.to_string(),
+                        })?;
+                }
+            }
+
+            for ev in &row.events {
+                let primary_key = format!("tx_id:{}:event_index:{}", ev.tx_id, ev.event_index);
+                let type_index_key = format!(
+                    "type:{}:block_height:{}:block_index:{}:event_index:{}",
+                    ev.event_type, ev.block_height, ev.block_index, ev.event_index
+                );
+                let block_event_key = format!(
+                    "block_height:{}:block_index:{}:event_index:{}",
+                    ev.block_height, ev.block_index, ev.event_index
+                );
+                // Event primary: `tx_id:{tx_id}:event_index:{ei}` → IndexedEvent JSON.
+                txn.delete_cf(events_cf, primary_key.as_bytes())
+                    .map_err(|e| EldError::StorageError {
+                        operation: "prune_indexed_data_between_delete_event_primary".to_string(),
+                        details: e.to_string(),
+                    })?;
+                // Event type secondary:
+                // `type:{event_type}:block_height:{h}:block_index:{i}:event_index:{ei}`.
+                txn.delete_cf(events_cf, type_index_key.as_bytes())
+                    .map_err(|e| EldError::StorageError {
+                        operation: "prune_indexed_data_between_delete_event_type".to_string(),
+                        details: e.to_string(),
+                    })?;
+                // Event block secondary:
+                // `block_height:{h}:block_index:{i}:event_index:{ei}`.
+                txn.delete_cf(events_cf, block_event_key.as_bytes())
+                    .map_err(|e| EldError::StorageError {
+                        operation: "prune_indexed_data_between_delete_event_block".to_string(),
+                        details: e.to_string(),
+                    })?;
+            }
+        }
+
+        // Meta: `_meta:indexed_transactions_primary_total` after removing primary bodies.
+        if removed_primary > 0 {
+            txn.put_cf(
+                tx_cf,
+                INDEXED_TRANSACTIONS_PRIMARY_TOTAL_COUNT_KEY,
+                new_primary.to_le_bytes(),
+            )
+            .map_err(|e| EldError::StorageError {
+                operation: "prune_indexed_data_between_put_primary_total".to_string(),
+                details: e.to_string(),
+            })?;
+        }
+        // Meta: `_meta:verified_proof_global_rewards_count` after removing `vp:` rows.
+        if removed_vp > 0 {
+            txn.put_cf(
+                tx_cf,
+                VERIFIED_PROOF_GLOBAL_REWARDS_COUNT_KEY,
+                new_vp.to_le_bytes(),
+            )
+            .map_err(|e| EldError::StorageError {
+                operation: "prune_indexed_data_between_put_vp_total".to_string(),
+                details: e.to_string(),
+            })?;
+        }
+
+        txn.commit().map_err(|e| EldError::StorageError {
+            operation: "prune_indexed_data_between_commit".to_string(),
+            details: e.to_string(),
+        })?;
+
+        Ok(())
     }
 }

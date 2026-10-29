@@ -1761,3 +1761,89 @@ fn test_index_verified_proof_failed_does_not_bump_global_rollup() {
     assert_eq!(c, 0);
     assert_eq!(t, 0);
 }
+
+#[test]
+fn test_prune_indexed_data_between_keeps_genesis_and_is_idempotent() {
+    use crate::indexer::TransactionStatus;
+    use crate::storage::traits::TransactionIndexerStorage;
+    use abci::types::{Event, EventAttribute};
+    use ed25519_dalek::SigningKey;
+    use eld_common::constants::{protocol::DEFAULT_TX_FEE, test::MOCK_CHAIN_ID};
+    use eld_common::tx::{Payload, TransferTx, Tx, TxPublicKey, TxSig};
+
+    fn transfer_tx_fixture(signing_key: &SigningKey, nonce: u32) -> Tx {
+        let verifying_key = signing_key.verifying_key();
+        let sender = Address::from_public_key(&verifying_key).unwrap();
+        let recipient =
+            Address::parse_hex_str("0x0987654321098765432109876543210987654321").unwrap();
+        let inner = TransferTx::new(sender, recipient, 1.into()).unwrap();
+        let mut tx = Tx {
+            sig: TxSig::empty(),
+            nonce: nonce.into(),
+            payload: Payload::new(inner),
+            public_key: TxPublicKey::from(&verifying_key),
+            fee: DEFAULT_TX_FEE.into(),
+        };
+        tx.sign(signing_key, MOCK_CHAIN_ID).expect("sign");
+        tx
+    }
+
+    let storage = create_test_storage();
+    let secret = SigningKey::from_bytes(&[17u8; 32]);
+
+    let heights = [1u64, 5, 10, 15];
+    let mut ids = Vec::new();
+    for (i, height) in heights.iter().enumerate() {
+        let tx = transfer_tx_fixture(&secret, (i as u32) + 1);
+        let tx_id = storage.calculate_tx_id(&tx).unwrap();
+        let events = vec![Event {
+            r#type: "Transfer".to_string(),
+            attributes: vec![EventAttribute {
+                key: b"amount".to_vec(),
+                value: b"1".to_vec(),
+                index: false,
+            }],
+        }];
+        storage
+            .index_transaction(
+                &tx,
+                *height,
+                0,
+                TransactionStatus::Success,
+                Some(21_000),
+                &events,
+            )
+            .unwrap();
+        storage
+            .index_event(&tx_id, 0, &events[0], *height, 0)
+            .unwrap();
+        ids.push(tx_id);
+    }
+
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 4);
+
+    // end_height = 10 → prune_between(1, 11) deletes heights 2..=10 (here 5 and 10).
+    storage.prune_indexed_data_between(1, 11).unwrap();
+
+    assert!(storage.get_indexed_transaction(&ids[0]).unwrap().is_some());
+    assert!(storage.get_indexed_transaction(&ids[1]).unwrap().is_none());
+    assert!(storage.get_indexed_transaction(&ids[2]).unwrap().is_none());
+    assert!(storage.get_indexed_transaction(&ids[3]).unwrap().is_some());
+
+    assert!(!storage.block_position_indexed(5, 0).unwrap());
+    assert!(!storage.block_position_indexed(10, 0).unwrap());
+    assert!(storage.block_position_indexed(1, 0).unwrap());
+    assert!(storage.block_position_indexed(15, 0).unwrap());
+
+    assert_eq!(storage.get_events_by_tx_id(&ids[0]).unwrap().len(), 1);
+    assert!(storage.get_events_by_tx_id(&ids[1]).unwrap().is_empty());
+    assert!(storage.get_events_by_tx_id(&ids[2]).unwrap().is_empty());
+    assert_eq!(storage.get_events_by_tx_id(&ids[3]).unwrap().len(), 1);
+
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 2);
+
+    storage.prune_indexed_data_between(1, 11).unwrap();
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 2);
+    assert!(storage.get_indexed_transaction(&ids[0]).unwrap().is_some());
+    assert!(storage.get_indexed_transaction(&ids[3]).unwrap().is_some());
+}
