@@ -17,11 +17,8 @@ pub fn collect_once(config: &Config, block_height: Option<u64>) -> CollectionRun
     CollectionRun {
         collected_at: Utc::now(),
         block_height,
-        vm_memory: None,
         tendermint_nodes,
         abci_apps,
-        tendermint_memory: Vec::new(),
-        abci_memory: Vec::new(),
     }
 }
 
@@ -102,11 +99,6 @@ mod tests {
             tendermint_data_subdir: "data".into(),
             abci_path_prefix: format!("{}/eld-", base.display()),
             tendermint_rpc_url: "http://127.0.0.1:26657".into(),
-            docker_socket: base.join("docker.sock"),
-            tendermint_container_prefix: "tendermint-".into(),
-            abci_container_prefix: "eld-app-".into(),
-            tendermint_rpc_host_prefix: "tendermint-".into(),
-            tendermint_rpc_port: 26657,
         };
 
         let run = collect_once(&config, Some(42));
