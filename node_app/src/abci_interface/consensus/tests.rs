@@ -142,6 +142,7 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         capacity_manager,
         local_identity,
         live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        pinboard_prune_tx: tokio::sync::mpsc::unbounded_channel().0,
         frontier_snapshot_store: FrontierSnapshotStore::new(),
     })
 }
@@ -903,6 +904,7 @@ fn in_process_harness() -> InProcessHarness {
         capacity_manager,
         local_identity,
         live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        pinboard_prune_tx: tokio::sync::mpsc::unbounded_channel().0,
         frontier_snapshot_store: FrontierSnapshotStore::new(),
     });
 

@@ -50,15 +50,19 @@ impl LivePinSet {
 
     /// Drop pins that have expired by the given block height.
     ///
-    /// Iterate pins in expiry order until the next pin expires after this height,
-    /// removing each expired pin from the front.
-    pub fn expire_up_to(&mut self, height: i64) {
+    /// Returns the pins removed, in expiry order. Pins that expire after this
+    /// height stay in the set.
+    pub fn expire_up_to(&mut self, height: i64) -> Vec<LivePin> {
+        let mut dropped = Vec::new();
         while let Some(pin) = self.by_expiry.first() {
             if pin.expires_height > height {
                 break;
             }
-            self.by_expiry.pop_first();
+            if let Some(pin) = self.by_expiry.pop_first() {
+                dropped.push(pin);
+            }
         }
+        dropped
     }
 
     /// Minimum creation height among pins that are still live.
@@ -109,14 +113,18 @@ mod tests {
         assert_eq!(set.oldest_creation_height(), Some(10));
     }
 
+    fn dropped_ids(pins: &[LivePin]) -> Vec<&str> {
+        pins.iter().map(|pin| pin.message_id.as_str()).collect()
+    }
+
     #[test]
     fn expire_advances_oldest() {
         let mut set = LivePinSet::new();
         set.insert(10, 50, "a".into());
         set.insert(20, 60, "b".into());
-        set.expire_up_to(50);
+        assert_eq!(dropped_ids(&set.expire_up_to(50)), vec!["a"]);
         assert_eq!(set.oldest_creation_height(), Some(20));
-        set.expire_up_to(60);
+        assert_eq!(dropped_ids(&set.expire_up_to(60)), vec!["b"]);
         assert_eq!(set.oldest_creation_height(), None);
     }
 
@@ -126,7 +134,7 @@ mod tests {
         set.insert(10, 100, "a".into());
         set.insert(10, 100, "b".into());
         assert_eq!(set.oldest_creation_height(), Some(10));
-        set.expire_up_to(100);
+        assert_eq!(dropped_ids(&set.expire_up_to(100)), vec!["a", "b"]);
         assert_eq!(set.oldest_creation_height(), None);
     }
 
@@ -135,7 +143,7 @@ mod tests {
         let mut set = LivePinSet::new();
         set.insert(10, 100, "a".into());
         set.insert(10, 100, "a".into());
-        set.expire_up_to(100);
+        assert_eq!(dropped_ids(&set.expire_up_to(100)), vec!["a"]);
         assert_eq!(set.oldest_creation_height(), None);
     }
 
@@ -156,7 +164,7 @@ mod tests {
         set.insert(10, 200, "a".into());
         set.insert(50, 100, "b".into());
         assert_eq!(set.oldest_creation_height(), Some(10));
-        set.expire_up_to(100);
+        assert_eq!(dropped_ids(&set.expire_up_to(100)), vec!["b"]);
         assert_eq!(set.oldest_creation_height(), Some(10));
     }
 }

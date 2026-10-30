@@ -157,7 +157,7 @@ where
             // DeliverTx only stages into the envelope; LivePinSet updates here (before Commit).
             // Epoch records leave the trie only when this frontier moves, so remember the old value.
             let frontier_before = current_state.envelope.frontier;
-            {
+            let dropped_pins = {
                 let mut live_pins = match self.live_pins.lock() {
                     Ok(lock) => lock,
                     Err(e) => {
@@ -173,7 +173,7 @@ where
                     };
                     live_pins.insert(committed_height, expires_height, meta.message_id.clone());
                 }
-                live_pins.expire_up_to(new_block_height);
+                let dropped_pins = live_pins.expire_up_to(new_block_height);
                 let candidate = live_pins
                     .oldest_creation_height()
                     .map(|h| h.saturating_sub(1))
@@ -190,6 +190,10 @@ where
                         self.protocol_constants().block_buffer,
                     );
                 }
+                dropped_pins
+            };
+            if !dropped_pins.is_empty() {
+                let _ = self.pinboard_prune_tx.send(dropped_pins);
             }
 
             // Drop epoch records only after the frontier moves. An unchanged frontier

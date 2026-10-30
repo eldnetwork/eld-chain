@@ -701,3 +701,104 @@ impl crate::storage::traits::PinboardQueryStorage for RocksDBStorage {
         self.list_pinboard_pins()
     }
 }
+
+fn delete_pinboard_cf(
+    tx: &Transaction<'_, rocksdb::TransactionDB>,
+    cf: &rocksdb::ColumnFamily,
+    key: &[u8],
+    operation: &str,
+) -> Result<(), EldError> {
+    tx.delete_cf(cf, key).map_err(|e| EldError::StorageError {
+        operation: operation.to_string(),
+        details: format!("Failed to delete pinboard row: {e}"),
+    })
+}
+
+impl RocksDBStorage {
+    /// Delete metadata and indexes for one expired pin.
+    ///
+    /// Returns the content key when its refcount reaches zero. A missing metadata
+    /// row is skipped.
+    pub fn delete_expired_pinboard_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<String>, EldError> {
+        let Some(meta) = self.get_pinboard_metadata(message_id)? else {
+            return Ok(None);
+        };
+
+        let wallet = meta.original_signer.hex_with_prefix();
+        let tx = self.begin_transaction();
+
+        delete_pinboard_cf(
+            &tx,
+            self.pinboard_meta_cf()?,
+            message_id.as_bytes(),
+            "delete_expired_pinboard_metadata",
+        )?;
+        if let Some(namespace) = meta.namespace.as_ref() {
+            let path_key =
+                eld_common::pinboard::pinboard_namespace_content_path(namespace, message_id);
+            delete_pinboard_cf(
+                &tx,
+                self.pinboard_meta_cf()?,
+                path_key.as_bytes(),
+                "delete_expired_pinboard_namespace_path",
+            )?;
+        }
+
+        let wallet_key =
+            Self::pinboard_wallet_index_key(&wallet, meta.committed_height, message_id);
+        delete_pinboard_cf(
+            &tx,
+            self.pinboard_idx_wallet_cf()?,
+            wallet_key.as_bytes(),
+            "delete_expired_pinboard_wallet_index",
+        )?;
+        for tag in &meta.tags {
+            let tag_key = Self::pinboard_tag_index_key(tag, meta.committed_height, message_id);
+            delete_pinboard_cf(
+                &tx,
+                self.pinboard_idx_tag_cf()?,
+                tag_key.as_bytes(),
+                "delete_expired_pinboard_tag_index",
+            )?;
+        }
+        let commit_key = Self::pinboard_commit_index_key(meta.committed_height, message_id);
+        delete_pinboard_cf(
+            &tx,
+            self.pinboard_idx_commit_cf()?,
+            commit_key.as_bytes(),
+            "delete_expired_pinboard_commit_index",
+        )?;
+        let expiry_key = Self::pinboard_expiry_index_key(meta.expires_height, message_id);
+        delete_pinboard_cf(
+            &tx,
+            self.pinboard_idx_expiry_cf()?,
+            expiry_key.as_bytes(),
+            "delete_expired_pinboard_expiry_index",
+        )?;
+
+        let next = self.update_pinboard_refcount_with_tx(&meta.content_key, -1, &tx)?;
+        let drop_blob = next == 0;
+        if drop_blob {
+            delete_pinboard_cf(
+                &tx,
+                self.pinboard_refcounts_cf()?,
+                meta.content_key.as_bytes(),
+                "delete_expired_pinboard_refcount",
+            )?;
+        }
+
+        tx.commit().map_err(|e| EldError::StorageError {
+            operation: "delete_expired_pinboard_message_commit".to_string(),
+            details: e.to_string(),
+        })?;
+
+        if drop_blob {
+            Ok(Some(meta.content_key))
+        } else {
+            Ok(None)
+        }
+    }
+}

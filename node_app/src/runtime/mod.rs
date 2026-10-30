@@ -18,12 +18,13 @@ use tracing::info;
 
 use crate::abci_interface::snapshot::SnapshotManager;
 use crate::abci_interface::{init_abci_server, AbciServerInitContext};
-use crate::app_state::AppState;
+use crate::app_state::{AppState, LivePin};
 use crate::config::AppConfig;
 use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::hybrid_storage::HybridStorage;
 use crate::storage::pinboard_blob_gc::start_pinboard_blob_gc_worker;
+use crate::storage::pinboard_prune::start_pinboard_prune_worker;
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::ProtocolConstantsStorage;
 use crate::Args;
@@ -152,6 +153,8 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
         .ip_address();
 
     let (ready_tx, ready_rx) = oneshot::channel();
+    let (pinboard_prune_tx, pinboard_prune_rx) =
+        tokio::sync::mpsc::unbounded_channel::<Vec<LivePin>>();
 
     let (consensus_server, chain_tip) = init_abci_server(AbciServerInitContext {
         consensus_config,
@@ -165,13 +168,23 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
         local_identity: capacity.local_identity.clone(),
         committed_state: committed_state.clone(),
         current_state,
+        pinboard_prune_tx,
     })
     .await
     .unwrap_or_else(|e| {
         handle_fatal_eld_error(e);
     });
 
-    start_pinboard_blob_gc_worker(rocks_db_storage, chain_tip, capacity.manager.clone());
+    start_pinboard_blob_gc_worker(
+        rocks_db_storage.clone(),
+        chain_tip,
+        capacity.manager.clone(),
+    );
+    start_pinboard_prune_worker(
+        rocks_db_storage,
+        capacity.manager.clone(),
+        pinboard_prune_rx,
+    );
 
     p2p::start_proof_validation_and_heartbeats(p2p.real_coordinator, committed_state);
 

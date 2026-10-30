@@ -19,7 +19,7 @@ pub use frontier_snapshot::FrontierSnapshotStore;
 pub use latest_paths::{
     latest_app_state_snapshot_path, latest_app_state_tip_path, latest_epoch_record_path,
 };
-pub use live_pins::LivePinSet;
+pub use live_pins::{LivePin, LivePinSet};
 pub use tip::AppStateTip;
 
 // Re-exported for `crate::app_state::…` paths; not named in other modules of this binary.

@@ -376,6 +376,162 @@ fn test_list_pinboard_pins_keeps_expired_and_dedups_namespace_key() {
     );
 }
 
+fn sample_pin(message_id: &str, content_key: &str, expires_height: u64) -> PinboardMessageMetadata {
+    let addr = Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").unwrap();
+    PinboardMessageMetadata {
+        message_id: message_id.to_string(),
+        original_signer: addr,
+        content_key: content_key.to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec!["news".to_string()],
+        committed_height: 10,
+        received_timestamp: 1,
+        namespace: Some("captainhook".to_string()),
+    }
+}
+
+fn store_pin_with_indexes(storage: &RocksDBStorage, meta: &PinboardMessageMetadata) {
+    let wallet = meta.original_signer.hex_with_prefix();
+    let tx = storage.begin_transaction();
+    storage
+        .put_pinboard_metadata_with_tx(&meta.message_id, meta, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_wallet_index_with_tx(&wallet, meta.committed_height, &meta.message_id, &tx)
+        .unwrap();
+    for tag in &meta.tags {
+        storage
+            .put_pinboard_tag_index_with_tx(tag, meta.committed_height, &meta.message_id, &tx)
+            .unwrap();
+    }
+    storage
+        .put_pinboard_expiry_index_with_tx(meta.expires_height, &meta.message_id, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_commit_index_with_tx(meta.committed_height, &meta.message_id, &tx)
+        .unwrap();
+    storage
+        .update_pinboard_refcount_with_tx(&meta.content_key, 1, &tx)
+        .unwrap();
+    tx.commit().unwrap();
+}
+
+fn pinboard_cf_has_key(storage: &RocksDBStorage, cf: &str, key: &str) -> bool {
+    let handle = storage.cf_handle(cf).unwrap();
+    storage.db.get_cf(handle, key.as_bytes()).unwrap().is_some()
+}
+
+fn pinboard_refcount(storage: &RocksDBStorage, content_key: &str) -> Option<u64> {
+    let raw = storage
+        .db
+        .get_cf(
+            storage.pinboard_refcounts_cf().unwrap(),
+            content_key.as_bytes(),
+        )
+        .unwrap()?;
+    Some(bincode::deserialize(&raw).unwrap())
+}
+
+fn assert_pin_indexes(storage: &RocksDBStorage, meta: &PinboardMessageMetadata, present: bool) {
+    let wallet = meta.original_signer.hex_with_prefix();
+    let wallet_key =
+        RocksDBStorage::pinboard_wallet_index_key(&wallet, meta.committed_height, &meta.message_id);
+    let tag_key = RocksDBStorage::pinboard_tag_index_key(
+        &meta.tags[0],
+        meta.committed_height,
+        &meta.message_id,
+    );
+    let commit_key =
+        RocksDBStorage::pinboard_commit_index_key(meta.committed_height, &meta.message_id);
+    let expiry_key =
+        RocksDBStorage::pinboard_expiry_index_key(meta.expires_height, &meta.message_id);
+    let path_key = eld_common::pinboard::pinboard_namespace_content_path(
+        meta.namespace.as_deref().unwrap(),
+        &meta.message_id,
+    );
+    assert_eq!(
+        storage
+            .get_pinboard_metadata(&meta.message_id)
+            .unwrap()
+            .is_some(),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_meta", &path_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_wallet", &wallet_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_tag", &tag_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_commit", &commit_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_expiry", &expiry_key),
+        present
+    );
+}
+
+#[test]
+fn delete_expired_pinboard_message_removes_rows_and_keeps_later_post() {
+    let storage = create_test_storage();
+    let expired = sample_pin("expired", "blob-expired", 40);
+    let live = sample_pin("live", "blob-live", 100);
+    store_pin_with_indexes(&storage, &expired);
+    store_pin_with_indexes(&storage, &live);
+
+    let dropped = storage
+        .delete_expired_pinboard_message(&expired.message_id)
+        .unwrap();
+    assert_eq!(dropped, Some("blob-expired".to_string()));
+    assert_pin_indexes(&storage, &expired, false);
+    assert_pin_indexes(&storage, &live, true);
+    assert_eq!(pinboard_refcount(&storage, "blob-expired"), None);
+    assert_eq!(pinboard_refcount(&storage, "blob-live"), Some(1));
+
+    assert!(storage
+        .delete_expired_pinboard_message(&expired.message_id)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn delete_expired_pinboard_message_drops_blob_only_when_refcount_hits_zero() {
+    let storage = create_test_storage();
+    let first = sample_pin("first", "shared", 40);
+    let mut second = sample_pin("second", "shared", 50);
+    second.committed_height = 20;
+    store_pin_with_indexes(&storage, &first);
+    store_pin_with_indexes(&storage, &second);
+    assert_eq!(pinboard_refcount(&storage, "shared"), Some(2));
+
+    assert!(storage
+        .delete_expired_pinboard_message(&first.message_id)
+        .unwrap()
+        .is_none());
+    assert_eq!(pinboard_refcount(&storage, "shared"), Some(1));
+    assert_pin_indexes(&storage, &second, true);
+
+    assert_eq!(
+        storage
+            .delete_expired_pinboard_message(&second.message_id)
+            .unwrap(),
+        Some("shared".to_string())
+    );
+    assert_eq!(pinboard_refcount(&storage, "shared"), None);
+    assert_pin_indexes(&storage, &first, false);
+    assert_pin_indexes(&storage, &second, false);
+}
+
 #[test]
 fn test_pinboard_refcount_update() {
     let storage = create_test_storage();
