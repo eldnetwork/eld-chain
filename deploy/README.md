@@ -73,11 +73,11 @@ Tendermint is compiled `GOOS=linux` in `TENDERMINT_DIR` for the Mac’s CPU, the
 
 A tag matching `eld-app-v*.*.*` starts [`.github/workflows/eld-app-image.yml`](../.github/workflows/eld-app-image.yml). CI runs first. The image job then publishes `linux/amd64` and `linux/arm64` as one manifest:
 
-`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.30`
+`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.31`
 
 ```sh
-git tag -a eld-app-v0.0.30 -m "eld-app v0.0.30"
-git push origin eld-app-v0.0.30
+git tag -a eld-app-v0.0.31 -m "eld-app v0.0.31"
+git push origin eld-app-v0.0.31
 ```
 
 `Dockerfile.release` is a release build (`cargo build --release --locked -p eld-node`). The local `eld-app` image stays a debug build from `Dockerfile.eld-base` and `Dockerfile.app`. The process working directory is `/app`, so the same config, wallet, and data mounts apply.
@@ -171,7 +171,7 @@ Same three actions as the cluster, against the single Compose project (`eld-sing
 ./deploy/scripts/docker/local/single/single-stop.sh
 ```
 
-`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.30` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
+`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.31` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
 
 ```sh
 ./deploy/scripts/docker/local/single/single-start-without-history.ghcr.sh
