@@ -149,6 +149,8 @@ where
 
             // Apply this block's staged PostMessage pins, then advance the frontier.
             // DeliverTx only stages into the envelope; LivePinSet updates here (before Commit).
+            // Epoch records leave the trie only when this frontier moves, so remember the old value.
+            let frontier_before = current_state.envelope.frontier;
             {
                 let mut live_pins = match self.live_pins.lock() {
                     Ok(lock) => lock,
@@ -180,14 +182,16 @@ where
                 }
             }
 
-            // Drop epoch records whose whole span is below the frontier, then hash.
-            let blocks_per_epoch = self.protocol_constants().blocks_per_epoch;
-            let frontier = current_state.envelope.frontier;
-            current_state.envelope.prune_data_between(
-                1,
-                frontier.saturating_add(1),
-                blocks_per_epoch,
-            );
+            // Drop epoch records only after the frontier moves. An unchanged frontier
+            // cannot newly cover an epoch, and the app hash is taken just below.
+            if current_state.envelope.frontier > frontier_before {
+                let blocks_per_epoch = self.protocol_constants().blocks_per_epoch;
+                current_state.envelope.prune_data_between(
+                    1,
+                    current_state.envelope.frontier.saturating_add(1),
+                    blocks_per_epoch,
+                );
+            }
 
             // Calculate app hash before releasing lock (includes frontier when it advanced).
             let app_hash = current_state.envelope.calculate_app_hash();
