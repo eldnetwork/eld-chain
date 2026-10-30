@@ -15,6 +15,12 @@ fn capacity_registration_expired(provider: &CapacityValidatorInfo, current_block
             .saturating_add(provider.registration_duration)
 }
 
+/// Height sent in `ResponseEndBlock`. Tendermint keeps `block_buffer` blocks
+/// behind the calculated frontier. The result is never negative.
+fn reported_frontier(frontier: i64, block_buffer: i64) -> i64 {
+    frontier.saturating_sub(block_buffer).max(0)
+}
+
 /// Drops capacity validators whose registration lease has ended. Returns how many were removed.
 fn expire_capacity_registrations(
     capacity_validators: &mut Vec<CapacityValidatorInfo>,
@@ -176,9 +182,13 @@ where
                     current_state.envelope.frontier = candidate;
                 }
                 // A summary is expensive, so report the frontier only when this
-                // height is a multiple of the epoch length.
+                // height is a multiple of the epoch length. The reported height
+                // lags the stored frontier by `block_buffer`.
                 if new_block_height % self.protocol_constants().blocks_per_epoch == 0 {
-                    updated_frontier = current_state.envelope.frontier;
+                    updated_frontier = reported_frontier(
+                        current_state.envelope.frontier,
+                        self.protocol_constants().block_buffer,
+                    );
                 }
             }
 
@@ -288,7 +298,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::expire_capacity_registrations;
+    use super::{expire_capacity_registrations, reported_frontier};
     use ed25519_dalek::SigningKey;
     use eld_common::address::Address;
     use eld_common::coin::Coin;
@@ -315,6 +325,14 @@ mod tests {
             registered_block,
             registration_duration,
         }
+    }
+
+    #[test]
+    fn reported_frontier_subtracts_buffer_and_floors_at_zero() {
+        assert_eq!(reported_frontier(200, 120), 80);
+        assert_eq!(reported_frontier(120, 120), 0);
+        assert_eq!(reported_frontier(4, 120), 0);
+        assert_eq!(reported_frontier(0, 120), 0);
     }
 
     #[test]
