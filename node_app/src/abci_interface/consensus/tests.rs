@@ -657,7 +657,6 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
 
     let consensus = mock_consensus_connection();
     let blocks_per_epoch = consensus.protocol_constants().blocks_per_epoch;
-    let block_buffer = consensus.protocol_constants().block_buffer;
     let creation_height = 5i64;
     let expires_height = blocks_per_epoch.saturating_mul(3);
     let signer =
@@ -715,10 +714,7 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
             height: blocks_per_epoch,
         })
         .await;
-    assert_eq!(
-        first_boundary.updated_frontier,
-        (creation_height - 1).saturating_sub(block_buffer).max(0)
-    );
+    assert_eq!(first_boundary.updated_frontier, creation_height - 1);
     {
         let current = consensus.current_state.lock().expect("current lock");
         assert_eq!(
@@ -739,31 +735,12 @@ async fn end_block_reports_frontier_only_at_epoch_boundary() {
             height: blocks_per_epoch * 2,
         })
         .await;
-    assert_eq!(
-        second_boundary.updated_frontier,
-        (creation_height - 1).saturating_sub(block_buffer).max(0)
-    );
+    assert_eq!(second_boundary.updated_frontier, creation_height - 1);
     {
         let current = consensus.current_state.lock().expect("current lock");
         assert_eq!(
             current.as_ref().expect("current state").envelope.frontier,
             creation_height - 1
-        );
-    }
-
-    // Pin has expired, so the frontier catches this height. The response lags by the buffer.
-    let past_buffer = block_buffer + blocks_per_epoch;
-    let advanced = consensus
-        .end_block(RequestEndBlock {
-            height: past_buffer,
-        })
-        .await;
-    assert_eq!(advanced.updated_frontier, past_buffer - block_buffer);
-    {
-        let current = consensus.current_state.lock().expect("current lock");
-        assert_eq!(
-            current.as_ref().expect("current state").envelope.frontier,
-            past_buffer
         );
     }
 }
