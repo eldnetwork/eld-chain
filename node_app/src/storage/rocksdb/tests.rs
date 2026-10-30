@@ -49,6 +49,18 @@ fn test_snapshot_metadata(
     }
 }
 
+fn put_test_protocol_constants(storage: &RocksDBStorage) {
+    use eld_common::protocol_constants::{GenesisAppState, ProtocolConstants};
+
+    let bytes = serde_json::to_vec(&GenesisAppState {
+        protocol_constants: ProtocolConstants::local_dev(),
+    })
+    .expect("protocol constants json");
+    storage
+        .put_protocol_constants(&bytes)
+        .expect("store constants");
+}
+
 fn put_test_epoch_record(storage: &RocksDBStorage, epoch: i64) {
     use crate::app_state::latest_epoch_record_path;
     use eld_common::cado::{epoch_record_path_name, CADOMetadata, CadoPathKey, CadoType};
@@ -1789,6 +1801,7 @@ fn test_prune_indexed_data_between_keeps_genesis_and_is_idempotent() {
     }
 
     let storage = create_test_storage();
+    put_test_protocol_constants(&storage);
     let secret = SigningKey::from_bytes(&[17u8; 32]);
 
     let heights = [1u64, 5, 10, 15];
@@ -1846,4 +1859,48 @@ fn test_prune_indexed_data_between_keeps_genesis_and_is_idempotent() {
     assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 2);
     assert!(storage.get_indexed_transaction(&ids[0]).unwrap().is_some());
     assert!(storage.get_indexed_transaction(&ids[3]).unwrap().is_some());
+}
+
+#[test]
+fn prune_indexed_data_between_deletes_epochs_inside_the_window() {
+    use crate::app_state::latest_epoch_record_path;
+    use crate::storage::traits::TransactionIndexerStorage;
+    use eld_common::cado::epoch_record_path_name;
+    use eld_common::protocol_constants::{GenesisAppState, ProtocolConstants};
+
+    let epoch_path = |epoch: i64| {
+        let name = epoch_record_path_name(epoch).expect("name");
+        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&name)).expect("path")
+    };
+
+    let storage = create_test_storage();
+    let mut constants = ProtocolConstants::local_dev();
+    constants.blocks_per_epoch = 10;
+    let bytes = serde_json::to_vec(&GenesisAppState {
+        protocol_constants: constants,
+    })
+    .expect("protocol constants json");
+    storage
+        .put_protocol_constants(&bytes)
+        .expect("store constants");
+
+    put_test_epoch_record(&storage, 1);
+    put_test_epoch_record(&storage, 2);
+
+    // No indexed rows. Window (1, 26): epoch 1 is heights 10..20. Epoch 2 starts at 20.
+    storage.prune_indexed_data_between(1, 26).unwrap();
+
+    assert!(storage.get_cado_by_path(epoch_path(1)).unwrap().is_none());
+    assert!(storage.get_cado_by_path(epoch_path(2)).unwrap().is_some());
+    assert!(storage
+        .get_cado_by_path(latest_epoch_record_path().clone())
+        .unwrap()
+        .is_some());
+
+    storage.prune_indexed_data_between(1, 26).unwrap();
+    assert!(storage.get_cado_by_path(epoch_path(2)).unwrap().is_some());
+    assert!(storage
+        .get_cado_by_path(latest_epoch_record_path().clone())
+        .unwrap()
+        .is_some());
 }

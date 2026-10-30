@@ -4,6 +4,7 @@ use eld_common::address::Address;
 use eld_common::cado::{CADOMap, CADOMetadata, CadoBody, CadoPath, DeserializableBin};
 use eld_common::error::EldError;
 use eld_common::pinboard::PinboardMessageMetadata;
+use eld_common::protocol_constants::ProtocolConstants;
 use eld_common::storage::AccountStorage;
 use eld_common::tx::Tx;
 use eld_common::validator::EpochRecord;
@@ -359,7 +360,8 @@ pub trait VerifiedProofRewardDedupStorage: Send + Sync {
 /// Genesis protocol constants persisted outside app state (default column family).
 pub trait ProtocolConstantsStorage: Send + Sync {
     fn put_protocol_constants(&self, bytes: &[u8]) -> Result<(), EldError>;
-    fn get_protocol_constants(&self) -> Result<Option<Vec<u8>>, EldError>;
+    /// Parsed constants. Missing or unreadable bytes end the process.
+    fn get_protocol_constants(&self) -> ProtocolConstants;
 }
 
 pub trait ConsensusConnectionStorage:

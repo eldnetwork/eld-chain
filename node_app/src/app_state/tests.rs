@@ -697,6 +697,87 @@ fn insert_epoch_records_index_from_path_inserts_valid_epoch_paths_only() {
 }
 
 #[test]
+fn prune_data_between_drops_epochs_fully_inside_the_window() {
+    use eld_common::cado::epoch_record_path_name;
+
+    let blocks_per_epoch = 10i64;
+    let mut envelope = AppStateEnvelope::default();
+    for epoch in [0i64, 1, 2] {
+        insert_test_epoch_cado(&mut envelope, epoch);
+        let key = epoch_record_path_name(epoch).expect("name");
+        let path = CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&key)).expect("path");
+        envelope.insert_epoch_records_index_from_path(path.as_str());
+        let cado = envelope
+            .committed_cado_cache
+            .get(path.as_str().as_bytes())
+            .expect("epoch cado")
+            .clone();
+        envelope
+            .state_trie
+            .insert(path.as_str().as_bytes(), &cado.content_hash());
+    }
+
+    let staged_key = epoch_record_path_name(1).expect("name");
+    let staged_path =
+        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&staged_key)).expect("path");
+    envelope.cado_cache.insert(
+        staged_path.as_str().to_string(),
+        CadoBody::immutable(
+            vec![],
+            CADOMetadata::new(CadoType::EpochRecord, &staged_key),
+        ),
+    );
+
+    let latest = latest_epoch_record_path();
+    let latest_cado = CadoBody::immutable(
+        vec![1],
+        CADOMetadata::new(CadoType::EpochRecord, latest.name()),
+    );
+    envelope
+        .committed_cado_cache
+        .insert(latest.as_str().as_bytes(), latest_cado.clone());
+    envelope
+        .state_trie
+        .insert(latest.as_str().as_bytes(), &latest_cado.content_hash());
+
+    // frontier 25 → prune_data_between(1, 26). Epoch 1 is heights 10..20. Epoch 2 starts at 20.
+    let trie_before = envelope.state_trie.root_hash();
+    envelope.prune_data_between(1, 26, blocks_per_epoch);
+
+    let epoch_path = |epoch: i64| {
+        let key = epoch_record_path_name(epoch).expect("name");
+        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&key)).expect("path")
+    };
+    assert!(envelope
+        .committed_cado_cache
+        .get(epoch_path(1).as_str().as_bytes())
+        .is_none());
+    assert!(!envelope.cado_cache.contains_key(epoch_path(1).as_str()));
+    assert!(envelope
+        .committed_cado_cache
+        .get(epoch_path(0).as_str().as_bytes())
+        .is_some());
+    assert!(envelope
+        .committed_cado_cache
+        .get(epoch_path(2).as_str().as_bytes())
+        .is_some());
+    assert!(envelope
+        .committed_cado_cache
+        .get(latest.as_str().as_bytes())
+        .is_some());
+    assert_eq!(
+        envelope
+            .epoch_records_index
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![0, 2]
+    );
+
+    assert_ne!(envelope.state_trie.root_hash(), trie_before);
+}
+
+#[test]
 fn rebuild_epoch_records_index_populates_from_committed_cache() {
     let mut envelope = AppStateEnvelope::default();
     insert_test_epoch_cado(&mut envelope, 1);

@@ -1,5 +1,7 @@
+use crate::errors::handle_fatal_eld_error;
 use crate::storage::rate_limiter::PrefixQueryRateLimiter;
 use eld_common::error::EldError;
+use eld_common::protocol_constants::ProtocolConstants;
 use rocksdb::{Options, Transaction, TransactionDB, TransactionDBOptions};
 use std::path::Path;
 use std::sync::Mutex;
@@ -89,14 +91,27 @@ impl RocksDBStorage {
             })
     }
 
-    pub fn get_protocol_constants(&self) -> Result<Option<Vec<u8>>, EldError> {
-        let cf = self.cf_handle("default")?;
-        self.db
-            .get_cf(cf, PROTOCOL_CONSTANTS_KEY)
-            .map_err(|e| EldError::StorageError {
+    /// Stored genesis protocol constants. Missing or unreadable bytes end the process.
+    pub fn get_protocol_constants(&self) -> ProtocolConstants {
+        let cf = match self.cf_handle("default") {
+            Ok(cf) => cf,
+            Err(e) => handle_fatal_eld_error(e),
+        };
+        let bytes = match self.db.get_cf(cf, PROTOCOL_CONSTANTS_KEY) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => handle_fatal_eld_error(EldError::InitializationError {
+                component: "protocol_constants".into(),
+                details: "protocol constants are missing from the database".into(),
+            }),
+            Err(e) => handle_fatal_eld_error(EldError::StorageError {
                 operation: "get_protocol_constants".to_string(),
                 details: e.to_string(),
-            })
+            }),
+        };
+        match ProtocolConstants::from_app_state_bytes(&bytes) {
+            Ok(constants) => constants,
+            Err(e) => handle_fatal_eld_error(e),
+        }
     }
 
     pub fn begin_transaction(&self) -> Transaction<'_, TransactionDB> {

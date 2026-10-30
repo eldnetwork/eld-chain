@@ -2,6 +2,9 @@ use crate::indexer::{IndexedEvent, IndexedTransaction, TransactionStatus};
 use crate::storage::traits::TransactionIndexerStorage;
 use abci::types::Event;
 use eld_common::address::Address;
+use eld_common::cado::{
+    epoch_record_path_name, epochs_fully_inside_window, CadoPath, CadoPathKey, CadoType,
+};
 use eld_common::error::EldError;
 use eld_common::tx::{HasSender, PayloadInner, Tx};
 use hex;
@@ -348,6 +351,32 @@ impl RocksDBStorage {
         }
 
         Ok(n)
+    }
+
+    /// Delete per-epoch CADO rows whose whole span sits in `start_exclusive < h < end_exclusive`.
+    ///
+    /// The `LATEST` alias is not a numbered epoch path, so it is left in place.
+    fn prune_epoch_records_between(
+        &self,
+        start_exclusive: i64,
+        end_exclusive: i64,
+        blocks_per_epoch: i64,
+    ) -> Result<(), EldError> {
+        let Some((first, last)) =
+            epochs_fully_inside_window(start_exclusive, end_exclusive, blocks_per_epoch)
+        else {
+            return Ok(());
+        };
+
+        for epoch in first..=last {
+            let name = epoch_record_path_name(epoch)?;
+            let path = CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&name))?;
+            if self.get_cado_by_path(path.clone())?.is_none() {
+                continue;
+            }
+            self.system_delete_cado(path, &epoch.to_string())?;
+        }
+        Ok(())
     }
 }
 
@@ -1103,6 +1132,13 @@ impl TransactionIndexerStorage for RocksDBStorage {
         };
         if first_height >= end_exclusive {
             return Ok(());
+        }
+
+        if let (Ok(start_i), Ok(end_i)) =
+            (i64::try_from(start_exclusive), i64::try_from(end_exclusive))
+        {
+            let blocks_per_epoch = self.get_protocol_constants().blocks_per_epoch;
+            self.prune_epoch_records_between(start_i, end_i, blocks_per_epoch)?;
         }
 
         let lower = Self::block_position_chron_index_key_bytes(first_height, 0);

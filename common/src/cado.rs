@@ -98,7 +98,10 @@ impl CadoType {
     pub fn is_system_deletable(&self) -> bool {
         matches!(
             self,
-            CadoType::ChunkReference | CadoType::SnapshotChunk | CadoType::SnapshotMetadata
+            CadoType::ChunkReference
+                | CadoType::SnapshotChunk
+                | CadoType::SnapshotMetadata
+                | CadoType::EpochRecord
         )
     }
 
@@ -504,6 +507,30 @@ pub fn epoch_from_record_path_name(name: &str) -> Option<i64> {
     }
     let epoch_u64 = u64::from_str_radix(hex_part, 16).ok()?;
     i64::try_from(epoch_u64).ok()
+}
+
+/// Inclusive epoch numbers whose every block sits in `start_exclusive < h < end_exclusive`.
+///
+/// Epoch `E` covers heights `E * blocks_per_epoch .. (E + 1) * blocks_per_epoch`.
+/// `None` when `blocks_per_epoch` is not positive, or when no epoch fits.
+pub fn epochs_fully_inside_window(
+    start_exclusive: i64,
+    end_exclusive: i64,
+    blocks_per_epoch: i64,
+) -> Option<(i64, i64)> {
+    if blocks_per_epoch <= 0 {
+        return None;
+    }
+    let first = start_exclusive
+        .checked_div(blocks_per_epoch)?
+        .checked_add(1)?;
+    let last = end_exclusive
+        .checked_div(blocks_per_epoch)?
+        .checked_sub(1)?;
+    if first < 0 || first > last {
+        return None;
+    }
+    Some((first, last))
 }
 
 impl CadoPath {
@@ -997,6 +1024,16 @@ mod tests {
     fn epoch_from_record_path_name_rejects_invalid() {
         assert_eq!(epoch_from_record_path_name("epoch:1"), None);
         assert_eq!(epoch_from_record_path_name("0x01"), None);
+    }
+
+    #[test]
+    fn epochs_fully_inside_window_is_the_closed_span() {
+        // blocks_per_epoch 10, window (1, 26): epoch 1 is heights 10..20. Epoch 2 starts at 20.
+        assert_eq!(epochs_fully_inside_window(1, 26, 10), Some((1, 1)));
+        // Window (1, 40) also covers epoch 2 (20..30) and epoch 3 (30..40).
+        assert_eq!(epochs_fully_inside_window(1, 40, 10), Some((1, 3)));
+        assert_eq!(epochs_fully_inside_window(1, 11, 20), None);
+        assert_eq!(epochs_fully_inside_window(1, 26, 0), None);
     }
 
     #[test]

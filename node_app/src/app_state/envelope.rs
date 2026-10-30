@@ -8,8 +8,8 @@ use crate::storage::traits::{CADOStorage, VerifiedProofRewardDedupStorage};
 use eld_common::account::Account;
 use eld_common::address::Address;
 use eld_common::cado::{
-    epoch_from_record_path_name, epoch_record_path_name, CADOMarkedForDeletion, CadoBody, CadoPath,
-    CadoPathKey, CadoType,
+    epoch_from_record_path_name, epoch_record_path_name, epochs_fully_inside_window,
+    CADOMarkedForDeletion, CadoBody, CadoPath, CadoPathKey, CadoType,
 };
 use eld_common::coin::Coin;
 use eld_common::constants::cado::PATH_PREFIX_EPOCH_RECORD;
@@ -215,6 +215,40 @@ impl AppStateEnvelope {
     pub fn insert_epoch_records_index_from_path(&mut self, path_str: &str) {
         if let Some(epoch) = Self::epoch_number_from_record_path(path_str) {
             self.epoch_records_index.insert(epoch);
+        }
+    }
+
+    /// Drop per-epoch records whose whole block span sits in `start_exclusive < h < end_exclusive`.
+    ///
+    /// The `LATEST` epoch alias is left in place. `blocks_per_epoch` is the protocol epoch length.
+    pub fn prune_data_between(
+        &mut self,
+        start_exclusive: i64,
+        end_exclusive: i64,
+        blocks_per_epoch: i64,
+    ) {
+        let Some((first, last)) =
+            epochs_fully_inside_window(start_exclusive, end_exclusive, blocks_per_epoch)
+        else {
+            return;
+        };
+        let expired: Vec<i64> = self
+            .epoch_records_index
+            .range(first..=last)
+            .copied()
+            .collect();
+        for epoch in expired {
+            let Ok(name) = epoch_record_path_name(epoch) else {
+                continue;
+            };
+            let Ok(path) = CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&name)) else {
+                continue;
+            };
+            let path_str = path.as_str();
+            self.committed_cado_cache.remove(path_str.as_bytes());
+            self.state_trie.remove(path_str.as_bytes());
+            self.epoch_records_index.remove(&epoch);
+            self.cado_cache.remove(path_str);
         }
     }
 

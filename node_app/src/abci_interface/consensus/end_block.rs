@@ -180,6 +180,15 @@ where
                 }
             }
 
+            // Drop epoch records whose whole span is below the frontier, then hash.
+            let blocks_per_epoch = self.protocol_constants().blocks_per_epoch;
+            let frontier = current_state.envelope.frontier;
+            current_state.envelope.prune_data_between(
+                1,
+                frontier.saturating_add(1),
+                blocks_per_epoch,
+            );
+
             // Calculate app hash before releasing lock (includes frontier when it advanced).
             let app_hash = current_state.envelope.calculate_app_hash();
             current_state.set_app_hash(app_hash);

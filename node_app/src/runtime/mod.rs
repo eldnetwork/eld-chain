@@ -27,7 +27,7 @@ use crate::storage::pinboard_blob_gc::start_pinboard_blob_gc_worker;
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::ProtocolConstantsStorage;
 use crate::Args;
-use eld_common::protocol_constants::{ProtocolConstants, ProtocolHandle};
+use eld_common::protocol_constants::ProtocolHandle;
 
 pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     let config_path = ConsensusConfig::resolve_path(args.config_path.clone());
@@ -229,18 +229,7 @@ fn load_protocol_constants_on_restart(storage: &HybridStorage, protocol: &Protoc
     if !has_persisted_state {
         return;
     }
-    let bytes = match storage.get_protocol_constants() {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => handle_fatal_eld_error(EldError::InitializationError {
-            component: "protocol_constants".into(),
-            details: "persisted chain is missing protocol constants".into(),
-        }),
-        Err(e) => handle_fatal_eld_error(e),
-    };
-    let constants = match ProtocolConstants::from_app_state_bytes(&bytes) {
-        Ok(constants) => constants,
-        Err(e) => handle_fatal_eld_error(e),
-    };
+    let constants = storage.get_protocol_constants();
     if protocol.set(constants).is_err() {
         handle_fatal_eld_error(EldError::InitializationError {
             component: "protocol_constants".into(),
