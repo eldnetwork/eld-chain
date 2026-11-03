@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/scripts/_env.sh
 source "${SCRIPT_DIR}/../../../_env.sh"
+require_env ELD_SNAPSHOT_QUERY_TOKEN
 COMPOSE_FILE="$DEPLOY_DIR/docker/local/single/compose.yaml"
 
 compose() {

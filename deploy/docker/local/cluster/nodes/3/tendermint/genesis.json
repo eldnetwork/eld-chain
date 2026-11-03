@@ -65,6 +65,7 @@
       "min_stake_amount": "5",
       "validators_per_epoch": 4,
       "blocks_per_epoch": 20,
+      "block_buffer": 120,
       "active_storage_validators_per_epoch": 1,
       "challenges_per_epoch": 5,
       "chunks_per_challenge": 10,

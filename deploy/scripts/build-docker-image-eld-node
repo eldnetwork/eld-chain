@@ -26,9 +26,17 @@ elif [[ -n "${1:-}" ]]; then
   exit 1
 fi
 
+TM_RS_DIR="$(cd "${REPO_ROOT}/../eld-tendermint-rs" && pwd)"
+if [[ ! -f "${TM_RS_DIR}/crates/proto/Cargo.toml" ]]; then
+  echo "Missing ${TM_RS_DIR}/crates/proto/Cargo.toml" >&2
+  echo "eld-node depends on the sibling eld-tendermint-rs checkout." >&2
+  exit 1
+fi
+
 echo "Building compile image ${ELD_BASE_IMAGE} from ${ELD_BASE_DOCKERFILE}"
-docker build \
+DOCKER_BUILDKIT=1 docker build \
   ${NO_CACHE[@]+"${NO_CACHE[@]}"} \
+  --build-context "eld_tm=${TM_RS_DIR}" \
   -f "$ELD_BASE_DOCKERFILE" \
   -t "$ELD_BASE_IMAGE" \
   "$REPO_ROOT"

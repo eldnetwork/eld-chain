@@ -14,6 +14,8 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY common ./common
 COPY analytics ./analytics
+# Workspace [patch.crates-io] replaces tendermint-proto 0.23.7 with this tree.
+COPY vendor/tendermint-proto ./vendor/tendermint-proto
 # Cargo loads every workspace member. Drop members that were not copied.
 RUN sed -i 's/, "cli"//g; s/, "node_app"//g; s/, "client"//g; s/, "faucet"//g' Cargo.toml \
     && cargo metadata --format-version 1 >/dev/null \

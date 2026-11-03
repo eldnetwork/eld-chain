@@ -91,6 +91,8 @@ pub mod abci_query {
     pub const OTHER: &str = "other";
     pub const ESTIMATE_FEE: &str = "estimate_fee";
     pub const CADO_PATHS: &str = "cado_paths";
+    /// Compressed frontier snapshot. Request data is the query token plus a little-endian i64 frontier.
+    pub const FRONTIER_APPSTATE: &str = "/frontier_appstate";
 }
 
 /// Constants for CADO path validation and security
@@ -219,6 +221,7 @@ pub mod cado {
         TYPE_CHUNK_REFERENCE,   // System cleanup of old chunk references
         TYPE_SNAPSHOT_CHUNK,    // System cleanup of old snapshot chunks
         TYPE_SNAPSHOT_METADATA, // System cleanup of old snapshot metadata
+        TYPE_EPOCH_RECORD,      // System cleanup of epoch records below the summary
     ];
 
     /// All CADO types that are allowed to be deleted (combines user and system deletable types)
@@ -226,6 +229,7 @@ pub mod cado {
         TYPE_CHUNK_REFERENCE,
         TYPE_SNAPSHOT_CHUNK,
         TYPE_SNAPSHOT_METADATA,
+        TYPE_EPOCH_RECORD,
     ];
 
     /// CADO types stored for node persistence / sync only — never part of chain-state

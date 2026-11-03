@@ -163,8 +163,18 @@ impl TransactionIndexer {
             .block_position_indexed(block_height, block_index)
     }
 
-    /// Start the Tendermint RPC sync thread.
+    /// Delete indexed transactions, events and secondary-index entries for heights
+    /// `h` where `start_exclusive < h < end_exclusive`.
+    ///
+    /// Idempotent. Safe to call from a background thread.
+    pub fn prune_between(&self, start_exclusive: u64, end_exclusive: u64) -> Result<(), EldError> {
+        self.storage
+            .prune_indexed_data_between(start_exclusive, end_exclusive)
+    }
+
+    /// Start the Tendermint RPC sync thread and the separate summary prune thread.
     pub fn start(self: Arc<Self>, tendermint_rpc_url: String) {
-        crate::indexer::sync::spawn_indexer_sync(self, tendermint_rpc_url);
+        crate::indexer::sync::spawn_indexer_sync(Arc::clone(&self), tendermint_rpc_url.clone());
+        crate::indexer::prune::spawn_indexer_prune(self, tendermint_rpc_url);
     }
 }

@@ -2,7 +2,9 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use eld_client::api::abci::{deliver_tx_events, AbciInfoWrapper};
+use eld_client::api::abci::{
+    deliver_tx_events, AbciInfoWrapper, SummaryHeader, SummaryValidatorSet,
+};
 use eld_client::api::rest::{NamespaceRegisteredResponse, PostMessageSubmitResponse};
 use eld_client::facade::NamespaceLookup;
 use eld_client::facade::SubmittedTx;
@@ -602,6 +604,101 @@ pub(crate) fn emit_epoch(
     )
 }
 
+pub(crate) fn emit_summary(mode: OutputMode, header: &SummaryHeader) -> Result<(), EldError> {
+    emit(mode, &summary(header), header)
+}
+
+pub(crate) fn summary(header: &SummaryHeader) -> String {
+    let mut text = Text::new();
+    text.line("Summary");
+    text.line(format!("  end_height: {}", header.end_height));
+    text.line(format!("  summary_hash: {}", header.summary_hash));
+    text.line(format!("  last_block_id: {}", header.last_block_id.hash));
+    text.line(format!(
+        "    parts: {} {}",
+        header.last_block_id.parts.total, header.last_block_id.parts.hash
+    ));
+    text.line(format!("  last_results_hash: {}", header.last_results_hash));
+    text.line(format!("  app_hash: {}", header.app_hash));
+    text.line(format!("  body_hash: {}", header.body_hash));
+    text.line(format!("  validators_hash: {}", header.validators_hash));
+    text.line(format!(
+        "  next_validators_hash: {}",
+        header.next_validators_hash
+    ));
+    text.line(format!("  consensus_hash: {}", header.consensus_hash));
+    text.line(format!(
+        "  last_height_validators_changed: {}",
+        header.last_height_validators_changed
+    ));
+    text.line(format!(
+        "  last_height_consensus_params_changed: {}",
+        header.last_height_consensus_params_changed
+    ));
+    text.blank();
+    write_validators(&mut text, "Validators", &header.validators);
+    text.blank();
+    write_validators(&mut text, "Next validators", &header.next_validators);
+    text.blank();
+    let params = &header.consensus_params;
+    text.line("Consensus params");
+    text.line(format!("  block.max_bytes: {}", params.block.max_bytes));
+    text.line(format!("  block.max_gas: {}", params.block.max_gas));
+    text.line(format!(
+        "  block.time_iota_ms: {}",
+        params.block.time_iota_ms
+    ));
+    text.line(format!(
+        "  evidence.max_age_num_blocks: {}",
+        params.evidence.max_age_num_blocks
+    ));
+    text.line(format!(
+        "  evidence.max_age_duration: {}",
+        params.evidence.max_age_duration
+    ));
+    text.line(format!(
+        "  evidence.max_bytes: {}",
+        params.evidence.max_bytes
+    ));
+    text.line(format!(
+        "  validator.pub_key_types: {}",
+        params.validator.pub_key_types.join(", ")
+    ));
+    text.line(format!(
+        "  version.app_version: {}",
+        params.version.app_version
+    ));
+    text.finish()
+}
+
+fn write_validators(text: &mut Text, title: &str, set: &SummaryValidatorSet) {
+    text.line(title);
+    if let Some(proposer) = &set.proposer {
+        text.line(format!("  proposer: {}", proposer.address));
+    }
+    for validator in &set.validators {
+        text.line(format!("  address: {}", validator.address));
+        text.line(format!("    voting_power: {}", validator.voting_power));
+        text.line(format!(
+            "    proposer_priority: {}",
+            validator.proposer_priority
+        ));
+        if let Some(key) = validator.pub_key.as_ref() {
+            text.line(format!("    public_key: {}", public_key_text(key)));
+        }
+    }
+}
+
+fn public_key_text(key: &Value) -> String {
+    match (
+        key.get("type").and_then(Value::as_str),
+        key.get("value").and_then(Value::as_str),
+    ) {
+        (Some(type_name), Some(value)) => format!("{type_name} {value}"),
+        _ => key.to_string(),
+    }
+}
+
 pub(crate) fn emit_namespace_lookup(
     mode: OutputMode,
     lookup: &NamespaceLookup,
@@ -908,6 +1005,85 @@ mod tests {
         };
         let text = epoch(&epoch_info, &validators);
         assert!(text.contains("Epoch"), "{text}");
+    }
+
+    #[test]
+    fn summary_formatter_prints_header_fields() {
+        use eld_client::api::abci::{
+            SummaryBlockId, SummaryBlockParams, SummaryConsensusParams, SummaryEvidenceParams,
+            SummaryHeader, SummaryPartSet, SummaryValidator, SummaryValidatorParams,
+            SummaryValidatorSet, SummaryVersionParams,
+        };
+
+        let validator = SummaryValidator {
+            address: "ABCD".to_string(),
+            pub_key: Some(serde_json::json!({
+                "type": "tendermint/PubKeyEd25519",
+                "value": "aaaa"
+            })),
+            voting_power: 10,
+            proposer_priority: -10,
+        };
+        let header = SummaryHeader {
+            end_height: "10".to_string(),
+            summary_hash: "HASH".to_string(),
+            last_block_id: SummaryBlockId {
+                hash: "BLOCK".to_string(),
+                parts: SummaryPartSet {
+                    total: 1,
+                    hash: "PARTS".to_string(),
+                },
+            },
+            last_results_hash: "RESULTS".to_string(),
+            app_hash: "APP".to_string(),
+            body_hash: "BODY".to_string(),
+            validators_hash: "VALS".to_string(),
+            next_validators_hash: "NEXT".to_string(),
+            consensus_hash: "PARAMS".to_string(),
+            last_height_validators_changed: "1".to_string(),
+            last_height_consensus_params_changed: "1".to_string(),
+            validators: SummaryValidatorSet {
+                validators: vec![validator.clone()],
+                proposer: Some(validator),
+            },
+            next_validators: SummaryValidatorSet {
+                validators: Vec::new(),
+                proposer: None,
+            },
+            consensus_params: SummaryConsensusParams {
+                block: SummaryBlockParams {
+                    max_bytes: "22020096".to_string(),
+                    max_gas: "-1".to_string(),
+                    time_iota_ms: "1000".to_string(),
+                },
+                evidence: SummaryEvidenceParams {
+                    max_age_num_blocks: "100000".to_string(),
+                    max_age_duration: "172800000000000".to_string(),
+                    max_bytes: "1048576".to_string(),
+                },
+                validator: SummaryValidatorParams {
+                    pub_key_types: vec!["ed25519".to_string()],
+                },
+                version: SummaryVersionParams {
+                    app_version: "0".to_string(),
+                },
+            },
+        };
+        let text = summary(&header);
+        assert!(text.contains("end_height: 10"), "{text}");
+        assert!(text.contains("summary_hash: HASH"), "{text}");
+        assert!(text.contains("last_block_id: BLOCK"), "{text}");
+        assert!(text.contains("parts: 1 PARTS"), "{text}");
+        assert!(text.contains("proposer: ABCD"), "{text}");
+        assert!(text.contains("voting_power: 10"), "{text}");
+        assert!(
+            text.contains("public_key: tendermint/PubKeyEd25519 aaaa"),
+            "{text}"
+        );
+        assert!(text.contains("version.app_version: 0"), "{text}");
+        let json = serde_json::to_value(&header).unwrap();
+        assert_eq!(json["end_height"], "10");
+        assert_eq!(json["consensus_params"]["version"]["app_version"], "0");
     }
 
     #[test]

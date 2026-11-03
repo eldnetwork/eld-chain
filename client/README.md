@@ -8,7 +8,7 @@ On-chain domain types (`Account`, `Tx`, addresses, fees) live in [`eld-common`](
 
 | Module | Main types | Role |
 |---|---|---|
-| `api::abci` | `AbciHttpApi` | Tendermint JSON-RPC — `abci_query`, blocks, tx search, CADO/pinboard queries |
+| `api::abci` | `AbciHttpApi` | Tendermint JSON-RPC — `abci_query`, blocks, tx search, `summary`, CADO/pinboard queries |
 | | `tx_broadcast` | `broadcast_tx_commit`, deliver-tx event parsing |
 | `api::rest` | `AppApi` | Node app REST — CADO, pinboard submit, namespace lookup, health |
 | | `faucet` | Dev faucet HTTP (test funds) |

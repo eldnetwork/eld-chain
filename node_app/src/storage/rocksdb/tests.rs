@@ -49,6 +49,18 @@ fn test_snapshot_metadata(
     }
 }
 
+fn put_test_protocol_constants(storage: &RocksDBStorage) {
+    use eld_common::protocol_constants::{GenesisAppState, ProtocolConstants};
+
+    let bytes = serde_json::to_vec(&GenesisAppState {
+        protocol_constants: ProtocolConstants::local_dev(),
+    })
+    .expect("protocol constants json");
+    storage
+        .put_protocol_constants(&bytes)
+        .expect("store constants");
+}
+
 fn put_test_epoch_record(storage: &RocksDBStorage, epoch: i64) {
     use crate::app_state::latest_epoch_record_path;
     use eld_common::cado::{epoch_record_path_name, CADOMetadata, CadoPathKey, CadoType};
@@ -316,6 +328,208 @@ fn test_pinboard_namespace_secondary_path_key() {
         .get_pinboard_metadata_by_path_key("/@eld/pinboard/post/0x0/msgcaptain")
         .unwrap()
         .is_none());
+}
+
+#[test]
+fn test_list_pinboard_pins_keeps_expired_and_dedups_namespace_key() {
+    let storage = create_test_storage();
+    let addr = Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").unwrap();
+
+    let live = PinboardMessageMetadata {
+        message_id: "live".to_string(),
+        original_signer: addr,
+        content_key: "aa".to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height: 100,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec![],
+        committed_height: 10,
+        received_timestamp: 1,
+        namespace: Some("captainhook".to_string()),
+    };
+    let expired = PinboardMessageMetadata {
+        message_id: "expired".to_string(),
+        expires_height: 40,
+        namespace: None,
+        content_key: "bb".to_string(),
+        ..live.clone()
+    };
+
+    let tx = storage.begin_transaction();
+    storage
+        .put_pinboard_metadata_with_tx(&live.message_id, &live, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_metadata_with_tx(&expired.message_id, &expired, &tx)
+        .unwrap();
+    tx.commit().unwrap();
+
+    let mut pins = storage.list_pinboard_pins().unwrap();
+    pins.sort();
+    assert_eq!(
+        pins,
+        vec![
+            (10, 40, "expired".to_string()),
+            (10, 100, "live".to_string()),
+        ]
+    );
+}
+
+fn sample_pin(message_id: &str, content_key: &str, expires_height: u64) -> PinboardMessageMetadata {
+    let addr = Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").unwrap();
+    PinboardMessageMetadata {
+        message_id: message_id.to_string(),
+        original_signer: addr,
+        content_key: content_key.to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec!["news".to_string()],
+        committed_height: 10,
+        received_timestamp: 1,
+        namespace: Some("captainhook".to_string()),
+    }
+}
+
+fn store_pin_with_indexes(storage: &RocksDBStorage, meta: &PinboardMessageMetadata) {
+    let wallet = meta.original_signer.hex_with_prefix();
+    let tx = storage.begin_transaction();
+    storage
+        .put_pinboard_metadata_with_tx(&meta.message_id, meta, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_wallet_index_with_tx(&wallet, meta.committed_height, &meta.message_id, &tx)
+        .unwrap();
+    for tag in &meta.tags {
+        storage
+            .put_pinboard_tag_index_with_tx(tag, meta.committed_height, &meta.message_id, &tx)
+            .unwrap();
+    }
+    storage
+        .put_pinboard_expiry_index_with_tx(meta.expires_height, &meta.message_id, &tx)
+        .unwrap();
+    storage
+        .put_pinboard_commit_index_with_tx(meta.committed_height, &meta.message_id, &tx)
+        .unwrap();
+    storage
+        .update_pinboard_refcount_with_tx(&meta.content_key, 1, &tx)
+        .unwrap();
+    tx.commit().unwrap();
+}
+
+fn pinboard_cf_has_key(storage: &RocksDBStorage, cf: &str, key: &str) -> bool {
+    let handle = storage.cf_handle(cf).unwrap();
+    storage.db.get_cf(handle, key.as_bytes()).unwrap().is_some()
+}
+
+fn pinboard_refcount(storage: &RocksDBStorage, content_key: &str) -> Option<u64> {
+    let raw = storage
+        .db
+        .get_cf(
+            storage.pinboard_refcounts_cf().unwrap(),
+            content_key.as_bytes(),
+        )
+        .unwrap()?;
+    Some(bincode::deserialize(&raw).unwrap())
+}
+
+fn assert_pin_indexes(storage: &RocksDBStorage, meta: &PinboardMessageMetadata, present: bool) {
+    let wallet = meta.original_signer.hex_with_prefix();
+    let wallet_key =
+        RocksDBStorage::pinboard_wallet_index_key(&wallet, meta.committed_height, &meta.message_id);
+    let tag_key = RocksDBStorage::pinboard_tag_index_key(
+        &meta.tags[0],
+        meta.committed_height,
+        &meta.message_id,
+    );
+    let commit_key =
+        RocksDBStorage::pinboard_commit_index_key(meta.committed_height, &meta.message_id);
+    let expiry_key =
+        RocksDBStorage::pinboard_expiry_index_key(meta.expires_height, &meta.message_id);
+    let path_key = eld_common::pinboard::pinboard_namespace_content_path(
+        meta.namespace.as_deref().unwrap(),
+        &meta.message_id,
+    );
+    assert_eq!(
+        storage
+            .get_pinboard_metadata(&meta.message_id)
+            .unwrap()
+            .is_some(),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_meta", &path_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_wallet", &wallet_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_tag", &tag_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_commit", &commit_key),
+        present
+    );
+    assert_eq!(
+        pinboard_cf_has_key(storage, "pinboard_idx_expiry", &expiry_key),
+        present
+    );
+}
+
+#[test]
+fn delete_expired_pinboard_message_removes_rows_and_keeps_later_post() {
+    let storage = create_test_storage();
+    let expired = sample_pin("expired", "blob-expired", 40);
+    let live = sample_pin("live", "blob-live", 100);
+    store_pin_with_indexes(&storage, &expired);
+    store_pin_with_indexes(&storage, &live);
+
+    let dropped = storage
+        .delete_expired_pinboard_message(&expired.message_id)
+        .unwrap();
+    assert_eq!(dropped, Some("blob-expired".to_string()));
+    assert_pin_indexes(&storage, &expired, false);
+    assert_pin_indexes(&storage, &live, true);
+    assert_eq!(pinboard_refcount(&storage, "blob-expired"), None);
+    assert_eq!(pinboard_refcount(&storage, "blob-live"), Some(1));
+
+    assert!(storage
+        .delete_expired_pinboard_message(&expired.message_id)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn delete_expired_pinboard_message_drops_blob_only_when_refcount_hits_zero() {
+    let storage = create_test_storage();
+    let first = sample_pin("first", "shared", 40);
+    let mut second = sample_pin("second", "shared", 50);
+    second.committed_height = 20;
+    store_pin_with_indexes(&storage, &first);
+    store_pin_with_indexes(&storage, &second);
+    assert_eq!(pinboard_refcount(&storage, "shared"), Some(2));
+
+    assert!(storage
+        .delete_expired_pinboard_message(&first.message_id)
+        .unwrap()
+        .is_none());
+    assert_eq!(pinboard_refcount(&storage, "shared"), Some(1));
+    assert_pin_indexes(&storage, &second, true);
+
+    assert_eq!(
+        storage
+            .delete_expired_pinboard_message(&second.message_id)
+            .unwrap(),
+        Some("shared".to_string())
+    );
+    assert_eq!(pinboard_refcount(&storage, "shared"), None);
+    assert_pin_indexes(&storage, &first, false);
+    assert_pin_indexes(&storage, &second, false);
 }
 
 #[test]
@@ -1714,4 +1928,135 @@ fn test_index_verified_proof_failed_does_not_bump_global_rollup() {
     let (c, t) = storage.global_verified_proof_rewards(1000).unwrap();
     assert_eq!(c, 0);
     assert_eq!(t, 0);
+}
+
+#[test]
+fn test_prune_indexed_data_between_keeps_genesis_and_is_idempotent() {
+    use crate::indexer::TransactionStatus;
+    use crate::storage::traits::TransactionIndexerStorage;
+    use abci::types::{Event, EventAttribute};
+    use ed25519_dalek::SigningKey;
+    use eld_common::constants::{protocol::DEFAULT_TX_FEE, test::MOCK_CHAIN_ID};
+    use eld_common::tx::{Payload, TransferTx, Tx, TxPublicKey, TxSig};
+
+    fn transfer_tx_fixture(signing_key: &SigningKey, nonce: u32) -> Tx {
+        let verifying_key = signing_key.verifying_key();
+        let sender = Address::from_public_key(&verifying_key).unwrap();
+        let recipient =
+            Address::parse_hex_str("0x0987654321098765432109876543210987654321").unwrap();
+        let inner = TransferTx::new(sender, recipient, 1.into()).unwrap();
+        let mut tx = Tx {
+            sig: TxSig::empty(),
+            nonce: nonce.into(),
+            payload: Payload::new(inner),
+            public_key: TxPublicKey::from(&verifying_key),
+            fee: DEFAULT_TX_FEE.into(),
+        };
+        tx.sign(signing_key, MOCK_CHAIN_ID).expect("sign");
+        tx
+    }
+
+    let storage = create_test_storage();
+    put_test_protocol_constants(&storage);
+    let secret = SigningKey::from_bytes(&[17u8; 32]);
+
+    let heights = [1u64, 5, 10, 15];
+    let mut ids = Vec::new();
+    for (i, height) in heights.iter().enumerate() {
+        let tx = transfer_tx_fixture(&secret, (i as u32) + 1);
+        let tx_id = storage.calculate_tx_id(&tx).unwrap();
+        let events = vec![Event {
+            r#type: "Transfer".to_string(),
+            attributes: vec![EventAttribute {
+                key: b"amount".to_vec(),
+                value: b"1".to_vec(),
+                index: false,
+            }],
+        }];
+        storage
+            .index_transaction(
+                &tx,
+                *height,
+                0,
+                TransactionStatus::Success,
+                Some(21_000),
+                &events,
+            )
+            .unwrap();
+        storage
+            .index_event(&tx_id, 0, &events[0], *height, 0)
+            .unwrap();
+        ids.push(tx_id);
+    }
+
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 4);
+
+    // end_height = 10 → prune_between(1, 11) deletes heights 2..=10 (here 5 and 10).
+    storage.prune_indexed_data_between(1, 11).unwrap();
+
+    assert!(storage.get_indexed_transaction(&ids[0]).unwrap().is_some());
+    assert!(storage.get_indexed_transaction(&ids[1]).unwrap().is_none());
+    assert!(storage.get_indexed_transaction(&ids[2]).unwrap().is_none());
+    assert!(storage.get_indexed_transaction(&ids[3]).unwrap().is_some());
+
+    assert!(!storage.block_position_indexed(5, 0).unwrap());
+    assert!(!storage.block_position_indexed(10, 0).unwrap());
+    assert!(storage.block_position_indexed(1, 0).unwrap());
+    assert!(storage.block_position_indexed(15, 0).unwrap());
+
+    assert_eq!(storage.get_events_by_tx_id(&ids[0]).unwrap().len(), 1);
+    assert!(storage.get_events_by_tx_id(&ids[1]).unwrap().is_empty());
+    assert!(storage.get_events_by_tx_id(&ids[2]).unwrap().is_empty());
+    assert_eq!(storage.get_events_by_tx_id(&ids[3]).unwrap().len(), 1);
+
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 2);
+
+    storage.prune_indexed_data_between(1, 11).unwrap();
+    assert_eq!(storage.get_indexed_transactions_primary_total().unwrap(), 2);
+    assert!(storage.get_indexed_transaction(&ids[0]).unwrap().is_some());
+    assert!(storage.get_indexed_transaction(&ids[3]).unwrap().is_some());
+}
+
+#[test]
+fn prune_indexed_data_between_deletes_epochs_inside_the_window() {
+    use crate::app_state::latest_epoch_record_path;
+    use crate::storage::traits::TransactionIndexerStorage;
+    use eld_common::cado::epoch_record_path_name;
+    use eld_common::protocol_constants::{GenesisAppState, ProtocolConstants};
+
+    let epoch_path = |epoch: i64| {
+        let name = epoch_record_path_name(epoch).expect("name");
+        CadoPath::new(CadoType::EpochRecord, CadoPathKey::Name(&name)).expect("path")
+    };
+
+    let storage = create_test_storage();
+    let mut constants = ProtocolConstants::local_dev();
+    constants.blocks_per_epoch = 10;
+    let bytes = serde_json::to_vec(&GenesisAppState {
+        protocol_constants: constants,
+    })
+    .expect("protocol constants json");
+    storage
+        .put_protocol_constants(&bytes)
+        .expect("store constants");
+
+    put_test_epoch_record(&storage, 1);
+    put_test_epoch_record(&storage, 2);
+
+    // No indexed rows. Window (1, 26): epoch 1 is heights 10..20. Epoch 2 starts at 20.
+    storage.prune_indexed_data_between(1, 26).unwrap();
+
+    assert!(storage.get_cado_by_path(epoch_path(1)).unwrap().is_none());
+    assert!(storage.get_cado_by_path(epoch_path(2)).unwrap().is_some());
+    assert!(storage
+        .get_cado_by_path(latest_epoch_record_path().clone())
+        .unwrap()
+        .is_some());
+
+    storage.prune_indexed_data_between(1, 26).unwrap();
+    assert!(storage.get_cado_by_path(epoch_path(2)).unwrap().is_some());
+    assert!(storage
+        .get_cado_by_path(latest_epoch_record_path().clone())
+        .unwrap()
+        .is_some());
 }

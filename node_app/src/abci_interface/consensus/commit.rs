@@ -1,7 +1,9 @@
 use super::connection::ConsensusConnection;
 use crate::abci_interface::snapshot::manager::CreateSnapshotAndPruneOutcome;
 use crate::app_state::app_state_snapshot::AppStateSnapshot;
-use crate::app_state::{latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip};
+use crate::app_state::{
+    frontier_snapshot, latest_app_state_snapshot_path, latest_app_state_tip_path, AppStateTip,
+};
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::types::*;
@@ -536,6 +538,16 @@ where
                         );
                     }
                 }
+            });
+        }
+
+        if current_state.envelope.frontier > 0
+            && current_state.envelope.block_height % self.protocol_constants().blocks_per_epoch == 0
+        {
+            let state = current_state.clone();
+            let store = self.frontier_snapshot_store.clone();
+            tokio::task::spawn_blocking(move || {
+                frontier_snapshot::store_frontier_snapshot(&store, &state);
             });
         }
 

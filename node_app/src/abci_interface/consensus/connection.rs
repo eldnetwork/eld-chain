@@ -1,7 +1,7 @@
 use super::rewards::ValidatorRewardManager;
 use crate::abci_interface::chain_tip::ChainTip;
 use crate::abci_interface::snapshot::SnapshotManager;
-use crate::app_state::AppState;
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePin, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::content::sync::P2pCoordinatorTrait;
@@ -11,7 +11,7 @@ use eld_common::protocol_constants::ProtocolHandle;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 pub struct ConsensusConnection<S>
 where
@@ -33,6 +33,13 @@ where
     pub(crate) capacity_manager: Arc<CapacityManager>,
     /// Paired Tendermint validator identity (from `/status`); not part of app state.
     pub(crate) local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    /// Pinboard posts for the EndBlock frontier. Not cloned with `AppState`.
+    /// Startup restores every stored pin. EndBlock drops expired ones and applies new pins.
+    pub(crate) live_pins: Arc<Mutex<LivePinSet>>,
+    /// Dropped pins for the metadata prune worker. Send does not wait.
+    pub(crate) pinboard_prune_tx: mpsc::UnboundedSender<Vec<LivePin>>,
+    /// Compressed snapshots keyed by frontier. Epoch commit fills this in the background.
+    pub(crate) frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 /// Construction inputs for [`ConsensusConnection::new`].
@@ -51,6 +58,9 @@ where
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    pub live_pins: Arc<Mutex<LivePinSet>>,
+    pub pinboard_prune_tx: mpsc::UnboundedSender<Vec<LivePin>>,
+    pub frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 impl<S> ConsensusConnection<S>
@@ -73,6 +83,9 @@ where
             ready_tx: Arc::new(Mutex::new(ctx.ready_tx)),
             capacity_manager: ctx.capacity_manager,
             local_identity: ctx.local_identity,
+            live_pins: ctx.live_pins,
+            pinboard_prune_tx: ctx.pinboard_prune_tx,
+            frontier_snapshot_store: ctx.frontier_snapshot_store,
         }
     }
 

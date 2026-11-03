@@ -91,6 +91,10 @@ fn command_name(cmd: &SubCommand) -> &'static str {
         }
         | SubCommand::ViewEpoch => "chain epoch",
         SubCommand::Chain {
+            cmd: ChainCommand::Summary,
+        }
+        | SubCommand::ViewSummary => "chain summary",
+        SubCommand::Chain {
             cmd: ChainCommand::Validators,
         }
         | SubCommand::ViewActiveValidators => "chain validators",
@@ -441,6 +445,10 @@ async fn dispatch_online(
             cmd: ChainCommand::Epoch,
         }
         | SubCommand::ViewEpoch => commands::epoch::view_epoch(cli, mode).await,
+        SubCommand::Chain {
+            cmd: ChainCommand::Summary,
+        }
+        | SubCommand::ViewSummary => commands::summary::view_summary(cli, mode).await,
         SubCommand::Namespace {
             cmd: NamespaceCommand::Get(namespace),
         }

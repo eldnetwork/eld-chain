@@ -1,10 +1,10 @@
 [package]
 name = "eld-analytics"
-version = "0.0.3"
+version = "0.0.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Hourly disk and memory analytics for Eld nodes"
+description = "Hourly disk analytics for Eld nodes"
 readme = "README.md"
 authors.workspace = true
 repository.workspace = true
@@ -20,8 +20,6 @@ axum = { version = "0.8", features = ["json"] }
 bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { workspace = true, features = ["derive", "env"] }
-eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
-libc = "0.2"
 reqwest = { workspace = true, features = ["json"] }
 rocksdb = "0.21"
 serde = { workspace = true, features = ["derive"] }

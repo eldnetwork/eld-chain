@@ -50,6 +50,7 @@ services:
       ELD_DB_PATH: /app/data/rocksdb
       TENDERMINT_RPC_URL: http://tendermint-1:26657
       ELD_CAPACITY_VALIDATOR_WALLET_NAME: wallet-capacity-validator-1
+      ELD_SNAPSHOT_QUERY_TOKEN: ${ELD_SNAPSHOT_QUERY_TOKEN}
 
   eld-app-2:
     <<: *app-eld
@@ -70,6 +71,7 @@ services:
       ELD_DB_PATH: /app/data/rocksdb
       TENDERMINT_RPC_URL: http://tendermint-2:26657
       ELD_CAPACITY_VALIDATOR_WALLET_NAME: wallet-capacity-validator-2
+      ELD_SNAPSHOT_QUERY_TOKEN: ${ELD_SNAPSHOT_QUERY_TOKEN}
 
   eld-app-3:
     <<: *app-eld
@@ -90,6 +92,7 @@ services:
       ELD_DB_PATH: /app/data/rocksdb
       TENDERMINT_RPC_URL: http://tendermint-3:26657
       ELD_CAPACITY_VALIDATOR_WALLET_NAME: wallet-capacity-validator-3
+      ELD_SNAPSHOT_QUERY_TOKEN: ${ELD_SNAPSHOT_QUERY_TOKEN}
 
   eld-app-4:
     <<: *app-eld
@@ -110,6 +113,7 @@ services:
       ELD_DB_PATH: /app/data/rocksdb
       TENDERMINT_RPC_URL: http://tendermint-4:26657
       ELD_CAPACITY_VALIDATOR_WALLET_NAME: wallet-capacity-validator-4
+      ELD_SNAPSHOT_QUERY_TOKEN: ${ELD_SNAPSHOT_QUERY_TOKEN}
 
   tendermint-1:
     <<: *tendermint-common
@@ -124,6 +128,7 @@ services:
     environment:
       - TMHOME=/tendermint/.tendermint
       - PROXY_APP=tcp://eld-app-1:26658
+      - ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
     depends_on:
       eld-app-1:
         condition: service_started
@@ -141,6 +146,7 @@ services:
     environment:
       - TMHOME=/tendermint/.tendermint
       - PROXY_APP=tcp://eld-app-2:26668
+      - ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
     depends_on:
       eld-app-2:
         condition: service_started
@@ -158,6 +164,7 @@ services:
     environment:
       - TMHOME=/tendermint/.tendermint
       - PROXY_APP=tcp://eld-app-3:26678
+      - ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
     depends_on:
       eld-app-3:
         condition: service_started
@@ -175,6 +182,7 @@ services:
     environment:
       - TMHOME=/tendermint/.tendermint
       - PROXY_APP=tcp://eld-app-4:26688
+      - ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
     depends_on:
       eld-app-4:
         condition: service_started

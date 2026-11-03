@@ -9,6 +9,7 @@ use eld_common::account::Account;
 use eld_common::cado::{CADOMap, CADOMetadata, CadoBody, CadoPath};
 use eld_common::error::EldError;
 use eld_common::pinboard::PinboardMessageMetadata;
+use eld_common::protocol_constants::ProtocolConstants;
 
 use eld_common::storage::AccountStorage;
 use rocksdb::Transaction;
@@ -44,7 +45,7 @@ impl ProtocolConstantsStorage for HybridStorage {
         self.rocks_db.put_protocol_constants(bytes)
     }
 
-    fn get_protocol_constants(&self) -> Result<Option<Vec<u8>>, EldError> {
+    fn get_protocol_constants(&self) -> ProtocolConstants {
         self.rocks_db.get_protocol_constants()
     }
 }
@@ -220,6 +221,10 @@ impl PinboardQueryStorage for HybridStorage {
 
     fn get_pinboard_gc_metrics(&self) -> Result<PinboardGcMetrics, EldError> {
         self.rocks_db.get_pinboard_gc_metrics()
+    }
+
+    fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError> {
+        self.rocks_db.list_pinboard_pins()
     }
 }
 

@@ -1,6 +1,8 @@
 pub mod app_state_snapshot;
 pub mod committed_cado_cache;
+pub mod frontier_snapshot;
 pub mod latest_paths;
+pub mod live_pins;
 pub mod nibbles;
 pub mod state_trie;
 
@@ -13,9 +15,11 @@ mod tip;
 pub use app::AppState;
 pub use app_hash::AppHash;
 pub use cado_hash::{AccountWithCadoHash, StakingAccountWithCadoHash};
+pub use frontier_snapshot::FrontierSnapshotStore;
 pub use latest_paths::{
     latest_app_state_snapshot_path, latest_app_state_tip_path, latest_epoch_record_path,
 };
+pub use live_pins::{LivePin, LivePinSet};
 pub use tip::AppStateTip;
 
 // Re-exported for `crate::app_state::…` paths; not named in other modules of this binary.

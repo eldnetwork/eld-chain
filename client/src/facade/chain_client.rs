@@ -2,7 +2,7 @@
 
 #![warn(missing_docs)]
 
-use crate::api::abci::AbciInfoWrapper;
+use crate::api::abci::{AbciInfoWrapper, SummaryHeader};
 use crate::api::rest::{NamespaceRegisteredResponse, PostMessageSubmitResponse};
 use crate::config::client_config::{ClientConfig, FeeConfig};
 use crate::facade::namespace::NamespaceLookup;
@@ -336,6 +336,11 @@ impl ChainClient {
     /// Epoch info plus active validators in one call.
     pub async fn view_epoch(&self) -> Result<(EpochInfo, ActiveValidatorsInfo), EldError> {
         crate::facade::view_epoch(self).await
+    }
+
+    /// Current chain summary header from the node `summary` RPC.
+    pub async fn view_summary(&self) -> Result<SummaryHeader, EldError> {
+        crate::facade::view_summary(self).await
     }
 
     /// Register a namespace slug on-chain (signed tx + poll until REST shows registration).

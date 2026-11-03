@@ -2,6 +2,7 @@
 # RUSTSEC-2026-0002 and RUSTSEC-2026-0253 are lru 0.12 unsoundness via libp2p-swarm.
 # cargo-deny does not flag those, so they are listed only here.
 # RUSTSEC-2026-0346 / 0349: rustls 0.21 via tendermint-rpc 0.40 → reqwest 0.11.
+# RUSTSEC-2026-0382: rustls-webpki 0.101 cannot move; 0.103 is bumped in Cargo.lock.
 [advisories]
 ignore = [
     "RUSTSEC-2025-0009",
@@ -14,4 +15,5 @@ ignore = [
     "RUSTSEC-2026-0258",
     "RUSTSEC-2026-0346",
     "RUSTSEC-2026-0349",
+    "RUSTSEC-2026-0382",
 ]

@@ -5,11 +5,11 @@ use super::{
     account_count_query_processor, account_view_query_processor, active_validators_query_processor,
     cado_list_query_processor, cado_paths_query_processor, cado_query_processor,
     capacity_provider_query_processor, capacity_validators_query_processor,
-    epoch_info_query_processor, estimate_fee_query_processor, pinboard_feed_query_processor,
-    pinboard_query_processor, staking_account_query_processor,
+    epoch_info_query_processor, estimate_fee_query_processor, frontier_appstate_query_processor,
+    pinboard_feed_query_processor, pinboard_query_processor, staking_account_query_processor,
 };
 use crate::abci_interface::chain_tip::ChainTip;
-use crate::app_state::AppState;
+use crate::app_state::{AppState, FrontierSnapshotStore};
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::{async_api::Info, async_trait, types::*};
 use eld_common::address::Address;
@@ -158,6 +158,7 @@ pub enum EldAbciQuery {
     AccountView { path: String, data: Vec<u8> },
     Pinboard { path: String, data: Vec<u8> },
     PinboardFeed { path: String, data: Vec<u8> },
+    FrontierAppState { path: String, data: Vec<u8> },
     Unknown { path: String, _data: Vec<u8> },
 }
 
@@ -212,6 +213,7 @@ impl EldAbciQuery {
             abci_query::ACCOUNT_VIEW => Self::AccountView { path, data },
             abci_query::PINBOARD => Self::Pinboard { path, data },
             abci_query::PINBOARD_FEED => Self::PinboardFeed { path, data },
+            abci_query::FRONTIER_APPSTATE => Self::FrontierAppState { path, data },
             _ => Self::Unknown { path, _data: data },
         }
     }
@@ -231,12 +233,15 @@ impl EldAbciQuery {
             | Self::AccountView { path, .. }
             | Self::Pinboard { path, .. }
             | Self::PinboardFeed { path, .. }
+            | Self::FrontierAppState { path, .. }
             | Self::Unknown { path, .. } => path,
         }
     }
 
     /// Processes the incoming ABCI Info Query.
-    pub fn process<S>(self, conn: &InfoConnection<S>) -> QueryProcessorResult
+    ///
+    /// `block_height` is the committed block height. Existing processors do not read it.
+    pub fn process<S>(self, conn: &InfoConnection<S>, block_height: i64) -> QueryProcessorResult
     where
         S: ConsensusConnectionStorage,
     {
@@ -338,6 +343,14 @@ impl EldAbciQuery {
                     data,
                 )
             }
+            Self::FrontierAppState { path, data } => {
+                frontier_appstate_query_processor::process_frontier_appstate_query(
+                    &conn.frontier_snapshot_store,
+                    block_height,
+                    path,
+                    data,
+                )
+            }
             Self::Unknown { path, _data } => {
                 warn!("unknown path: {path}");
                 Err(EldError::ValidationError {
@@ -363,6 +376,8 @@ where
     global_rate_limiter: Arc<GlobalAbciRateLimiter>,
     result_limiter: Arc<ResultLimiter>,
     query_rate_limiter: Arc<QueryBasedRateLimiter>,
+    /// Compressed frontier snapshots. Shared with consensus commit.
+    frontier_snapshot_store: FrontierSnapshotStore,
 }
 
 impl<S> InfoConnection<S>
@@ -374,6 +389,7 @@ where
         chain_tip: Arc<ChainTip>,
         storage: Arc<S>,
         protocol: ProtocolHandle,
+        frontier_snapshot_store: FrontierSnapshotStore,
     ) -> Self {
         let eld_app_version = resolve_eld_app_version();
         info!(eld_app_version = %eld_app_version, "Cached ELD_APP_VERSION for abci_info");
@@ -386,6 +402,7 @@ where
             global_rate_limiter: Arc::new(GlobalAbciRateLimiter::new()),
             result_limiter: Arc::new(ResultLimiter::new()),
             query_rate_limiter: Arc::new(QueryBasedRateLimiter::new()),
+            frontier_snapshot_store,
         }
     }
 
@@ -463,10 +480,11 @@ where
 
         let path = query_request.path.clone();
         let key = query_request.data.clone();
+        let block_height = self.chain_tip.snapshot().committed_height;
         let query = EldAbciQuery::from_abci_query_request(query_request);
         info!("path.as_str(): {}", query.path());
 
-        match query.process(self) {
+        match query.process(self, block_height) {
             Ok(payload) => Self::to_query_response(path, key, payload),
             Err(err) => Self::map_query_error(path, key, err),
         }
@@ -543,5 +561,18 @@ mod tests {
         if std::env::var("ELD_APP_VERSION").is_err() {
             assert_eq!(version, "0.0.0");
         }
+    }
+
+    #[test]
+    fn frontier_appstate_query_is_not_selected_for_other_paths() {
+        let mut data = b"correct-snapshot".to_vec();
+        data.extend_from_slice(&4_i64.to_le_bytes());
+        let query = EldAbciQuery::from_abci_query_request(RequestQuery {
+            path: "account_view".to_string(),
+            data,
+            height: 0,
+            prove: false,
+        });
+        assert!(matches!(query, EldAbciQuery::AccountView { .. }));
     }
 }

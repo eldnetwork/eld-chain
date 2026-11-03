@@ -15,10 +15,10 @@ use crate::node_identity::LocalNodeIdentity;
 use abci::async_api::Server;
 use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
 use eld_common::error::{EldError, ErrorBuilder};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePin, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
@@ -45,6 +45,7 @@ where
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
     pub committed_state: Arc<Mutex<AppState>>,
     pub current_state: Arc<Mutex<Option<AppState>>>,
+    pub pinboard_prune_tx: mpsc::UnboundedSender<Vec<LivePin>>,
 }
 
 pub async fn init_abci_server<S>(
@@ -76,6 +77,7 @@ where
         local_identity,
         committed_state: committed_state_mutex,
         current_state,
+        pinboard_prune_tx,
     } = ctx;
 
     let has_persisted_state = match AppState::has_persisted_app_state_tip(storage.as_ref()) {
@@ -149,6 +151,16 @@ where
         }
     }
 
+    let stored_pins = match storage.list_pinboard_pins() {
+        Ok(pins) => pins,
+        Err(e) => handle_fatal_eld_error(e),
+    };
+    info!(
+        pins = stored_pins.len(),
+        "Restored pinboard pins into LivePinSet"
+    );
+    let live_pins = Arc::new(Mutex::new(LivePinSet::from(stored_pins)));
+
     let chain_id = {
         let config = match consensus_config.lock() {
             Ok(config) => config,
@@ -160,6 +172,7 @@ where
     let chain_tip = Arc::new(ChainTip::from_app_state(&committed_state));
     drop(committed_state);
 
+    let frontier_snapshot_store = FrontierSnapshotStore::new();
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
         protocol: protocol.clone(),
@@ -172,6 +185,9 @@ where
         ready_tx,
         capacity_manager,
         local_identity,
+        live_pins,
+        pinboard_prune_tx,
+        frontier_snapshot_store: frontier_snapshot_store.clone(),
     });
 
     let mempool = MempoolConnection::new(
@@ -185,6 +201,7 @@ where
         chain_tip.clone(),
         storage,
         protocol,
+        frontier_snapshot_store,
     );
     let snapshot = SnapshotConnection::new(snapshot_manager);
 
@@ -309,6 +326,7 @@ mod tests {
             local_identity,
             committed_state: Arc::new(Mutex::new(AppState::default())),
             current_state: Arc::new(Mutex::new(None)),
+            pinboard_prune_tx: mpsc::unbounded_channel().0,
         })
         .await;
         assert!(result.is_ok());
@@ -422,6 +440,7 @@ mod tests {
             local_identity,
             committed_state: committed_state.clone(),
             current_state: Arc::new(Mutex::new(None)),
+            pinboard_prune_tx: mpsc::unbounded_channel().0,
         })
         .await
         .expect("init_abci_server");

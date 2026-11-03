@@ -4,7 +4,7 @@ use crate::abci_interface::chain_tip::ChainTip;
 use crate::abci_interface::mempool::MempoolConnection;
 use crate::abci_interface::snapshot::SnapshotManager;
 use crate::abci_interface::ConsensusConnection;
-use crate::app_state::AppState;
+use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::config::FeeConfig;
@@ -141,6 +141,9 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         ready_tx: None,
         capacity_manager,
         local_identity,
+        live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        pinboard_prune_tx: tokio::sync::mpsc::unbounded_channel().0,
+        frontier_snapshot_store: FrontierSnapshotStore::new(),
     })
 }
 
@@ -556,6 +559,192 @@ async fn init_chain_stages_validator_accounts_until_first_commit() {
     }
 }
 
+#[tokio::test]
+async fn end_block_frontier_stays_below_live_pin_then_reaches_height_once_expired() {
+    use abci::async_api::Consensus;
+    use eld_common::pinboard::PinboardMessageMetadata;
+
+    let consensus = mock_consensus_connection();
+    let creation_height = 5i64;
+    let expires_height = 8i64;
+    let signer =
+        Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").expect("signer");
+    let meta = PinboardMessageMetadata {
+        message_id: "pin-1".to_string(),
+        original_signer: signer,
+        content_key: "aa".to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height: expires_height as u64, //TODO: change to i64
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec![],
+        committed_height: creation_height as u64, // TODO: change to i64
+        received_timestamp: 1,
+        namespace: None,
+    };
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        let state = current.as_mut().expect("current state");
+        state
+            .envelope
+            .pinboard_meta_cache
+            .insert(meta.message_id.clone(), meta);
+    }
+
+    let created = consensus
+        .end_block(RequestEndBlock {
+            height: creation_height,
+        })
+        .await;
+    assert_eq!(created.updated_frontier, 0);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        let frontier = current.as_ref().expect("current state").envelope.frontier;
+        assert_eq!(frontier, creation_height - 1);
+        assert!(frontier < creation_height);
+    }
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        current
+            .as_mut()
+            .expect("current state")
+            .envelope
+            .pinboard_meta_cache
+            .clear();
+    }
+
+    let still_live = consensus
+        .end_block(RequestEndBlock {
+            height: expires_height - 1,
+        })
+        .await;
+    assert_eq!(still_live.updated_frontier, 0);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        let frontier = current.as_ref().expect("current state").envelope.frontier;
+        assert_eq!(frontier, creation_height - 1);
+        assert!(frontier < creation_height);
+    }
+
+    let expired = consensus
+        .end_block(RequestEndBlock {
+            height: expires_height,
+        })
+        .await;
+    assert_eq!(expired.updated_frontier, 0);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            expires_height
+        );
+    }
+
+    let again = consensus
+        .end_block(RequestEndBlock {
+            height: expires_height,
+        })
+        .await;
+    assert_eq!(again.updated_frontier, 0);
+}
+
+#[tokio::test]
+async fn end_block_reports_frontier_only_at_epoch_boundary() {
+    use abci::async_api::Consensus;
+    use eld_common::pinboard::PinboardMessageMetadata;
+
+    let consensus = mock_consensus_connection();
+    let blocks_per_epoch = consensus.protocol_constants().blocks_per_epoch;
+    let creation_height = 5i64;
+    let expires_height = blocks_per_epoch.saturating_mul(3);
+    let signer =
+        Address::parse_hex_str("0x0123456789abcdef0123456789abcdef01234567").expect("signer");
+    let meta = PinboardMessageMetadata {
+        message_id: "pin-epoch".to_string(),
+        original_signer: signer,
+        content_key: "aa".to_string(),
+        content_type: "text/plain".to_string(),
+        expires_height: expires_height as u64,
+        visibility: "Public".to_string(),
+        topic: None,
+        tags: vec![],
+        committed_height: creation_height as u64,
+        received_timestamp: 1,
+        namespace: None,
+    };
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        current
+            .as_mut()
+            .expect("current state")
+            .envelope
+            .pinboard_meta_cache
+            .insert(meta.message_id.clone(), meta);
+    }
+
+    let created = consensus
+        .end_block(RequestEndBlock {
+            height: creation_height,
+        })
+        .await;
+    assert_eq!(created.updated_frontier, 0);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
+
+    {
+        let mut current = consensus.current_state.lock().expect("current lock");
+        current
+            .as_mut()
+            .expect("current state")
+            .envelope
+            .pinboard_meta_cache
+            .clear();
+    }
+
+    let first_boundary = consensus
+        .end_block(RequestEndBlock {
+            height: blocks_per_epoch,
+        })
+        .await;
+    assert_eq!(first_boundary.updated_frontier, creation_height - 1);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
+
+    let mid_epoch = consensus
+        .end_block(RequestEndBlock {
+            height: blocks_per_epoch + 1,
+        })
+        .await;
+    assert_eq!(mid_epoch.updated_frontier, 0);
+
+    let second_boundary = consensus
+        .end_block(RequestEndBlock {
+            height: blocks_per_epoch * 2,
+        })
+        .await;
+    assert_eq!(second_boundary.updated_frontier, creation_height - 1);
+    {
+        let current = consensus.current_state.lock().expect("current lock");
+        assert_eq!(
+            current.as_ref().expect("current state").envelope.frontier,
+            creation_height - 1
+        );
+    }
+}
+
 #[test]
 fn build_challenged_capacity_provider_data_skips_unregistered_providers() {
     use ed25519_dalek::SigningKey;
@@ -691,6 +880,9 @@ fn in_process_harness() -> InProcessHarness {
         ready_tx: None,
         capacity_manager,
         local_identity,
+        live_pins: Arc::new(Mutex::new(LivePinSet::new())),
+        pinboard_prune_tx: tokio::sync::mpsc::unbounded_channel().0,
+        frontier_snapshot_store: FrontierSnapshotStore::new(),
     });
 
     InProcessHarness {

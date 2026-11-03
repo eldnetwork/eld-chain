@@ -73,11 +73,11 @@ Tendermint is compiled `GOOS=linux` in `TENDERMINT_DIR` for the Mac’s CPU, the
 
 A tag matching `eld-app-v*.*.*` starts [`.github/workflows/eld-app-image.yml`](../.github/workflows/eld-app-image.yml). CI runs first. The image job then publishes `linux/amd64` and `linux/arm64` as one manifest:
 
-`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.20`
+`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.31`
 
 ```sh
-git tag -a eld-app-v0.0.20 -m "eld-app v0.0.20"
-git push origin eld-app-v0.0.20
+git tag -a eld-app-v0.0.31 -m "eld-app v0.0.31"
+git push origin eld-app-v0.0.31
 ```
 
 `Dockerfile.release` is a release build (`cargo build --release --locked -p eld-node`). The local `eld-app` image stays a debug build from `Dockerfile.eld-base` and `Dockerfile.app`. The process working directory is `/app`, so the same config, wallet, and data mounts apply.
@@ -131,7 +131,7 @@ This always stops the faucet if it is running. For the rust-Tendermint GHCR stac
 ./deploy/scripts/docker/local/cluster/cluster-stop.ghcr.tm-rs.sh
 ```
 
-`--with-analytics` on the GHCR script pulls `ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}`. A tag `eld-analytics-v*` publishes that image. The local rust-Tendermint script still builds `eld-analytics:local`. First disk sample is after 3 minutes, then hourly. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
+`--with-analytics` on the GHCR script pulls `ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}`. A tag `eld-analytics-v*` publishes that image. The local rust-Tendermint script still builds `eld-analytics:local`. First disk sample is after 3 minutes, then every 30 minutes. Stop always tears down faucet and analytics profiles if present, and deletes the `deploy-tm-rs_analytics-data` volume (chain / Tendermint volumes stay).
 
 ### Local app + GHCR rust-Tendermint
 
@@ -171,7 +171,7 @@ Same three actions as the cluster, against the single Compose project (`eld-sing
 ./deploy/scripts/docker/local/single/single-stop.sh
 ```
 
-`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.20` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
+`docker/local/single/compose.ghcr.yaml` is the same pair with GHCR images (`ghcr.io/eldnetwork/eld-chain:eld-app-v0.0.31` and `ghcr.io/eldnetwork/eld-tendermint`). It still uses project `eld-single` and the cluster node 1 app mounts.
 
 ```sh
 ./deploy/scripts/docker/local/single/single-start-without-history.ghcr.sh

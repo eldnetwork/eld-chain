@@ -71,6 +71,7 @@ cp "${CLUSTER_DIR}/wallets/wallets.json" "${STAGE}/wallets/wallets.json"
 if [[ -n "${ELD_CHAIN_IMAGE:-}" || -n "${ELD_TENDERMINT_IMAGE:-}" ]]; then
   : "${ELD_CHAIN_IMAGE:?ELD_CHAIN_IMAGE is required when ELD_TENDERMINT_IMAGE is set}"
   : "${ELD_TENDERMINT_IMAGE:?ELD_TENDERMINT_IMAGE is required when ELD_CHAIN_IMAGE is set}"
+  : "${ELD_SNAPSHOT_QUERY_TOKEN:?ELD_SNAPSHOT_QUERY_TOKEN is required when writing .env}"
   app_tag="${ELD_CHAIN_IMAGE##*:}"
   tm_tag="${ELD_TENDERMINT_IMAGE##*:}"
   cat > "${STAGE}/.env" <<EOF
@@ -79,6 +80,7 @@ NODE_APP_VERSION_TAG_GHCR=${app_tag}
 TENDERMINT_VERSION_TAG_GHCR=${tm_tag}
 ELD_CHAIN_IMAGE=${ELD_CHAIN_IMAGE}
 ELD_TENDERMINT_IMAGE=${ELD_TENDERMINT_IMAGE}
+ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
 EOF
 fi
 

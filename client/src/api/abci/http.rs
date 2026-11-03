@@ -350,6 +350,45 @@ impl AbciHttpApi {
         parse_tx_by_hash_response(&response_text)
     }
 
+    /// Current summary header from the `summary` JSON-RPC method.
+    pub async fn get_summary(&self) -> Result<crate::api::abci::SummaryHeader, EldError> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "summary",
+            "params": {}
+        });
+
+        let response = reqwest::Client::new()
+            .post(&self.rpc_url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| EldError::NetworkError {
+                operation: "summary".to_string(),
+                details: format!("Failed to send summary request: {err}"),
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            return Err(EldError::NetworkError {
+                operation: "summary".to_string(),
+                details: format!("Tendermint summary HTTP status {status}"),
+            });
+        }
+
+        let response_text = response
+            .text()
+            .await
+            .map_err(|err| EldError::NetworkError {
+                operation: "summary".to_string(),
+                details: format!("Failed to read summary response: {err}"),
+            })?;
+
+        crate::api::abci::summary::parse_summary_response(&response_text)
+    }
+
     pub async fn get_cado(&self, path: String) -> Result<serde_json::Value, EldError> {
         // query using abci
         let response = self

@@ -49,6 +49,7 @@ pub struct ProtocolConstants {
     pub min_stake_amount: Coin,
     pub validators_per_epoch: usize,
     pub blocks_per_epoch: i64,
+    pub block_buffer: i64,
     pub active_storage_validators_per_epoch: usize,
     pub challenges_per_epoch: usize,
     pub chunks_per_challenge: usize,
@@ -77,6 +78,7 @@ impl ProtocolConstants {
             min_stake_amount: Coin::new(5).expect("local dev min stake"),
             validators_per_epoch: 4,
             blocks_per_epoch: 20,
+            block_buffer: 120,
             active_storage_validators_per_epoch: 1,
             challenges_per_epoch: 5,
             chunks_per_challenge: 10,
@@ -118,6 +120,13 @@ impl ProtocolConstants {
                 "blocks_per_epoch",
                 &self.blocks_per_epoch.to_string(),
                 "blocks_per_epoch must be positive",
+            );
+        }
+        if self.block_buffer <= 0 {
+            return EldError::validation_error(
+                "block_buffer",
+                &self.block_buffer.to_string(),
+                "block_buffer must be positive",
             );
         }
         require_positive_usize(
@@ -258,6 +267,8 @@ mod tests {
         .expect("serialize");
         let parsed = ProtocolConstants::from_app_state_bytes(&bytes).expect("parse");
         assert_eq!(parsed, original);
+        assert_eq!(parsed.blocks_per_epoch, 20);
+        assert_eq!(parsed.block_buffer, 120);
         let fees = parsed.fee_config();
         assert_eq!(fees.base_fee, 1000);
         assert!((fees.stake_multiplier - 1.5).abs() < f64::EPSILON);

@@ -6,5 +6,6 @@ pub(crate) mod faucet;
 pub(crate) mod namespace;
 pub(crate) mod pinboard;
 pub(crate) mod reset;
+pub(crate) mod summary;
 pub(crate) mod tx;
 pub(crate) mod wallet;

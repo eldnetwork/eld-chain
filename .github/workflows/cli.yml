@@ -31,6 +31,8 @@ jobs:
             target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout eld-tendermint-rs
+        uses: ./.github/actions/checkout-eld-tendermint-rs
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.88.0
         with:

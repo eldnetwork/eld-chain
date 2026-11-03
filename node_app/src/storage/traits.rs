@@ -4,6 +4,7 @@ use eld_common::address::Address;
 use eld_common::cado::{CADOMap, CADOMetadata, CadoBody, CadoPath, DeserializableBin};
 use eld_common::error::EldError;
 use eld_common::pinboard::PinboardMessageMetadata;
+use eld_common::protocol_constants::ProtocolConstants;
 use eld_common::storage::AccountStorage;
 use eld_common::tx::Tx;
 use eld_common::validator::EpochRecord;
@@ -329,6 +330,12 @@ pub trait PinboardQueryStorage: Send + Sync + 'static {
     ) -> Result<crate::api::pagination::PaginatedResult<String>, EldError>;
 
     fn get_pinboard_gc_metrics(&self) -> Result<PinboardGcMetrics, EldError>;
+
+    /// Every stored pinboard post. Does not drop expired posts; EndBlock does that.
+    ///
+    /// Each item is `(committed_height, expires_height, message_id)`. A namespace
+    /// path key stores the same metadata again; each `message_id` is returned once.
+    fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError>;
 }
 
 /// Chain-wide dedup for rewarded [`VerifiedProof`](eld_common::tx::VerifiedProofTx) challenges.
@@ -353,7 +360,8 @@ pub trait VerifiedProofRewardDedupStorage: Send + Sync {
 /// Genesis protocol constants persisted outside app state (default column family).
 pub trait ProtocolConstantsStorage: Send + Sync {
     fn put_protocol_constants(&self, bytes: &[u8]) -> Result<(), EldError>;
-    fn get_protocol_constants(&self) -> Result<Option<Vec<u8>>, EldError>;
+    /// Parsed constants. Missing or unreadable bytes end the process.
+    fn get_protocol_constants(&self) -> ProtocolConstants;
 }
 
 pub trait ConsensusConnectionStorage:
@@ -460,6 +468,16 @@ pub trait TransactionIndexerStorage: Send + Sync {
     /// Whether the chronological `block_pos:` secondary index exists for `(height, index)`.
     fn block_position_indexed(&self, block_height: u64, block_index: u32)
         -> Result<bool, EldError>;
+
+    /// Delete indexed transactions, events, and secondary-index entries for heights
+    /// `h` where `start_exclusive < h < end_exclusive`.
+    ///
+    /// Idempotent. Safe to call from a background thread.
+    fn prune_indexed_data_between(
+        &self,
+        start_exclusive: u64,
+        end_exclusive: u64,
+    ) -> Result<(), EldError>;
 }
 
 /// Persisted deduplication for outbound [`VerifiedProof`](eld_common::tx::VerifiedProofTx) submissions.

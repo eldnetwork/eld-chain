@@ -14,6 +14,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing $ENV_FILE" >&2
   exit 1
 fi
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+if [[ -z "${ELD_SNAPSHOT_QUERY_TOKEN:-}" ]]; then
+  echo "ELD_SNAPSHOT_QUERY_TOKEN is not set in $ENV_FILE" >&2
+  exit 1
+fi
 if [[ ! -f "${ROOT}/wallets/wallets.json" ]]; then
   echo "missing ${ROOT}/wallets/wallets.json (bootstrap secrets first)" >&2
   exit 1
