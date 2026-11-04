@@ -25,20 +25,22 @@ use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use chain_tip::ChainTip;
-use content::ContentConnection;
+use content::{ContentConnection, ContentParts, ContentTempStorage};
 use eld_common::protocol_constants::ProtocolHandle;
 use info::InfoConnection;
 use mempool::MempoolConnection;
 use snapshot::{SnapshotConnection, SnapshotManager};
 
 /// Inputs for [`init_abci_server`].
-pub struct AbciServerInitContext<S>
+pub struct AbciServerInitContext<S, C>
 where
     S: ConsensusConnectionStorage,
+    C: ContentTempStorage + 'static,
 {
     pub consensus_config: Arc<Mutex<ConsensusConfig>>,
     pub protocol: ProtocolHandle,
     pub storage: Arc<S>,
+    pub content_temp_storage: Arc<C>,
     pub snapshot_manager: Arc<SnapshotManager<S>>,
     pub p2p_sync_coordinator: Arc<dyn crate::content::sync::P2pCoordinatorTrait>,
     pub init_data: bool,
@@ -50,8 +52,8 @@ where
     pub pinboard_prune_tx: mpsc::UnboundedSender<Vec<LivePin>>,
 }
 
-pub async fn init_abci_server<S>(
-    ctx: AbciServerInitContext<S>,
+pub async fn init_abci_server<S, C>(
+    ctx: AbciServerInitContext<S, C>,
 ) -> Result<
     (
         Server<
@@ -59,7 +61,7 @@ pub async fn init_abci_server<S>(
             MempoolConnection<S>,
             InfoConnection<S>,
             SnapshotConnection<S>,
-            ContentConnection,
+            ContentConnection<C>,
         >,
         Arc<ChainTip>,
     ),
@@ -67,11 +69,13 @@ pub async fn init_abci_server<S>(
 >
 where
     S: ConsensusConnectionStorage,
+    C: ContentTempStorage + 'static,
 {
     let AbciServerInitContext {
         consensus_config,
         protocol,
         storage,
+        content_temp_storage,
         snapshot_manager,
         p2p_sync_coordinator,
         init_data,
@@ -176,7 +180,12 @@ where
     drop(committed_state);
 
     let frontier_snapshot_store = FrontierSnapshotStore::new();
-    let content = ContentConnection::new(Arc::clone(&capacity_manager));
+    let content = ContentConnection::new(ContentParts {
+        capacity: Arc::clone(&capacity_manager),
+        blobs: content_temp_storage,
+        committed_state: Arc::clone(&committed_state_mutex),
+        local_identity: Arc::clone(&local_identity),
+    });
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
         protocol: protocol.clone(),
@@ -325,6 +334,7 @@ mod tests {
             consensus_config: consensus_config_arc,
             protocol: eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
             storage: storage.clone(),
+            content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage)),
             p2p_sync_coordinator,
             init_data: false,
@@ -439,6 +449,7 @@ mod tests {
             consensus_config: consensus_config_arc,
             protocol: eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
             storage: storage.clone(),
+            content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage.clone())),
             p2p_sync_coordinator,
             init_data: false,

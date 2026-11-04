@@ -159,7 +159,8 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     let (consensus_server, chain_tip) = init_abci_server(AbciServerInitContext {
         consensus_config,
         protocol,
-        storage: node_storage,
+        storage: node_storage.clone(),
+        content_temp_storage: node_storage,
         snapshot_manager,
         p2p_sync_coordinator: p2p.coordinator.clone(),
         init_data: args.init_data,

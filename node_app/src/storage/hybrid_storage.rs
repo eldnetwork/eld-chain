@@ -1,3 +1,4 @@
+use crate::abci_interface::content::ContentTempStorage;
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::{
     CADOStorage, ConsensusConnectionStorage, PinboardGcMetrics, PinboardGlobalFeedOrder,
@@ -170,6 +171,22 @@ impl PinboardStorage for HybridStorage {
     ) -> Result<(), EldError> {
         self.rocks_db
             .delete_pinboard_temp_blob_with_tx(content_key, tx)
+    }
+}
+
+impl ContentTempStorage for HybridStorage {
+    fn read_temp_blob(&self, content_id: &str) -> Result<Option<Vec<u8>>, EldError> {
+        self.rocks_db.get_pinboard_temp_blob(content_id)
+    }
+
+    fn write_temp_blob(
+        &self,
+        content_id: &str,
+        bytes: &[u8],
+        expires_at_unix: u64,
+    ) -> Result<(), EldError> {
+        self.rocks_db
+            .put_pinboard_temp_blob(content_id, bytes, expires_at_unix)
     }
 }
 
