@@ -1,15 +1,11 @@
 use super::connection::ConsensusConnection;
 use crate::app_state::AppState;
-use crate::content::sync::{P2pCoordinatorTrait, SyncMsg};
 use crate::storage::traits::ConsensusConnectionStorage;
 use eld_common::address::Address;
 use eld_common::capacity_challenge::{compute_challenge_id, select_challenge_chunk_indices};
-use eld_common::constants::p2p::{
-    ELD_STORAGE_CHALLENGE_TOPIC_PREFIX, ELD_STORAGE_PROOF_TOPIC_PREFIX,
-};
 use eld_common::error::EldError;
-use std::sync::Arc;
-use tracing::{error, info, warn};
+use eld_tendermint_proto::content::CapacityChallenge;
+use tracing::{info, warn};
 
 pub(crate) type ChallengedCapacityProviderData =
     (Address, Option<[u8; 32]>, Option<[u8; 32]>, Option<u32>);
@@ -71,32 +67,30 @@ where
             .collect()
     }
 
-    /// Internal helper to generate challenges (takes cloned data to avoid Send issues)
+    /// One `CapacityChallenge` per provider. Does not send them.
     pub(crate) fn generate_challenges_internal(
         providers_data: Vec<ChallengedCapacityProviderData>,
         epoch: i64,
         block_height: i64,
         validator_address: Address,
-        p2p_coordinator: Arc<dyn P2pCoordinatorTrait>,
         chunks_per_challenge: usize,
-    ) -> Result<(), EldError> {
+    ) -> Result<Vec<CapacityChallenge>, EldError> {
         if providers_data.is_empty() {
             warn!(
                 epoch = epoch,
                 "No providers to challenge, skipping challenge generation"
             );
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let expiration_block = block_height + 100; // Challenges expire after 100 blocks
+        let expiration_block = block_height + 100;
 
-        // Generate challenges for each provider
+        let mut challenges = Vec::new();
         for (provider_id, merkle_root_opt, seed_opt, chunk_count_opt) in providers_data {
-            // Get provider's merkle root and seed
             let merkle_root = merkle_root_opt.ok_or_else(|| EldError::ValidationError {
                 field: "merkle_root".to_string(),
                 value: "none".to_string(),
@@ -109,7 +103,6 @@ where
                 details: format!("Provider {provider_id} has no seed"),
             })?;
 
-            // Generate deterministic chunk indices
             let chunk_count = chunk_count_opt.unwrap_or(0);
             if chunk_count == 0 {
                 warn!(
@@ -119,7 +112,6 @@ where
                 continue;
             }
 
-            // Deterministic chunk indices (shared with deliver_tx recomputation).
             let chunk_indices = select_challenge_chunk_indices(
                 epoch,
                 &provider_id,
@@ -128,75 +120,81 @@ where
                 chunk_count,
                 chunks_per_challenge,
             );
-
-            // challenge_id omits wall-clock timestamp so every node can recompute it.
-            // `timestamp` / `expiration_block` below are P2P-only (logging / soft expiry).
             let challenge_id = compute_challenge_id(
                 &validator_address,
                 &provider_id,
                 block_height,
                 &chunk_indices,
             );
-
-            // Create challenge message (edge: hex string on SyncMsg)
-            let challenge = SyncMsg::CapacityChallenge {
-                challenge_id: challenge_id.to_hex(),
-                challenger: validator_address,
-                provider_id,
-                chunk_indices: chunk_indices.clone(),
-                block_height,
-                merkle_root,
-                seed,
-                expiration_block,
-                timestamp,
-            };
-
-            // Subscribe to proof topic before sending challenge
-            let proof_topic = format!("{ELD_STORAGE_PROOF_TOPIC_PREFIX}{provider_id}");
-            if let Err(e) = p2p_coordinator.subscribe_to_topic(&proof_topic) {
-                warn!(
-                    provider_id = %provider_id,
-                    proof_topic = %proof_topic,
-                    error = %e,
-                    "Failed to subscribe to proof topic, but continuing with challenge"
-                );
-            } else {
-                info!(
-                    provider_id = %provider_id,
-                    proof_topic = %proof_topic,
-                    "Subscribed to proof topic for provider"
-                );
-            }
-
-            // Publish to provider-specific challenge topic
-            let challenge_topic = format!("{ELD_STORAGE_CHALLENGE_TOPIC_PREFIX}{provider_id}");
+            let chunk_indices = chunk_indices
+                .into_iter()
+                .map(|index| {
+                    u64::try_from(index).map_err(|_| EldError::ValidationError {
+                        field: "chunk_index".to_string(),
+                        value: index.to_string(),
+                        details: "chunk index does not fit in a content challenge".to_string(),
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             info!(
                 challenge_id = %challenge_id,
                 provider_id = %provider_id,
                 challenger = %validator_address,
-                challenge_topic = %challenge_topic,
                 chunk_count = chunk_indices.len(),
                 block_height = block_height,
                 expiration_block = expiration_block,
-                "Sending capacity challenge via P2P"
+                "Built capacity challenge"
             );
-            info!(
-                "Publishing challenge to topic provider_id={} topic={}",
-                provider_id, challenge_topic
-            );
-
-            if let Err(e) = p2p_coordinator.publish_to_topic(&challenge_topic, challenge) {
-                error!(
-                    provider_id = %provider_id,
-                    challenge_topic = %challenge_topic,
-                    error = %e,
-                    "Failed to publish capacity challenge"
-                );
-                continue;
-            }
+            challenges.push(CapacityChallenge {
+                challenge_id: challenge_id.to_hex(),
+                challenger: validator_address.as_bytes().to_vec(),
+                provider: provider_id.as_bytes().to_vec(),
+                chunk_indices,
+                block_height,
+                merkle_root: merkle_root.to_vec(),
+                seed: seed.to_vec(),
+                expiration_block,
+                timestamp,
+            });
         }
 
-        Ok(())
+        Ok(challenges)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::hybrid_storage::HybridStorage;
+
+    #[test]
+    fn one_provider_becomes_one_capacity_challenge() {
+        let validator = Address::from_bytes([1; 20]);
+        let provider = Address::from_bytes([2; 20]);
+        let challenges = ConsensusConnection::<HybridStorage>::generate_challenges_internal(
+            vec![(provider, Some([9; 32]), Some([8; 32]), Some(4))],
+            3,
+            100,
+            validator,
+            2,
+        )
+        .expect("challenges");
+        assert_eq!(challenges.len(), 1);
+        let challenge = &challenges[0];
+        assert_eq!(
+            challenge.challenger.as_slice(),
+            validator.as_bytes().as_slice()
+        );
+        assert_eq!(
+            challenge.provider.as_slice(),
+            provider.as_bytes().as_slice()
+        );
+        assert_eq!(challenge.block_height, 100);
+        assert_eq!(challenge.merkle_root, vec![9; 32]);
+        assert_eq!(challenge.seed, vec![8; 32]);
+        assert_eq!(challenge.expiration_block, 200);
+        assert_eq!(challenge.chunk_indices.len(), 2);
+        assert!(!challenge.challenge_id.is_empty());
     }
 }

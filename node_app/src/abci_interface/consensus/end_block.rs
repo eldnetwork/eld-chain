@@ -255,19 +255,29 @@ where
                         challenged_capacity_provider_count = providers_data.len(),
                         "Active capacity validator sending capacity challenges"
                     );
-                    if let Err(e) = Self::generate_challenges_internal(
+                    match Self::generate_challenges_internal(
                         providers_data,
                         new_epoch,
                         block_height,
                         selected_capacity_validator,
-                        self.p2p_sync_coordinator.clone(),
                         self.protocol_constants().chunks_per_challenge,
                     ) {
-                        warn!(
-                            epoch = new_epoch,
-                            error = %e,
-                            "Failed to generate and send capacity challenges"
-                        );
+                        Ok(challenges) => {
+                            for challenge in &challenges {
+                                info!(
+                                    epoch = new_epoch,
+                                    challenge_id = %challenge.challenge_id,
+                                    "Capacity challenge ready for the content channel"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                epoch = new_epoch,
+                                error = %e,
+                                "Failed to build capacity challenges"
+                            );
+                        }
                     }
                 }
             } else {
