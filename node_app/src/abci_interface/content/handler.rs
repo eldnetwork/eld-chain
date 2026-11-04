@@ -58,7 +58,7 @@ where
         if msg.blob.is_empty() || msg.blob.len() > MAX_BLOB_BYTES {
             return None;
         }
-        if !content_id_matches(&msg.content_id, &msg.blob) {
+        if !blob_matches_content_id(&msg.content_id, &msg.blob) {
             return None;
         }
         if let Err(err) = self.store_blob(&msg.content_id, &msg.blob).await {
@@ -183,7 +183,7 @@ where
     }
 
     async fn handle_response(&self, msg: &content::ContentResponse) -> Option<Message> {
-        if msg.blob.len() > MAX_BLOB_BYTES || !content_id_matches(&msg.content_id, &msg.blob) {
+        if msg.blob.len() > MAX_BLOB_BYTES || !blob_matches_content_id(&msg.content_id, &msg.blob) {
             error!(content_id = %msg.content_id, "content response hash did not match");
             return None;
         }
@@ -443,7 +443,7 @@ fn decode_hex_bytes(hex_text: &str, len: usize) -> Option<Vec<u8>> {
     }
 }
 
-fn content_id_matches(content_id: &str, blob: &[u8]) -> bool {
+pub(crate) fn blob_matches_content_id(content_id: &str, blob: &[u8]) -> bool {
     let digest = hex::encode(Sha256::digest(blob));
     let id = content_id
         .strip_prefix("0x")
