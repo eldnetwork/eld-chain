@@ -9,3 +9,6 @@ Deltas from upstream:
    block height. Matches the Eld Tendermint node proto.
 2. Drop unused `prelude` re-exports (`Box`, `alloc::vec` macro) so the crate builds
    under current rustc with the crate’s own `#![deny(warnings)]`.
+3. `RequestContent` (request oneof tag 16) and `ResponseContent` (response oneof tag 17).
+   `message` is the protobuf encoding of `tendermint.content.Message`. A refusal is
+   `ResponseException`, same as the other ABCI calls.

@@ -2,6 +2,7 @@
 
 pub mod chain_tip;
 pub mod consensus;
+pub mod content;
 pub mod info;
 pub mod mempool;
 pub mod snapshot;
@@ -24,6 +25,7 @@ use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use chain_tip::ChainTip;
+use content::ContentConnection;
 use eld_common::protocol_constants::ProtocolHandle;
 use info::InfoConnection;
 use mempool::MempoolConnection;
@@ -57,6 +59,7 @@ pub async fn init_abci_server<S>(
             MempoolConnection<S>,
             InfoConnection<S>,
             SnapshotConnection<S>,
+            ContentConnection,
         >,
         Arc<ChainTip>,
     ),
@@ -173,6 +176,7 @@ where
     drop(committed_state);
 
     let frontier_snapshot_store = FrontierSnapshotStore::new();
+    let content = ContentConnection::new(Arc::clone(&capacity_manager));
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
         protocol: protocol.clone(),
@@ -205,7 +209,10 @@ where
     );
     let snapshot = SnapshotConnection::new(snapshot_manager);
 
-    Ok((Server::new(consensus, mempool, info, snapshot), chain_tip))
+    Ok((
+        Server::new(consensus, mempool, info, snapshot, content),
+        chain_tip,
+    ))
 }
 
 #[cfg(test)]

@@ -5,8 +5,6 @@ version = 4
 [[package]]
 name = "abci-rs"
 version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69ceec74d04406715a8ad6ac2260d1b9528597026fc01c40a807776411f827f0"
 dependencies = [
  "async-trait",
  "bytes",
