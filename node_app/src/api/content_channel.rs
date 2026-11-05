@@ -128,7 +128,18 @@ pub(crate) async fn load_content(
     Ok(None)
 }
 
-/// Queue each challenge and wait for its proof. Call this off the consensus task.
+/// Peer id for a provider. A Tendermint peer id is the lowercase hex of its 20-byte address.
+pub(crate) fn peer_id_for_provider(peers: &[String], provider: &[u8]) -> Option<String> {
+    let bytes: [u8; 20] = provider.try_into().ok()?;
+    let address = Address::from_bytes(bytes).hex();
+    peers
+        .iter()
+        .find(|peer_id| peer_id.eq_ignore_ascii_case(&address))
+        .cloned()
+}
+
+/// Queue each challenge to the peer for that provider and wait for its proof.
+/// Call this off the consensus task. A provider with no connected peer is skipped.
 pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
     if challenges.is_empty() {
         return;
@@ -138,21 +149,18 @@ pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
         warn!("capacity challenges were not sent; the node RPC is unreachable");
         return;
     };
-    if peers.is_empty() {
-        warn!("capacity challenges were not sent; no Tendermint peer is connected");
-        return;
-    }
     for challenge in challenges {
-        let mut accepted = false;
-        for peer_id in &peers {
-            if send_challenge(&url, peer_id, challenge).await.is_ok() {
-                accepted = true;
-                break;
-            }
-        }
-        if !accepted {
+        let Some(peer_id) = peer_id_for_provider(&peers, &challenge.provider) else {
             warn!(
                 challenge_id = %challenge.challenge_id,
+                "capacity challenge was not sent; that provider is not a connected peer"
+            );
+            continue;
+        };
+        if send_challenge(&url, &peer_id, challenge).await.is_err() {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                peer_id = %peer_id,
                 "capacity challenge received no proof"
             );
         }
@@ -345,6 +353,21 @@ mod tests {
         let selected = providers_to_push(&state, &local);
         assert_eq!(selected.len(), 3);
         assert!(selected.iter().all(|address| address != &local));
+    }
+
+    #[test]
+    fn peer_id_for_provider_matches_the_address_hex() {
+        let provider = Address::from_bytes([0xAB; 20]);
+        let peers = vec![
+            "00112233445566778899aabbccddeeff00112233".to_owned(),
+            provider.hex().to_ascii_uppercase(),
+        ];
+        assert_eq!(
+            peer_id_for_provider(&peers, provider.as_bytes()).as_deref(),
+            Some(peers[1].as_str())
+        );
+        assert!(peer_id_for_provider(&peers, &[1; 20]).is_none());
+        assert!(peer_id_for_provider(&peers, &[1; 19]).is_none());
     }
 
     #[test]
