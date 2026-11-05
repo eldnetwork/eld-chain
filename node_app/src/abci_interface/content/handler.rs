@@ -47,7 +47,9 @@ where
                 self.handle_challenge_response(&msg).await
             }
             content::message::Sum::Announce(msg) => self.handle_announce(&msg).await,
-            content::message::Sum::CapacityProofSummaryQuery(msg) => self.signed_summary(msg.epoch),
+            content::message::Sum::CapacityProofSummaryQuery(msg) => {
+                self.signed_summary_for_height(msg.height)
+            }
             content::message::Sum::CapacityProofSummary(_) => None,
         };
         match reply {
@@ -280,6 +282,22 @@ where
             outcomes.push(outcome);
         }
         None
+    }
+
+    fn signed_summary_for_height(&self, height: i64) -> Option<Message> {
+        if height < 0 {
+            return None;
+        }
+        let blocks_per_epoch = self
+            .capacity
+            .protocol_handle()
+            .get()
+            .map(|constants| constants.blocks_per_epoch)
+            .unwrap_or(0);
+        if blocks_per_epoch <= 0 {
+            return None;
+        }
+        self.signed_summary(height / blocks_per_epoch)
     }
 
     fn signed_summary(&self, epoch: i64) -> Option<Message> {

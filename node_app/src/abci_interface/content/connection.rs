@@ -344,7 +344,7 @@ mod tests {
 
         let reply = conn
             .content(request(content::message::Sum::CapacityProofSummaryQuery(
-                content::CapacityProofSummaryQuery { epoch: 4 },
+                content::CapacityProofSummaryQuery { height: 80 },
             )))
             .await;
         let message = Message::decode(reply.message.as_slice()).expect("reply");
@@ -358,7 +358,7 @@ mod tests {
 
         let missing = conn
             .content(request(content::message::Sum::CapacityProofSummaryQuery(
-                content::CapacityProofSummaryQuery { epoch: 5 },
+                content::CapacityProofSummaryQuery { height: 100 },
             )))
             .await;
         assert!(missing.message.is_empty());
