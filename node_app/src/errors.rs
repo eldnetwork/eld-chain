@@ -446,3 +446,13 @@ pub fn response_check_tx_error_json_parsing_failed(error_details: String) -> Res
         ..Default::default()
     }
 }
+
+pub fn response_check_tx_error_capacity_proof_summary() -> ResponseCheckTx {
+    ResponseCheckTx {
+        code: 79,
+        codespace: ELD_CODESPACE.to_string(),
+        log: "Capacity proof summary cannot enter the mempool".to_owned(),
+        info: "Capacity proof summary cannot enter the mempool".to_owned(),
+        ..Default::default()
+    }
+}

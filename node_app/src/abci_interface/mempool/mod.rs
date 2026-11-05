@@ -3,16 +3,18 @@
 use crate::api::lookup_cado_by_path_excluding_current_cache;
 use crate::app_state::AppState;
 use crate::errors::{
-    response_check_tx_error_fee_calculation_failed, response_check_tx_error_insufficient_fee,
-    response_check_tx_error_invalid_hex_encoding, response_check_tx_error_invalid_utf8_encoding,
-    response_check_tx_error_json_parsing_failed, response_check_tx_error_nonce_not_sequential,
-    response_check_tx_error_nonce_overflow, response_check_tx_error_sender_doesnt_exist,
-    response_check_tx_error_tx_too_large, response_check_tx_error_verification_failed,
+    response_check_tx_error_capacity_proof_summary, response_check_tx_error_fee_calculation_failed,
+    response_check_tx_error_insufficient_fee, response_check_tx_error_invalid_hex_encoding,
+    response_check_tx_error_invalid_utf8_encoding, response_check_tx_error_json_parsing_failed,
+    response_check_tx_error_nonce_not_sequential, response_check_tx_error_nonce_overflow,
+    response_check_tx_error_sender_doesnt_exist, response_check_tx_error_tx_too_large,
+    response_check_tx_error_verification_failed,
 };
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::{async_api::Mempool, async_trait, types::*};
 use eld_common::account::Account;
 use eld_common::cado::{CadoBody, CadoPath, CadoPathKey, CadoType};
+use eld_common::capacity_proof_summary::CapacityProofSummary;
 use eld_common::protocol_constants::ProtocolHandle;
 use eld_common::tx::HasSender;
 use eld_common::tx::Tx;
@@ -75,6 +77,11 @@ where
             return response_check_tx_error_tx_too_large(max_tx_bytes, tx_bytes.len());
         }
 
+        if CapacityProofSummary::is_capacity_proof_summary(&tx_bytes) {
+            warn!("mempool check_tx rejected: capacity proof summary");
+            return response_check_tx_error_capacity_proof_summary();
+        }
+
         let hex_str = match String::from_utf8(tx_bytes) {
             Ok(s) => s,
             Err(e) => {
@@ -96,6 +103,11 @@ where
                 return response_check_tx_error_invalid_hex_encoding(e.to_string());
             }
         };
+
+        if CapacityProofSummary::is_capacity_proof_summary(&decoded_bytes) {
+            warn!("mempool check_tx rejected: capacity proof summary");
+            return response_check_tx_error_capacity_proof_summary();
+        }
 
         let decoded_json = match String::from_utf8(decoded_bytes) {
             Ok(s) => s,
@@ -297,6 +309,7 @@ mod tests {
     use eld_common::account::Account;
     use eld_common::address::Address;
     use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
+    use eld_common::capacity_proof_summary::{CapacityProofOutcome, CapacityProofSignature};
     use eld_common::coin::Coin;
     use eld_common::fee::calculate_dynamic_fee;
     use eld_common::nonce::Nonce;
@@ -520,5 +533,47 @@ mod tests {
             })
             .await;
         assert_eq!(invalid_json.code, 78);
+    }
+
+    fn sample_summary() -> CapacityProofSummary {
+        CapacityProofSummary {
+            epoch: 4,
+            validator: Address::from_bytes([1; 20]),
+            outcomes: vec![CapacityProofOutcome::Success {
+                provider: Address::from_bytes([2; 20]),
+            }],
+            signature: CapacityProofSignature::new([0xAB; 64]),
+        }
+    }
+
+    #[tokio::test]
+    async fn check_tx_rejects_a_capacity_proof_summary() {
+        let temp_dir = TempDir::new().unwrap();
+        let rocksdb_storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(HybridStorage::new(rocksdb_storage));
+        let committed_state = Arc::new(Mutex::new(AppState::default()));
+        let mempool = MempoolConnection::new(
+            "test-chain".to_string(),
+            eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
+            committed_state,
+            storage,
+        );
+        let summary = serde_json::to_vec(&sample_summary()).expect("summary json");
+
+        let raw = mempool
+            .check_tx(RequestCheckTx {
+                tx: summary.clone(),
+                ..Default::default()
+            })
+            .await;
+        assert_eq!(raw.code, 79);
+
+        let hex_wrapped = mempool
+            .check_tx(RequestCheckTx {
+                tx: hex::encode(&summary).into_bytes(),
+                ..Default::default()
+            })
+            .await;
+        assert_eq!(hex_wrapped.code, 79);
     }
 }

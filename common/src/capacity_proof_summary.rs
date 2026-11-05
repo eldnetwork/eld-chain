@@ -159,6 +159,12 @@ impl CapacityProofSummary {
         }
         bytes
     }
+
+    /// Whether `bytes` are the JSON encoding of a [`CapacityProofSummary`].
+    #[must_use]
+    pub fn is_capacity_proof_summary(bytes: &[u8]) -> bool {
+        serde_json::from_slice::<Self>(bytes).is_ok()
+    }
 }
 
 #[cfg(test)]
@@ -214,5 +220,22 @@ mod tests {
     #[test]
     fn signature_hex_rejects_the_wrong_length() {
         assert!(CapacityProofSignature::parse_hex("abcd").is_err());
+    }
+
+    #[test]
+    fn json_bytes_are_recognized_as_a_summary() {
+        let summary = CapacityProofSummary {
+            epoch: 4,
+            validator: Address::from_bytes([1; 20]),
+            outcomes: vec![CapacityProofOutcome::Success {
+                provider: Address::from_bytes([2; 20]),
+            }],
+            signature: sample_signature(),
+        };
+        let bytes = serde_json::to_vec(&summary).expect("json");
+        assert!(CapacityProofSummary::is_capacity_proof_summary(&bytes));
+        assert!(!CapacityProofSummary::is_capacity_proof_summary(
+            b"{\"type\":\"Transfer\"}"
+        ));
     }
 }
