@@ -59,6 +59,7 @@ pub mod tx_type {
     pub const TX_TYPE_UPDATE_CAPACITY_MERKLE_ROOT: &str = "UpdateCapacityMerkleRoot";
     pub const TX_TYPE_POST_MESSAGE: &str = "PostMessage";
     pub const TX_TYPE_ADD_NAMESPACE: &str = "AddNamespace";
+    pub const TX_TYPE_CAPACITY_PROOF_SUMMARY: &str = "CapacityProofSummary";
 }
 
 /// CometBFT / ABCI `codespace` string returned on application errors.

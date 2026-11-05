@@ -54,6 +54,10 @@ impl ConsensusTxDeliver for Tx {
             PayloadInner::AddNamespace(add_namespace_tx) => {
                 conn.process_add_namespace(add_namespace_tx).await
             }
+            PayloadInner::CapacityProofSummary(capacity_proof_summary_tx) => {
+                conn.process_capacity_proof_summary(capacity_proof_summary_tx)
+                    .await
+            }
         }
     }
 }

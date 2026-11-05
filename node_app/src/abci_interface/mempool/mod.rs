@@ -17,6 +17,7 @@ use eld_common::cado::{CadoBody, CadoPath, CadoPathKey, CadoType};
 use eld_common::capacity_proof_summary::CapacityProofSummary;
 use eld_common::protocol_constants::ProtocolHandle;
 use eld_common::tx::HasSender;
+use eld_common::tx::PayloadInner;
 use eld_common::tx::Tx;
 use eld_common::validation::safe_deserialize_account_data;
 use std::sync::{Arc, Mutex};
@@ -130,6 +131,11 @@ where
                 return response_check_tx_error_json_parsing_failed(e.to_string());
             }
         };
+
+        if matches!(tx.payload.inner, PayloadInner::CapacityProofSummary(_)) {
+            warn!("mempool check_tx rejected: capacity proof summary");
+            return response_check_tx_error_capacity_proof_summary();
+        }
 
         // Verify transaction signature
         let verification_result = tx.verify(&self.chain_id).unwrap_or(false);

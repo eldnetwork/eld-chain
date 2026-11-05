@@ -513,6 +513,7 @@ pub fn validate_transaction_structure(json_value: &serde_json::Value) -> Result<
         tx_type::TX_TYPE_UPDATE_CAPACITY_MERKLE_ROOT,
         tx_type::TX_TYPE_POST_MESSAGE,
         tx_type::TX_TYPE_ADD_NAMESPACE,
+        tx_type::TX_TYPE_CAPACITY_PROOF_SUMMARY,
     ];
 
     if !allowed_types.contains(&payload_type) {
@@ -575,6 +576,9 @@ fn validate_payload_content(
         tx_type::TX_TYPE_VERIFIED_PROOF => validate_verified_proof_payload(payload_obj)?,
         tx_type::TX_TYPE_POST_MESSAGE => validate_post_message_payload(payload_obj)?,
         tx_type::TX_TYPE_ADD_NAMESPACE => validate_add_namespace_payload(payload_obj)?,
+        tx_type::TX_TYPE_CAPACITY_PROOF_SUMMARY => {
+            validate_capacity_proof_summary_payload(payload_obj)?
+        }
         _ => {
             return Err(EldError::ValidationError {
                 field: "transaction payload type".to_string(),
@@ -582,6 +586,58 @@ fn validate_payload_content(
                 details: format!("Unknown payload type: {payload_type}"),
             })
         }
+    }
+    Ok(())
+}
+
+fn validate_capacity_proof_summary_payload(
+    payload_obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), EldError> {
+    let required_fields = ["sender", "epoch", "outcomes", "signature"];
+    for field in &required_fields {
+        if !payload_obj.contains_key(*field) {
+            return Err(EldError::ValidationError {
+                field: "capacity proof summary payload".to_string(),
+                value: "missing".to_string(),
+                details: format!("CapacityProofSummary payload missing required field: {field}"),
+            });
+        }
+    }
+    if !payload_obj["epoch"].is_number() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof summary epoch".to_string(),
+            value: payload_obj["epoch"].to_string(),
+            details: "CapacityProofSummary payload 'epoch' field must be a number".to_string(),
+        });
+    }
+    let sender = payload_obj["sender"]
+        .as_str()
+        .ok_or_else(|| EldError::ValidationError {
+            field: "capacity proof summary sender".to_string(),
+            value: payload_obj["sender"].to_string(),
+            details: "CapacityProofSummary payload 'sender' field must be a string".to_string(),
+        })?;
+    parse_validated_address(sender)?;
+    if !payload_obj["outcomes"].is_array() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof summary outcomes".to_string(),
+            value: payload_obj["outcomes"].to_string(),
+            details: "CapacityProofSummary payload 'outcomes' field must be an array".to_string(),
+        });
+    }
+    let signature = payload_obj["signature"]
+        .as_str()
+        .ok_or_else(|| EldError::ValidationError {
+            field: "capacity proof summary signature".to_string(),
+            value: payload_obj["signature"].to_string(),
+            details: "CapacityProofSummary payload 'signature' field must be a string".to_string(),
+        })?;
+    if signature.is_empty() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof summary signature".to_string(),
+            value: signature.to_string(),
+            details: "CapacityProofSummary payload 'signature' field must not be empty".to_string(),
+        });
     }
     Ok(())
 }

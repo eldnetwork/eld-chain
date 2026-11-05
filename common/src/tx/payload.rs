@@ -2,8 +2,8 @@
 
 use crate::tx::parts::{HasAmount, HasSender};
 use crate::tx::payloads::{
-    AddNamespaceTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx, UnregisterCapacityTx,
-    UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
+    AddNamespaceTx, CapacityProofSummaryTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx,
+    UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
 };
 use crate::Address;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,7 @@ pub enum TxType {
     UpdateCapacityMerkleRoot,
     PostMessage,
     AddNamespace,
+    CapacityProofSummary,
 }
 
 impl TxType {
@@ -52,6 +53,9 @@ impl TxType {
             }
             TxType::PostMessage => crate::constants::tx_type::TX_TYPE_POST_MESSAGE,
             TxType::AddNamespace => crate::constants::tx_type::TX_TYPE_ADD_NAMESPACE,
+            TxType::CapacityProofSummary => {
+                crate::constants::tx_type::TX_TYPE_CAPACITY_PROOF_SUMMARY
+            }
         }
     }
 }
@@ -68,6 +72,7 @@ pub enum PayloadInner {
     UpdateCapacityMerkleRoot(UpdateCapacityMerkleRootTx), // Update merkle root after content storage
     PostMessage(PostMessageTx),
     AddNamespace(AddNamespaceTx),
+    CapacityProofSummary(CapacityProofSummaryTx),
 }
 
 impl From<TransferTx> for PayloadInner {
@@ -124,6 +129,12 @@ impl From<AddNamespaceTx> for PayloadInner {
     }
 }
 
+impl From<CapacityProofSummaryTx> for PayloadInner {
+    fn from(tx: CapacityProofSummaryTx) -> Self {
+        PayloadInner::CapacityProofSummary(tx)
+    }
+}
+
 impl PayloadInner {
     pub fn tx_type(&self) -> TxType {
         match self {
@@ -136,6 +147,7 @@ impl PayloadInner {
             PayloadInner::UpdateCapacityMerkleRoot(_) => TxType::UpdateCapacityMerkleRoot,
             PayloadInner::PostMessage(_) => TxType::PostMessage,
             PayloadInner::AddNamespace(_) => TxType::AddNamespace,
+            PayloadInner::CapacityProofSummary(_) => TxType::CapacityProofSummary,
         }
     }
 }
@@ -167,6 +179,7 @@ impl std::fmt::Display for PayloadInner {
             }
             PayloadInner::PostMessage(tx) => write!(f, "PostMessage({tx})"),
             PayloadInner::AddNamespace(tx) => write!(f, "AddNamespace({tx})"),
+            PayloadInner::CapacityProofSummary(tx) => write!(f, "CapacityProofSummary({tx})"),
         }
     }
 }
@@ -183,6 +196,7 @@ impl HasSender for PayloadInner {
             PayloadInner::PostMessage(tx) => tx.sender(),
             PayloadInner::VerifiedProof(tx) => tx.sender,
             PayloadInner::AddNamespace(tx) => tx.sender(),
+            PayloadInner::CapacityProofSummary(tx) => tx.sender(),
         }
     }
 }
@@ -199,6 +213,7 @@ impl HasAmount for PayloadInner {
             PayloadInner::PostMessage(tx) => tx.amount(),
             PayloadInner::VerifiedProof(_tx) => 0, // VerifiedProof has no amount
             PayloadInner::AddNamespace(tx) => tx.amount(),
+            PayloadInner::CapacityProofSummary(_) => 0,
         }
     }
 }

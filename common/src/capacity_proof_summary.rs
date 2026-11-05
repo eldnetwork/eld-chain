@@ -3,8 +3,11 @@
 //! The capacity validator signs [`CapacityProofSummary::signing_bytes`]. Wire and JSON
 //! keep the signature as 128 hex characters with no `0x` prefix.
 
+use ed25519_dalek::Verifier;
+
 use crate::error::EldError;
 use crate::hex_encoding::{decode_fixed_hex, encode_hex};
+use crate::public_key::PublicKey;
 use crate::Address;
 use serde::de::{Error as SerdeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -165,11 +168,41 @@ impl CapacityProofSummary {
     pub fn is_capacity_proof_summary(bytes: &[u8]) -> bool {
         serde_json::from_slice::<Self>(bytes).is_ok()
     }
+
+    /// Checks that `public_key` is this validator's key and signed [`Self::signing_bytes`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EldError::ValidationError`] when the key does not match `validator`
+    /// or the signature does not verify.
+    pub fn verify(&self, public_key: &PublicKey) -> Result<(), EldError> {
+        if !self.validator.is_from_public_key(public_key.as_bytes()) {
+            return Err(EldError::ValidationError {
+                field: "validator".to_string(),
+                value: self.validator.to_string(),
+                details: "capacity proof summary validator does not match the public key"
+                    .to_string(),
+            });
+        }
+        let signature = ed25519_dalek::Signature::from_bytes(self.signature.as_bytes());
+        public_key
+            .to_verifying_key()
+            .verify(
+                &Self::signing_bytes(self.epoch, &self.validator, &self.outcomes),
+                &signature,
+            )
+            .map_err(|err| EldError::ValidationError {
+                field: "signature".to_string(),
+                value: self.signature.to_hex(),
+                details: format!("capacity proof summary signature is not valid: {err}"),
+            })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::public_key::PublicKey;
 
     fn sample_signature() -> CapacityProofSignature {
         CapacityProofSignature::new([0xAB; 64])
@@ -220,6 +253,32 @@ mod tests {
     #[test]
     fn signature_hex_rejects_the_wrong_length() {
         assert!(CapacityProofSignature::parse_hex("abcd").is_err());
+    }
+
+    #[test]
+    fn verify_accepts_the_validators_signature() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let key = SigningKey::from_bytes(&[4; 32]);
+        let validator = Address::from_public_key(&key.verifying_key()).expect("address");
+        let outcomes = vec![CapacityProofOutcome::Success {
+            provider: Address::from_bytes([2; 20]),
+        }];
+        let signature = key.sign(&CapacityProofSummary::signing_bytes(
+            4, &validator, &outcomes,
+        ));
+        let summary = CapacityProofSummary {
+            epoch: 4,
+            validator,
+            outcomes,
+            signature: CapacityProofSignature::new(signature.to_bytes()),
+        };
+        let public_key = PublicKey::from(key.verifying_key());
+        summary.verify(&public_key).expect("signature");
+
+        let mut tampered = summary.clone();
+        tampered.epoch = 5;
+        assert!(tampered.verify(&public_key).is_err());
     }
 
     #[test]

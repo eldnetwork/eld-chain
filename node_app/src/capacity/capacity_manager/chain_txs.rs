@@ -6,6 +6,56 @@ use eld_common::{CapacityMerkleRoot, CapacitySeed};
 use tracing::{error, info};
 
 impl CapacityManager {
+    /// Hex-encoded JSON of a signed `CapacityProofSummary` transaction.
+    ///
+    /// Same envelope as every other transaction: `sig`, `nonce`, `payload`, `public_key`, `fee`.
+    pub(crate) async fn capacity_proof_summary_tx_bytes(
+        &self,
+        summary: &eld_common::capacity_proof_summary::CapacityProofSummary,
+        nonce: eld_common::nonce::Nonce,
+    ) -> Result<Vec<u8>, EldError> {
+        use eld_common::fee::calculate_dynamic_fee;
+        use eld_common::tx::{CapacityProofSummaryTx, Payload, Tx};
+
+        let wallet = self
+            .cli
+            .get_wallet_by_address(&summary.validator.hex())
+            .await?
+            .ok_or_else(|| EldError::NotFoundError {
+                resource_type: "Wallet".to_string(),
+                identifier: summary.validator.to_string(),
+            })?;
+        if wallet.address != summary.validator {
+            return Err(EldError::ValidationError {
+                field: "capacity proof summary validator".to_string(),
+                value: summary.validator.to_string(),
+                details: "wallet address does not match the summary validator".to_string(),
+            });
+        }
+        let chain_id = self
+            .consensus_config
+            .lock()
+            .map_err(|err| EldError::StorageError {
+                operation: "capacity_proof_summary_tx".to_string(),
+                details: format!("Failed to acquire consensus config lock: {err}"),
+            })?
+            .chain_id
+            .clone();
+        let fee_config = self.protocol_fee_config()?;
+        let mut tx = Tx::new(
+            nonce,
+            Payload::new(CapacityProofSummaryTx::from_summary(summary.clone())),
+            wallet.verifying_key(),
+        );
+        tx.fee = calculate_dynamic_fee(&tx, &fee_config)?.into();
+        wallet.sign(&mut tx, &chain_id)?;
+        let json = serde_json::to_string(&tx).map_err(|err| EldError::TransactionError {
+            tx_type: "CapacityProofSummary".to_string(),
+            details: format!("Failed to serialize transaction: {err}"),
+        })?;
+        Ok(hex::encode(json).into_bytes())
+    }
+
     /// Check if capacity is registered on-chain
     pub async fn is_registered(&self) -> bool {
         self.registration_service.is_registered().await
