@@ -413,8 +413,12 @@ pub(crate) async fn handle_pinboard_submit(
             &capacity_manager.config().provider_id,
         )
     };
-    crate::api::content_channel::push_to_providers(&providers, &body.user.content_key, &message_bytes)
-        .await?;
+    crate::api::content_channel::push_to_providers(
+        &providers,
+        &body.user.content_key,
+        &message_bytes,
+    )
+    .await?;
 
     let tendermint_rpc_url = crate::api::content_channel::tendermint_rpc_url();
     submit_transaction_to_tendermint(&tendermint_rpc_url, &signed_tx).await?;

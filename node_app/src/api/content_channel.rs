@@ -10,7 +10,9 @@ use std::time::Duration;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use eld_common::Address;
+use eld_tendermint_proto::content::CapacityChallenge;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::abci_interface::content::blob_matches_content_id;
 use crate::app_state::AppState;
@@ -124,6 +126,72 @@ pub(crate) async fn load_content(
         }
     }
     Ok(None)
+}
+
+/// Queue each challenge and wait for its proof. Call this off the consensus task.
+pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
+    if challenges.is_empty() {
+        return;
+    }
+    let url = tendermint_rpc_url();
+    let Ok(peers) = connected_peers(&url).await else {
+        warn!("capacity challenges were not sent; the node RPC is unreachable");
+        return;
+    };
+    if peers.is_empty() {
+        warn!("capacity challenges were not sent; no Tendermint peer is connected");
+        return;
+    }
+    for challenge in challenges {
+        let mut accepted = false;
+        for peer_id in &peers {
+            if send_challenge(&url, peer_id, challenge).await.is_ok() {
+                accepted = true;
+                break;
+            }
+        }
+        if !accepted {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                "capacity challenge received no proof"
+            );
+        }
+    }
+}
+
+async fn send_challenge(
+    url: &str,
+    peer_id: &str,
+    challenge: &CapacityChallenge,
+) -> Result<(), ApiError> {
+    let result = rpc(
+        url,
+        "content_challenge",
+        serde_json::json!({
+            "peer_id": peer_id,
+            "challenge_id": challenge.challenge_id,
+            "challenger": BASE64_STANDARD.encode(&challenge.challenger),
+            "provider": BASE64_STANDARD.encode(&challenge.provider),
+            "chunk_indices": challenge.chunk_indices,
+            "block_height": challenge.block_height,
+            "merkle_root": BASE64_STANDARD.encode(&challenge.merkle_root),
+            "seed": BASE64_STANDARD.encode(&challenge.seed),
+            "expiration_block": challenge.expiration_block,
+            "timestamp": challenge.timestamp,
+        }),
+    )
+    .await?;
+    let returned = result
+        .get("challenge_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if returned != challenge.challenge_id {
+        return Err(ApiError::InternalServerError {
+            message: "content_challenge_reply".to_string(),
+            details: Some("proof was for a different challenge".to_string()),
+        });
+    }
+    Ok(())
 }
 
 async fn push_one(

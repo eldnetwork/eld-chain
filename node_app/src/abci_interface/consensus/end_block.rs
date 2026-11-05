@@ -263,13 +263,15 @@ where
                         self.protocol_constants().chunks_per_challenge,
                     ) {
                         Ok(challenges) => {
-                            for challenge in &challenges {
-                                info!(
-                                    epoch = new_epoch,
-                                    challenge_id = %challenge.challenge_id,
-                                    "Capacity challenge ready for the content channel"
-                                );
-                            }
+                            let challenge_count = challenges.len();
+                            tokio::spawn(async move {
+                                crate::api::content_channel::send_challenges(&challenges).await;
+                            });
+                            info!(
+                                epoch = new_epoch,
+                                challenges = challenge_count,
+                                "Capacity challenges handed to a background task"
+                            );
                         }
                         Err(e) => {
                             warn!(
