@@ -47,6 +47,8 @@ where
                 self.handle_challenge_response(&msg).await
             }
             content::message::Sum::Announce(msg) => self.handle_announce(&msg).await,
+            content::message::Sum::CapacityProofSummaryQuery(msg) => self.signed_summary(msg.epoch),
+            content::message::Sum::CapacityProofSummary(_) => None,
         };
         match reply {
             Some(message) => message.encode_to_vec(),
@@ -278,6 +280,33 @@ where
             outcomes.push(outcome);
         }
         None
+    }
+
+    fn signed_summary(&self, epoch: i64) -> Option<Message> {
+        let summaries = self
+            .signed_summaries
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let summary = summaries.get(&epoch)?;
+        let bytes = match serde_json::to_vec(summary) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                error!(
+                    epoch,
+                    error = %err,
+                    "capacity proof summary did not encode"
+                );
+                return None;
+            }
+        };
+        Some(Message {
+            sum: Some(content::message::Sum::CapacityProofSummary(
+                content::CapacityProofSummaryBytes {
+                    epoch,
+                    summary: bytes,
+                },
+            )),
+        })
     }
 
     async fn handle_announce(&self, msg: &content::Announce) -> Option<Message> {

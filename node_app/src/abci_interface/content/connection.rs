@@ -3,11 +3,13 @@
 //! End users read chain records through the info connection's CADO query.
 //! A content-channel message is answered here.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use abci::async_api::Content;
 use abci::async_trait;
 use abci::types::{RequestContent, ResponseContent};
+use eld_common::capacity_proof_summary::CapacityProofSummary;
 
 use crate::app_state::AppState;
 use crate::capacity::capacity_manager::CapacityManager;
@@ -31,6 +33,8 @@ pub struct ContentConnection<B> {
     pub(super) missing: Mutex<MissingContentTracker>,
     pub(super) receipts: Mutex<Vec<ContentReceipt>>,
     pub(super) challenge_outcomes: Mutex<Vec<ChallengeOutcome>>,
+    /// One signed summary per epoch. The node reads this through the content connection.
+    pub(super) signed_summaries: Mutex<HashMap<i64, CapacityProofSummary>>,
 }
 
 pub struct ContentReceipt {
@@ -69,6 +73,7 @@ where
             missing: Mutex::new(missing),
             receipts: Mutex::new(Vec::new()),
             challenge_outcomes: Mutex::new(Vec::new()),
+            signed_summaries: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -96,6 +101,9 @@ mod tests {
     use eld_common::address::Address;
     use eld_common::capacity::{CapacityConfig, Slot, SlotMap};
     use eld_common::capacity_proof::SlotState;
+    use eld_common::capacity_proof_summary::{
+        CapacityProofOutcome, CapacityProofSignature, CapacityProofSummary,
+    };
     use eld_common::constants::pinboard::MAX_CHUNK_SIZE;
     use eld_common::error::EldError;
     use eld_tendermint_proto::content::{self, ContentPush, ContentRequest, Message};
@@ -314,5 +322,45 @@ mod tests {
             }
             other => panic!("expected a content response, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn the_node_can_read_the_signed_summary_for_an_epoch() {
+        let dir = TempDir::new().expect("dir");
+        let wallet_dir = TempDir::new().expect("wallet dir");
+        let conn = connection(manager(&dir, &wallet_dir));
+        let summary = CapacityProofSummary {
+            epoch: 4,
+            validator: Address::from_bytes([1; 20]),
+            outcomes: vec![CapacityProofOutcome::Success {
+                provider: Address::from_bytes([2; 20]),
+            }],
+            signature: CapacityProofSignature::new([0xAB; 64]),
+        };
+        conn.signed_summaries
+            .lock()
+            .expect("summaries")
+            .insert(4, summary.clone());
+
+        let reply = conn
+            .content(request(content::message::Sum::CapacityProofSummaryQuery(
+                content::CapacityProofSummaryQuery { epoch: 4 },
+            )))
+            .await;
+        let message = Message::decode(reply.message.as_slice()).expect("reply");
+        let Some(content::message::Sum::CapacityProofSummary(body)) = message.sum else {
+            panic!("expected a summary, got {message:?}");
+        };
+        assert_eq!(body.epoch, 4);
+        let parsed: CapacityProofSummary =
+            serde_json::from_slice(&body.summary).expect("summary json");
+        assert_eq!(parsed, summary);
+
+        let missing = conn
+            .content(request(content::message::Sum::CapacityProofSummaryQuery(
+                content::CapacityProofSummaryQuery { epoch: 5 },
+            )))
+            .await;
+        assert!(missing.message.is_empty());
     }
 }
