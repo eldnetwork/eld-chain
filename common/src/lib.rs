@@ -14,6 +14,7 @@ pub mod capacity_challenge;
 pub mod capacity_merkle_root;
 #[allow(missing_docs)]
 pub mod capacity_proof;
+pub mod capacity_proof_summary;
 pub mod capacity_seed;
 pub mod challenge_id;
 pub mod coin;
