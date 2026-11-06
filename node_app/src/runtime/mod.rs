@@ -166,6 +166,7 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
         init_data: args.init_data,
         ready_tx: Some(ready_tx),
         capacity_manager: capacity.manager.clone(),
+        cli,
         local_identity: capacity.local_identity.clone(),
         committed_state: committed_state.clone(),
         current_state,

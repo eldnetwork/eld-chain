@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use abci::async_api::Content;
 use abci::async_trait;
 use abci::types::{RequestContent, ResponseContent};
+use eld_client::facade::ChainClient;
 use eld_common::capacity_proof_summary::CapacityProofSummary;
 
 use crate::app_state::AppState;
@@ -23,6 +24,8 @@ pub struct ContentParts<B> {
     pub blobs: Arc<B>,
     pub committed_state: Arc<Mutex<AppState>>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    /// Chain client. The handler calls [`ChainClient::submit_capacity_proof`] with the wallet name.
+    pub cli: Arc<ChainClient>,
 }
 
 pub struct ContentConnection<B> {
@@ -30,6 +33,7 @@ pub struct ContentConnection<B> {
     pub(super) blobs: Arc<B>,
     pub(super) committed_state: Arc<Mutex<AppState>>,
     pub(super) local_identity: Arc<RwLock<LocalNodeIdentity>>,
+    pub(super) cli: Arc<ChainClient>,
     pub(super) missing: Mutex<MissingContentTracker>,
     pub(super) receipts: Mutex<Vec<ContentReceipt>>,
     pub(super) challenge_outcomes: Mutex<Vec<ChallengeOutcome>>,
@@ -70,6 +74,7 @@ where
             blobs: parts.blobs,
             committed_state: parts.committed_state,
             local_identity: parts.local_identity,
+            cli: parts.cli,
             missing: Mutex::new(missing),
             receipts: Mutex::new(Vec::new()),
             challenge_outcomes: Mutex::new(Vec::new()),
@@ -207,6 +212,21 @@ mod tests {
             }),
             committed_state: Arc::new(Mutex::new(AppState::default())),
             local_identity: Arc::new(RwLock::new(LocalNodeIdentity::default())),
+            cli: Arc::new(eld_client::facade::ChainClient::new(
+                eld_client::config::ClientConfig {
+                    node_host: "127.0.0.1".to_string(),
+                    node_port: "26657".to_string(),
+                    chain_id: "test-chain".to_string(),
+                    faucet_host: "127.0.0.1".to_string(),
+                    faucet_port: "8080".to_string(),
+                    faucet_end_point: "/faucet/request".to_string(),
+                    faucet_url: None,
+                    app_port: "9001".to_string(),
+                    node_url: None,
+                    app_url: None,
+                },
+                eld_common::fee::FeeConfig::default(),
+            )),
         })
     }
 

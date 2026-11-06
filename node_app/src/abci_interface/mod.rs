@@ -46,6 +46,7 @@ where
     pub init_data: bool,
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
+    pub cli: Arc<eld_client::facade::ChainClient>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
     pub committed_state: Arc<Mutex<AppState>>,
     pub current_state: Arc<Mutex<Option<AppState>>>,
@@ -81,6 +82,7 @@ where
         init_data,
         ready_tx,
         capacity_manager,
+        cli,
         local_identity,
         committed_state: committed_state_mutex,
         current_state,
@@ -185,6 +187,7 @@ where
         blobs: content_temp_storage,
         committed_state: Arc::clone(&committed_state_mutex),
         local_identity: Arc::clone(&local_identity),
+        cli,
     });
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
@@ -321,6 +324,7 @@ mod tests {
             registration_retry_interval_secs: 60,
             tendermint_rpc_url: "http://127.0.0.1:26657".to_string(),
         };
+        let content_cli = Arc::clone(&cli);
         let capacity_manager = Arc::new(CapacityManager::new(
             capacity_config,
             "wallet1".to_string(),
@@ -340,6 +344,7 @@ mod tests {
             init_data: false,
             ready_tx: None,
             capacity_manager,
+            cli: content_cli,
             local_identity,
             committed_state: Arc::new(Mutex::new(AppState::default())),
             current_state: Arc::new(Mutex::new(None)),
@@ -436,6 +441,7 @@ mod tests {
             registration_retry_interval_secs: 60,
             tendermint_rpc_url: "http://127.0.0.1:26657".to_string(),
         };
+        let content_cli = Arc::clone(&cli);
         let capacity_manager = Arc::new(CapacityManager::new(
             capacity_config,
             "wallet1".to_string(),
@@ -455,6 +461,7 @@ mod tests {
             init_data: false,
             ready_tx: None,
             capacity_manager,
+            cli: content_cli,
             local_identity,
             committed_state: committed_state.clone(),
             current_state: Arc::new(Mutex::new(None)),

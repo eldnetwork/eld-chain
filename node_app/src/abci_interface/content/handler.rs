@@ -262,6 +262,39 @@ where
         };
         let indices: Vec<usize> = proofs.iter().map(|proof| proof.chunk_index).collect();
         let checked = validate_challenge_proof(&proofs, &root, &indices);
+        if checked.is_valid {
+            match crate::node_identity::resolve_capacity_validator_wallet_name_from_env() {
+                Ok(wallet_name) => {
+                    if let Err(err) = self
+                        .cli
+                        .submit_capacity_proof(
+                            wallet_name,
+                            provider,
+                            msg.challenge_id.clone(),
+                            msg.block_height,
+                            proofs.clone(),
+                            msg.generated_at,
+                            provider_pubkey,
+                            provider_signature,
+                        )
+                        .await
+                    {
+                        error!(
+                            challenge_id = %msg.challenge_id,
+                            error = %err,
+                            "capacity proof transaction was not submitted"
+                        );
+                    }
+                }
+                Err(err) => {
+                    error!(
+                        challenge_id = %msg.challenge_id,
+                        error = %err,
+                        "capacity proof transaction was not submitted"
+                    );
+                }
+            }
+        }
         let outcome = if checked.is_valid {
             super::connection::ChallengeOutcome::Verified {
                 challenge_id: msg.challenge_id.clone(),
