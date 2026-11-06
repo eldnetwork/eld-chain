@@ -25,7 +25,7 @@ use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use chain_tip::ChainTip;
-use content::{ContentConnection, ContentParts, ContentTempStorage};
+use content::{ContentConnection, ContentContext, ContentTempStorage};
 use eld_common::protocol_constants::ProtocolHandle;
 use info::InfoConnection;
 use mempool::MempoolConnection;
@@ -182,7 +182,7 @@ where
     drop(committed_state);
 
     let frontier_snapshot_store = FrontierSnapshotStore::new();
-    let content = ContentConnection::new(ContentParts {
+    let content = ContentConnection::new(ContentContext {
         capacity: Arc::clone(&capacity_manager),
         blobs: content_temp_storage,
         committed_state: Arc::clone(&committed_state_mutex),

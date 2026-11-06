@@ -19,7 +19,7 @@ use crate::node_identity::LocalNodeIdentity;
 
 use super::temp_storage::ContentTempStorage;
 
-pub struct ContentParts<B> {
+pub struct ContentContext<B> {
     pub capacity: Arc<CapacityManager>,
     pub blobs: Arc<B>,
     pub committed_state: Arc<Mutex<AppState>>,
@@ -63,7 +63,7 @@ impl<B> ContentConnection<B>
 where
     B: ContentTempStorage,
 {
-    pub fn new(parts: ContentParts<B>) -> Self {
+    pub fn new(parts: ContentContext<B>) -> Self {
         let mut missing =
             MissingContentTracker::new(parts.capacity.config().capacity_dir.as_path());
         if let Err(err) = missing.load() {
@@ -121,7 +121,7 @@ mod tests {
     use crate::node_identity::LocalNodeIdentity;
 
     use super::super::temp_storage::ContentTempStorage;
-    use super::{ContentConnection, ContentParts};
+    use super::{ContentConnection, ContentContext};
 
     const PROVIDER: &str = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
@@ -205,7 +205,7 @@ mod tests {
     }
 
     fn connection(capacity: Arc<CapacityManager>) -> ContentConnection<MemoryBlobs> {
-        ContentConnection::new(ContentParts {
+        ContentConnection::new(ContentContext {
             capacity,
             blobs: Arc::new(MemoryBlobs {
                 blobs: Mutex::new(HashMap::new()),
