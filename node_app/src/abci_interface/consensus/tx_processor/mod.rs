@@ -4,11 +4,12 @@ use abci::types::ResponseDeliverTx;
 use async_trait::async_trait;
 use eld_common::tx::CapacityProofSummaryTx;
 use eld_common::tx::{
-    AddNamespaceTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx, TxPublicKey,
-    UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
+    AddNamespaceTx, CapacityProofTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx,
+    TxPublicKey, UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
 };
 
 pub mod add_namespace_processor;
+pub mod capacity_proof_processor;
 pub mod capacity_proof_summary_processor;
 pub mod post_message_processor;
 pub mod register_capacity_processor;
@@ -52,6 +53,8 @@ pub trait TransactionProcessor: Send + Sync {
 
     async fn process_capacity_proof_summary(&self, tx: CapacityProofSummaryTx)
         -> ResponseDeliverTx;
+
+    async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx;
 }
 
 #[async_trait]
@@ -122,5 +125,9 @@ where
         tx: CapacityProofSummaryTx,
     ) -> ResponseDeliverTx {
         capacity_proof_summary_processor::process_capacity_proof_summary(self, tx).await
+    }
+
+    async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx {
+        capacity_proof_processor::process_capacity_proof_tx(self, tx).await
     }
 }
