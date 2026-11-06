@@ -39,8 +39,8 @@ impl P2pSyncCoordinator {
         local_identity: Arc<RwLock<LocalNodeIdentity>>,
     ) -> Result<(Self, mpsc::UnboundedReceiver<SyncMsg>), EldError> {
         Self::new_internal(port_config, p2p_keypair, storage, local_identity)
-        .await
-        .map_err(p2p_coordinator_init_error)
+            .await
+            .map_err(p2p_coordinator_init_error)
     }
 
     async fn new_internal(

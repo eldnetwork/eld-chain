@@ -2,7 +2,6 @@ use super::ConsensusConnection;
 use crate::storage::traits::ConsensusConnectionStorage;
 use abci::types::ResponseDeliverTx;
 use async_trait::async_trait;
-use eld_common::tx::CapacityProofSummaryTx;
 use eld_common::tx::{
     AddNamespaceTx, CapacityProofTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx,
     TxPublicKey, UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx,
@@ -11,7 +10,6 @@ use eld_common::tx::{
 pub mod add_namespace_processor;
 pub mod capacity_challenge_binding;
 pub mod capacity_proof_processor;
-pub mod capacity_proof_summary_processor;
 pub mod post_message_processor;
 pub mod register_capacity_processor;
 pub mod stake_processor;
@@ -47,9 +45,6 @@ pub trait TransactionProcessor: Send + Sync {
     async fn process_post_message(&self, post_message_tx: PostMessageTx) -> ResponseDeliverTx;
 
     async fn process_add_namespace(&self, add_namespace_tx: AddNamespaceTx) -> ResponseDeliverTx;
-
-    async fn process_capacity_proof_summary(&self, tx: CapacityProofSummaryTx)
-        -> ResponseDeliverTx;
 
     async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx;
 }
@@ -108,13 +103,6 @@ where
 
     async fn process_add_namespace(&self, add_namespace_tx: AddNamespaceTx) -> ResponseDeliverTx {
         add_namespace_processor::process_add_namespace_tx(self, add_namespace_tx).await
-    }
-
-    async fn process_capacity_proof_summary(
-        &self,
-        tx: CapacityProofSummaryTx,
-    ) -> ResponseDeliverTx {
-        capacity_proof_summary_processor::process_capacity_proof_summary(self, tx).await
     }
 
     async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx {

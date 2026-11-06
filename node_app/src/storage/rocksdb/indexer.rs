@@ -719,11 +719,8 @@ impl TransactionIndexerStorage for RocksDBStorage {
         if status == TransactionStatus::Success {
             if let PayloadInner::CapacityProof(proof_tx) = &tx.payload.inner {
                 let provider_key = proof_tx.capacity_provider.to_string().to_lowercase();
-                let vp_key = Self::verified_proof_reward_index_key(
-                    &provider_key,
-                    block_height,
-                    block_index,
-                );
+                let vp_key =
+                    Self::verified_proof_reward_index_key(&provider_key, block_height, block_index);
                 self.db
                     .put_cf(cf, &vp_key, [])
                     .map_err(|e| EldError::StorageError {

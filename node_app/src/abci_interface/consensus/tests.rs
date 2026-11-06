@@ -17,19 +17,14 @@ use abci::types::{
     Header, PublicKey as AbciPublicKey, RequestBeginBlock, RequestCheckTx, RequestCommit,
     RequestDeliverTx, RequestEndBlock, ValidatorUpdate,
 };
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::SigningKey;
 use eld_client::config::ClientConfig;
 use eld_common::account::Account;
 use eld_common::address::Address;
 use eld_common::cado::{CadoPath, CadoPathKey, CadoType};
 use eld_common::capacity::CapacityConfig;
-use eld_common::capacity_proof_summary::{
-    CapacityProofOutcome, CapacityProofSignature, CapacityProofSummary,
-};
 use eld_common::coin::Coin;
 use eld_common::protocol_constants::ProtocolHandle;
-use eld_common::public_key::PublicKey;
-use eld_common::validator::{ActiveCapacityValidator, CapacityValidatorInfo, EpochRecord};
 const BLOCKS_PER_EPOCH: i64 = 20;
 use eld_common::fee::calculate_dynamic_fee;
 use eld_common::nonce::Nonce;
@@ -1074,150 +1069,4 @@ async fn transfer_app_hash_is_stable_and_reloads_from_rocksdb() {
         .expect("reload from rocksdb");
     assert_eq!(restored.app_hash(), &hash_a);
     assert_eq!(restored.envelope.state_trie.root_hash(), trie_a);
-}
-
-fn capacity_validator_info(address: Address, public_key: PublicKey) -> CapacityValidatorInfo {
-    CapacityValidatorInfo {
-        address,
-        stake: Coin::new(5_000).expect("stake"),
-        public_key,
-        storage_capacity: 1_000,
-        merkle_root: Some([9; 32]),
-        seed: Some([8; 32]),
-        chunk_count: Some(50),
-        registered_at: Some(1),
-        last_merkle_root_update: Some(1),
-        registered_block: 1,
-        registration_duration: 1_000,
-    }
-}
-
-fn signed_summary(
-    key: &SigningKey,
-    epoch: i64,
-    outcomes: Vec<CapacityProofOutcome>,
-) -> CapacityProofSummary {
-    let validator = Address::from_public_key(&key.verifying_key()).expect("validator");
-    let signature = key.sign(&CapacityProofSummary::signing_bytes(
-        epoch, &validator, &outcomes,
-    ));
-    CapacityProofSummary {
-        epoch,
-        validator,
-        outcomes,
-        signature: CapacityProofSignature::new(signature.to_bytes()),
-    }
-}
-
-#[tokio::test]
-async fn deliver_tx_applies_a_capacity_proof_summary_from_the_block() {
-    let consensus = mock_consensus_connection();
-    let key = SigningKey::from_bytes(&[4; 32]);
-    let validator = Address::from_public_key(&key.verifying_key()).expect("validator");
-    let rewarded = Address::from_bytes([2; 20]);
-    let failed = Address::from_bytes([3; 20]);
-    let epoch = 4i64;
-    let record = EpochRecord {
-        epoch,
-        start_block: epoch * BLOCKS_PER_EPOCH,
-        active_validators: vec![],
-        active_capacity_validator: Some(ActiveCapacityValidator {
-            validator_address: validator,
-            epoch,
-            challenged_providers: vec![rewarded, failed],
-            subscribed_topics: vec![],
-        }),
-        challenged_capacity_validators: vec![],
-    };
-    {
-        let mut guard = consensus.current_state.lock().expect("current");
-        let state = guard.as_mut().expect("state");
-        state.envelope.current_epoch = epoch;
-        state.envelope.block_height = epoch * BLOCKS_PER_EPOCH;
-        state.envelope.capacity_validators = vec![
-            capacity_validator_info(validator, PublicKey::from(key.verifying_key())),
-            capacity_validator_info(
-                rewarded,
-                PublicKey::from(SigningKey::from_bytes(&[2; 32]).verifying_key()),
-            ),
-            capacity_validator_info(
-                failed,
-                PublicKey::from(SigningKey::from_bytes(&[3; 32]).verifying_key()),
-            ),
-        ];
-        ConsensusConnection::<HybridStorage>::store_epoch_record(state, &record).expect("epoch");
-        seed_sender_account(state, &key, 1_000_000_000_000);
-    }
-    {
-        let mut committed = consensus.committed_state.lock().expect("committed");
-        committed.chain_id = "test-chain".to_string();
-    }
-
-    let summary = signed_summary(
-        &key,
-        epoch,
-        vec![
-            CapacityProofOutcome::Success { provider: rewarded },
-            CapacityProofOutcome::Failure { provider: failed },
-        ],
-    );
-    let response = consensus
-        .deliver_tx(RequestDeliverTx {
-            tx: hex_encode_tx(&signed_summary_tx(&key, summary.clone(), 1)),
-        })
-        .await;
-    assert_eq!(response.code, 0, "{}", response.log);
-
-    {
-        let mut guard = consensus.current_state.lock().expect("current");
-        let state = guard.as_mut().expect("state");
-        let path = CadoPath::new(CadoType::Account, CadoPathKey::Address(rewarded)).expect("path");
-        let account = state
-            .envelope
-            .get_account_from_cado(consensus.storage.as_ref(), &path)
-            .expect("reward account");
-        assert_eq!(account.account.balance().amount(), 1000);
-        assert_eq!(state.envelope.failed_proof_counts.get(&failed), Some(&1));
-        let rewarded_info = state
-            .envelope
-            .capacity_validators
-            .iter()
-            .find(|info| info.address == rewarded)
-            .expect("rewarded provider");
-        assert!(rewarded_info.registration_duration > 1_000);
-    }
-
-    let replay = consensus
-        .deliver_tx(RequestDeliverTx {
-            tx: hex_encode_tx(&signed_summary_tx(&key, summary.clone(), 2)),
-        })
-        .await;
-    assert_eq!(replay.code, 51, "{}", replay.log);
-
-    let mut bad = summary;
-    bad.signature = CapacityProofSignature::new([0x11; 64]);
-    let rejected = consensus
-        .deliver_tx(RequestDeliverTx {
-            tx: hex_encode_tx(&signed_summary_tx(&key, bad, 3)),
-        })
-        .await;
-    assert_eq!(rejected.code, 51, "{}", rejected.log);
-}
-
-fn signed_summary_tx(key: &SigningKey, summary: CapacityProofSummary, nonce: u32) -> Tx {
-    use crate::config::FeeConfig;
-    use eld_common::fee::calculate_dynamic_fee;
-    use eld_common::tx::{CapacityProofSummaryTx, Payload, TxPublicKey, TxSig};
-
-    let mut tx = Tx {
-        sig: TxSig::empty(),
-        nonce: nonce.into(),
-        payload: Payload::new(CapacityProofSummaryTx::from_summary(summary)),
-        public_key: TxPublicKey::from(key.verifying_key()),
-        fee: 0.into(),
-    };
-    let required_fee = calculate_dynamic_fee(&tx, &FeeConfig::default()).expect("fee");
-    tx.fee = required_fee.amount().into();
-    tx.sign(key, "test-chain").expect("sign");
-    tx
 }

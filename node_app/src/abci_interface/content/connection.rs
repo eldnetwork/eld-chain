@@ -3,14 +3,12 @@
 //! End users read chain records through the info connection's CADO query.
 //! A content-channel message is answered here.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use abci::async_api::Content;
 use abci::async_trait;
 use abci::types::{RequestContent, ResponseContent};
 use eld_client::facade::ChainClient;
-use eld_common::capacity_proof_summary::CapacityProofSummary;
 
 use crate::app_state::AppState;
 use crate::capacity::capacity_manager::CapacityManager;
@@ -37,8 +35,6 @@ pub struct ContentConnection<B> {
     pub(super) missing: Mutex<MissingContentTracker>,
     pub(super) receipts: Mutex<Vec<ContentReceipt>>,
     pub(super) challenge_outcomes: Mutex<Vec<ChallengeOutcome>>,
-    /// One signed summary per epoch. The node reads this through the content connection.
-    pub(super) signed_summaries: Mutex<HashMap<i64, CapacityProofSummary>>,
 }
 
 pub struct ContentReceipt {
@@ -78,7 +74,6 @@ where
             missing: Mutex::new(missing),
             receipts: Mutex::new(Vec::new()),
             challenge_outcomes: Mutex::new(Vec::new()),
-            signed_summaries: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -106,9 +101,6 @@ mod tests {
     use eld_common::address::Address;
     use eld_common::capacity::{CapacityConfig, Slot, SlotMap};
     use eld_common::capacity_proof::SlotState;
-    use eld_common::capacity_proof_summary::{
-        CapacityProofOutcome, CapacityProofSignature, CapacityProofSummary,
-    };
     use eld_common::constants::pinboard::MAX_CHUNK_SIZE;
     use eld_common::error::EldError;
     use eld_tendermint_proto::content::{self, ContentPush, ContentRequest, Message};
@@ -350,103 +342,5 @@ mod tests {
             }
             other => panic!("expected a content response, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn the_node_can_read_the_signed_summary_for_an_epoch() {
-        use ed25519_dalek::{Signer, SigningKey};
-        use eld_common::account::Account;
-        use eld_common::cado::{CADOMetadata, CadoBody, CadoPath, CadoPathKey, CadoType};
-        use eld_common::coin::Coin;
-        use eld_common::nonce::Nonce;
-        use eld_common::tx::{PayloadInner, Tx};
-        use eld_common::wallet::{JsonKeypair, JsonWallet};
-
-        let dir = TempDir::new().expect("dir");
-        let wallet_dir = TempDir::new().expect("wallet dir");
-        let key = SigningKey::from_bytes(&[9; 32]);
-        let validator = Address::from_public_key(&key.verifying_key()).expect("validator");
-        let wallet = JsonWallet {
-            name: "validator".to_string(),
-            address: validator.hex(),
-            keypair: JsonKeypair {
-                public_key: hex::encode(key.verifying_key().to_bytes()),
-                private_key: hex::encode(key.to_bytes()),
-                keytype: "ed25519_keypair".to_string(),
-            },
-        };
-        let wallets_json = serde_json::to_string(&vec![wallet]).expect("wallets");
-        let conn = connection(manager_with_wallets(&dir, &wallet_dir, &wallets_json));
-        let account = Account::new(
-            validator,
-            Coin::new(1_000_000).expect("balance"),
-            Nonce::new(0),
-        );
-        let serialized = bincode::serialize(&account).expect("account");
-        let cado = CadoBody::mutable_new(
-            serialized,
-            CADOMetadata::new(CadoType::Account, validator.to_string()),
-        );
-        let path = CadoPath::new(CadoType::Account, CadoPathKey::Address(validator)).expect("path");
-        conn.committed_state
-            .lock()
-            .expect("state")
-            .envelope
-            .committed_cado_cache
-            .insert(path.as_str().as_bytes(), cado);
-
-        let provider = Address::from_bytes([2; 20]);
-        let outcomes = vec![CapacityProofOutcome::Success { provider }];
-        let signature = key.sign(&CapacityProofSummary::signing_bytes(
-            4, &validator, &outcomes,
-        ));
-        let summary = CapacityProofSummary {
-            epoch: 4,
-            validator,
-            outcomes,
-            signature: CapacityProofSignature::new(signature.to_bytes()),
-        };
-        conn.signed_summaries
-            .lock()
-            .expect("summaries")
-            .insert(4, summary.clone());
-
-        let reply = conn
-            .content(request(content::message::Sum::CapacityProofSummaryQuery(
-                content::CapacityProofSummaryQuery { height: 80 },
-            )))
-            .await;
-        let message = Message::decode(reply.message.as_slice()).expect("reply");
-        let Some(content::message::Sum::CapacityProofSummary(body)) = message.sum else {
-            panic!("expected a summary, got {message:?}");
-        };
-        assert_eq!(body.epoch, 4);
-        let hex_tx = String::from_utf8(body.summary).expect("hex");
-        let tx_json = hex::decode(hex_tx).expect("hex decode");
-        let tx_value: serde_json::Value = serde_json::from_slice(&tx_json).expect("json");
-        eld_common::validation::validate_transaction_structure(&tx_value)
-            .expect("outer transaction checks");
-        for field in ["sig", "nonce", "payload", "public_key", "fee"] {
-            assert!(tx_value.get(field).is_some(), "missing {field}");
-        }
-        assert_eq!(tx_value["payload"]["type"], "CapacityProofSummary");
-        assert_eq!(tx_value["payload"]["sender"], validator.to_string());
-        let tx: Tx = serde_json::from_slice(&tx_json).expect("tx");
-        assert!(tx.verify("test-chain").expect("verify"));
-        assert_eq!(tx.nonce.value(), 1);
-        match tx.payload.inner {
-            PayloadInner::CapacityProofSummary(parsed) => {
-                assert_eq!(parsed.sender, summary.validator);
-                assert_eq!(parsed.summary(), summary);
-            }
-            other => panic!("expected a summary payload, got {other:?}"),
-        }
-
-        let missing = conn
-            .content(request(content::message::Sum::CapacityProofSummaryQuery(
-                content::CapacityProofSummaryQuery { height: 100 },
-            )))
-            .await;
-        assert!(missing.message.is_empty());
     }
 }

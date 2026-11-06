@@ -47,10 +47,8 @@ where
                 self.handle_challenge_response(&msg).await
             }
             content::message::Sum::Announce(msg) => self.handle_announce(&msg).await,
-            content::message::Sum::CapacityProofSummaryQuery(msg) => {
-                self.signed_summary_for_height(msg.height).await
-            }
-            content::message::Sum::CapacityProofSummary(_) => None,
+            content::message::Sum::CapacityProofSummaryQuery(_)
+            | content::message::Sum::CapacityProofSummary(_) => None,
         };
         match reply {
             Some(message) => message.encode_to_vec(),
@@ -315,78 +313,6 @@ where
             outcomes.push(outcome);
         }
         None
-    }
-
-    async fn signed_summary_for_height(&self, height: i64) -> Option<Message> {
-        if height < 0 {
-            return None;
-        }
-        let blocks_per_epoch = self
-            .capacity
-            .protocol_handle()
-            .get()
-            .map(|constants| constants.blocks_per_epoch)
-            .unwrap_or(0);
-        if blocks_per_epoch <= 0 {
-            return None;
-        }
-        self.signed_summary(height / blocks_per_epoch).await
-    }
-
-    async fn signed_summary(&self, epoch: i64) -> Option<Message> {
-        let summary = {
-            let summaries = self
-                .signed_summaries
-                .lock()
-                .unwrap_or_else(|err| err.into_inner());
-            summaries.get(&epoch)?.clone()
-        };
-        let nonce = self.next_validator_nonce(summary.validator)?;
-        let bytes = match self
-            .capacity
-            .capacity_proof_summary_tx_bytes(&summary, nonce)
-            .await
-        {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                error!(
-                    epoch,
-                    error = %err,
-                    "capacity proof summary transaction was not signed"
-                );
-                return None;
-            }
-        };
-        Some(Message {
-            sum: Some(content::message::Sum::CapacityProofSummary(
-                content::CapacityProofSummaryBytes {
-                    epoch,
-                    summary: bytes,
-                },
-            )),
-        })
-    }
-
-    fn next_validator_nonce(
-        &self,
-        validator: eld_common::Address,
-    ) -> Option<eld_common::nonce::Nonce> {
-        use eld_common::account::Account;
-        use eld_common::cado::{CadoPath, CadoPathKey, CadoType};
-        use eld_common::validation::safe_deserialize_account_data;
-
-        let path = CadoPath::new(CadoType::Account, CadoPathKey::Address(validator)).ok()?;
-        let state = self
-            .committed_state
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
-        let cado = state
-            .envelope
-            .committed_cado_cache
-            .get(path.as_str().as_bytes())?;
-        let account: Account =
-            safe_deserialize_account_data(cado.data(), "capacity validator account").ok()?;
-        account.nonce().next()
     }
 
     async fn handle_announce(&self, msg: &content::Announce) -> Option<Message> {

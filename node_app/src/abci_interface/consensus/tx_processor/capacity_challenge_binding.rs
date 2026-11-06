@@ -3,9 +3,11 @@ use eld_common::{
     capacity_challenge::{compute_challenge_id, select_challenge_chunk_indices},
     capacity_merkle_root::CapacityMerkleRoot,
     challenge_id::ChallengeId,
-    coin::Coin,
     validator::EpochRecord,
 };
+
+#[cfg(test)]
+use eld_common::coin::Coin;
 
 /// On-chain inputs resolved by binding gates (sender / challenged set / challenge_id).
 #[derive(Debug)]
@@ -182,6 +184,7 @@ fn validate_verified_proof_binding(
 
 /// Increments the provider's failed-proof count. At [`FAILED_PROOFS_BEFORE_SLASH`], burns
 /// [`CapacityValidatorInfo::stake`](eld_common::validator::CapacityValidatorInfo::stake) and resets the count.
+#[cfg(test)]
 pub(crate) fn record_failed_capacity_proof(
     envelope: &mut crate::app_state::AppStateEnvelope,
     provider: Address,

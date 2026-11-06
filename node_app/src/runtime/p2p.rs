@@ -51,14 +51,10 @@ pub async fn init_p2p(
             derived_peer_id
         );
 
-        let (coordinator, msg_rx) = P2pSyncCoordinator::new(
-            p2p_config,
-            p2p_keypair,
-            node_storage,
-            local_identity,
-        )
-        .await
-        .unwrap_or_else(|e| handle_fatal_eld_error(e));
+        let (coordinator, msg_rx) =
+            P2pSyncCoordinator::new(p2p_config, p2p_keypair, node_storage, local_identity)
+                .await
+                .unwrap_or_else(|e| handle_fatal_eld_error(e));
         info!("P2P sync coordinator started — mDNS + QUIC active");
         let coordinator_arc = Arc::new(coordinator);
         real_coordinator = Some(coordinator_arc.clone());

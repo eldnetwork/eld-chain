@@ -303,7 +303,6 @@ impl P2pSyncCoordinator {
                     merkle_root = %expected_merkle_root,
                     "Proof validation succeeded"
                 );
-
             }
             ProofValidationResult {
                 is_valid: false,
@@ -317,7 +316,6 @@ impl P2pSyncCoordinator {
                     errors = ?errors,
                     "Proof validation failed"
                 );
-
             }
         }
     }
