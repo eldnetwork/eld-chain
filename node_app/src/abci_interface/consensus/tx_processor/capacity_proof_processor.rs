@@ -3,7 +3,7 @@
 //! Every node applies the same transaction. The proof is checked against the
 //! epoch record, then the provider reward is written into the current app state.
 
-use super::verified_proof_processor::{bind_verified_proof, proof_epoch_in_window};
+use super::capacity_challenge_binding::{bind_verified_proof, proof_epoch_in_window};
 use crate::abci_interface::ConsensusConnection;
 use crate::capacity::challenge_validator::validate_challenge_proof;
 use crate::errors::response_deliver_tx_error_validation_failed;

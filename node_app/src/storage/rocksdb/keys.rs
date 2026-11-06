@@ -11,7 +11,7 @@ use super::RocksDBStorage;
 pub(super) const INDEXED_TRANSACTIONS_PRIMARY_TOTAL_COUNT_KEY: &[u8] =
     b"_meta:indexed_transactions_primary_total";
 
-/// Little-endian `u64` count of successful indexed [`VerifiedProof`](eld_common::tx::PayloadInner::VerifiedProof)
+/// Little-endian `u64` count of successful indexed capacity-proof rewards
 /// network-wide (rollup). Does not overlap `0x` primaries or `vp:` keys.
 pub(super) const VERIFIED_PROOF_GLOBAL_REWARDS_COUNT_KEY: &[u8] =
     b"_meta:verified_proof_global_rewards_count";
@@ -83,8 +83,8 @@ impl RocksDBStorage {
         }
         epoch_from_record_path_name(name)
     }
-    /// Secondary index for successful [`VerifiedProof`](eld_common::tx::PayloadInner::VerifiedProof)
-    /// rewards: `vp:{provider}:{height:016x}:{block_index:08x}`.
+    /// Secondary index for successful capacity-proof rewards:
+    /// `vp:{provider}:{height:016x}:{block_index:08x}`.
     pub(crate) fn verified_proof_reward_index_key(
         provider_normalized: &str,
         block_height: u64,

@@ -17,7 +17,6 @@ use crate::node_identity::{
 
 pub struct CapacityRuntime {
     pub manager: Arc<CapacityManager>,
-    pub validator_wallet_name: String,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
 }
 
@@ -105,7 +104,6 @@ pub async fn init_capacity(
 
     CapacityRuntime {
         manager: Arc::new(manager),
-        validator_wallet_name: capacity_validator_wallet_name,
         local_identity,
     }
 }

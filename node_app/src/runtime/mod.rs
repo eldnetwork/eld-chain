@@ -95,11 +95,8 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     let p2p = p2p::init_p2p(
         &node_config,
         capacity.manager.clone(),
-        cli.clone(),
-        consensus_config.clone(),
         node_storage.clone(),
         capacity.local_identity.clone(),
-        capacity.validator_wallet_name.clone(),
     )
     .await?;
 

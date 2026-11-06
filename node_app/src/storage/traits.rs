@@ -338,7 +338,7 @@ pub trait PinboardQueryStorage: Send + Sync + 'static {
     fn list_pinboard_pins(&self) -> Result<Vec<(u64, u64, String)>, EldError>;
 }
 
-/// Chain-wide dedup for rewarded [`VerifiedProof`](eld_common::tx::VerifiedProofTx) challenges.
+/// Chain-wide dedup for rewarded capacity-proof challenges.
 pub trait VerifiedProofRewardDedupStorage: Send + Sync {
     fn is_verified_proof_challenge_rewarded(&self, challenge_id: &str) -> Result<bool, EldError>;
 
@@ -480,17 +480,16 @@ pub trait TransactionIndexerStorage: Send + Sync {
     ) -> Result<(), EldError>;
 }
 
-/// Persisted deduplication for outbound [`VerifiedProof`](eld_common::tx::VerifiedProofTx) submissions.
+/// Persisted deduplication for outbound capacity-proof submissions.
 ///
-/// Must only be consulted under the same serialization as nonce assignment (see
-/// [`crate::wallet::VerifiedProofChainSubmitter`]) unless the store implementation is fully atomic.
-/// Persisted VerifiedProof submission dedup. Implemented by [`crate::storage::hybrid_storage::HybridStorage`]
+/// Implemented by [`crate::storage::hybrid_storage::HybridStorage`]
 /// (which delegates to RocksDB helpers — RocksDB does not implement this trait).
+#[allow(dead_code)]
 pub trait VerifiedProofSubmissionClaimStorage: Send + Sync {
     /// Records `(sender_address_hex, challenge_id)` pairs so each proof is submitted at most once.
     ///
     /// Callers that use the non-transactional RocksDB implementation **must** serialize claim
-    /// checks / writes for a given wallet (e.g. one [`crate::wallet::VerifiedProofChainSubmitter`] mutex).
+    /// checks / writes for a given wallet.
     ///
     /// Prefer **claim-after-success**: call [`has_verified_proof_submission_claim`] before broadcast
     /// to skip duplicates, then [`insert_verified_proof_submission_claim`] only after a successful

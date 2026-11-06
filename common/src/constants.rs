@@ -53,7 +53,6 @@ pub mod tx_type {
     pub const TX_TYPE_TRANSFER: &str = "Transfer";
     pub const TX_TYPE_UNSTAKE: &str = "Unstake";
     pub const TX_TYPE_STAKE: &str = "Stake";
-    pub const TX_TYPE_VERIFIED_PROOF: &str = "VerifiedProof";
     pub const TX_TYPE_CAPACITY_PROOF: &str = "CapacityProof";
     pub const TX_TYPE_REGISTER_CAPACITY: &str = "RegisterCapacity";
     pub const TX_TYPE_UNREGISTER_CAPACITY: &str = "UnregisterCapacity";

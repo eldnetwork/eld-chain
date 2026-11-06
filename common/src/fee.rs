@@ -17,7 +17,7 @@ pub struct FeeConfig {
     pub transfer_multiplier: f64,
     pub stake_multiplier: f64,
     pub content_manifest_multiplier: f64,
-    /// Fee multiplier for [`PayloadInner::VerifiedProof`](crate::tx::PayloadInner::VerifiedProof).
+    /// Fee multiplier for a capacity proof.
     #[serde(alias = "chunk_proof_multiplier")]
     pub verified_proof_multiplier: f64,
     pub device_operation_multiplier: f64,
@@ -293,7 +293,6 @@ fn get_complexity_multiplier(payload: &PayloadInner, fee_config: &FeeConfig) -> 
         PayloadInner::UpdateCapacityMerkleRoot(_) => fee_config.device_operation_multiplier,
 
         // High complexity
-        PayloadInner::VerifiedProof(_) => fee_config.verified_proof_multiplier,
         PayloadInner::CapacityProof(_) => fee_config.verified_proof_multiplier,
         PayloadInner::CapacityProofSummary(_) => fee_config.verified_proof_multiplier,
         PayloadInner::PostMessage(_) => fee_config.content_manifest_multiplier,
@@ -317,7 +316,6 @@ fn estimate_gas_usage(payload: &PayloadInner) -> Result<u64, EldError> {
         // Fixed local-dev estimate; not scaled by message size.
         PayloadInner::PostMessage(_) => 120_000,
 
-        PayloadInner::VerifiedProof(_) => 50_000, // Simpler than chunk proof, just recording verification
         PayloadInner::CapacityProof(_) => 0,
         PayloadInner::CapacityProofSummary(_) => 0,
 

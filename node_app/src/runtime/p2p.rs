@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use eld_client::facade::ChainClient;
 use eld_common::error::EldError;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -8,14 +7,13 @@ use tracing::{error, info};
 use crate::app_state::AppState;
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::capacity::missing_content_tracker::MissingContentTracker;
-use crate::config::{ConsensusConfig, NodeRuntimeConfig};
+use crate::config::NodeRuntimeConfig;
 use crate::content::sync::{
     MockP2pSyncCoordinator, P2pConfig, P2pCoordinatorTrait, P2pSyncCoordinator, SyncMsg,
 };
 use crate::errors::handle_fatal_eld_error;
 use crate::node_identity::LocalNodeIdentity;
 use crate::storage::hybrid_storage::HybridStorage;
-use crate::wallet::VerifiedProofChainSubmitter;
 
 const DEFAULT_P2P_KEYPAIR_CONFIG_PATH: &str = "./config/p2p_keypair.json";
 
@@ -27,11 +25,8 @@ pub struct P2pRuntime {
 pub async fn init_p2p(
     node_config: &NodeRuntimeConfig,
     capacity_manager: Arc<CapacityManager>,
-    cli: Arc<ChainClient>,
-    consensus_config: Arc<Mutex<ConsensusConfig>>,
     node_storage: Arc<HybridStorage>,
     local_identity: Arc<std::sync::RwLock<LocalNodeIdentity>>,
-    capacity_validator_wallet_name: String,
 ) -> Result<P2pRuntime, EldError> {
     let single_node_mode = node_config.single_node.unwrap_or(false);
     let mut real_coordinator: Option<Arc<P2pSyncCoordinator>> = None;
@@ -56,18 +51,10 @@ pub async fn init_p2p(
             derived_peer_id
         );
 
-        let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-            capacity_validator_wallet_name,
-            cli,
-            consensus_config,
-            capacity_manager.protocol_handle(),
-            node_storage.clone(),
-        ));
         let (coordinator, msg_rx) = P2pSyncCoordinator::new(
             p2p_config,
             p2p_keypair,
             node_storage,
-            verified_proof_submitter,
             local_identity,
         )
         .await

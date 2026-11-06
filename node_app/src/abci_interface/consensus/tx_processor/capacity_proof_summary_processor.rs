@@ -3,7 +3,7 @@
 //! `sender` is the capacity validator. Every node applies the same transaction.
 //! Local challenge results are not read.
 
-use super::verified_proof_processor::record_failed_capacity_proof;
+use super::capacity_challenge_binding::record_failed_capacity_proof;
 use crate::abci_interface::ConsensusConnection;
 use crate::app_state::AccountWithCadoHash;
 use crate::errors::response_deliver_tx_error_validation_failed;

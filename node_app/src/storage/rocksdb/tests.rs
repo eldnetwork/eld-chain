@@ -1782,7 +1782,7 @@ fn test_index_verified_proof_success_bumps_global_rollup() {
     use ed25519_dalek::SigningKey;
     use eld_common::constants::test::MOCK_CHAIN_ID;
     const VERIFIED_PROOF_REWARD_BASE_AMOUNT: u128 = 1000;
-    use eld_common::tx::{Payload, Tx, TxPublicKey, TxSig, VerifiedProofTx};
+    use eld_common::tx::{CapacityProofTx, Payload, Tx, TxPublicKey, TxSig};
 
     fn verified_proof_tx_fixture(signing_key: &SigningKey, nonce: u32) -> Tx {
         use eld_common::capacity_proof::{ChunkProof, SlotState};
@@ -1790,13 +1790,11 @@ fn test_index_verified_proof_success_bumps_global_rollup() {
         let verifying_key = signing_key.verifying_key();
         let sender = Address::from_public_key(&verifying_key).unwrap();
         let provider = Address::parse_hex_str(TEST_ADDR_20).unwrap();
-        let inner = VerifiedProofTx::new(
+        let inner = CapacityProofTx::new(
             sender,
             provider,
             "challenge-1".to_string(),
             1,
-            2,
-            1_600_000_000,
             vec![ChunkProof {
                 chunk_index: 0,
                 chunk_data: vec![1],
@@ -1855,7 +1853,7 @@ fn test_index_verified_proof_failed_does_not_bump_global_rollup() {
     use crate::storage::traits::TransactionIndexerStorage;
     use ed25519_dalek::SigningKey;
     use eld_common::constants::test::MOCK_CHAIN_ID;
-    use eld_common::tx::{Payload, PayloadInner, Tx, TxPublicKey, TxSig, VerifiedProofTx};
+    use eld_common::tx::{CapacityProofTx, Payload, Tx, TxPublicKey, TxSig};
 
     fn verified_proof_tx_fixture(signing_key: &SigningKey, nonce: u32) -> Tx {
         use eld_common::capacity_proof::{ChunkProof, SlotState};
@@ -1863,13 +1861,11 @@ fn test_index_verified_proof_failed_does_not_bump_global_rollup() {
         let verifying_key = signing_key.verifying_key();
         let sender = Address::from_public_key(&verifying_key).unwrap();
         let provider = Address::parse_hex_str(TEST_ADDR_20).unwrap();
-        let inner = VerifiedProofTx::new(
+        let inner = CapacityProofTx::new(
             sender,
             provider,
             "challenge-1".to_string(),
             1,
-            2,
-            1_600_000_000,
             vec![ChunkProof {
                 chunk_index: 0,
                 chunk_data: vec![1],
@@ -1902,24 +1898,6 @@ fn test_index_verified_proof_failed_does_not_bump_global_rollup() {
             200,
             0,
             TransactionStatus::Failed,
-            None,
-            &[],
-        )
-        .unwrap();
-
-    let mut counted_failure = verified_proof_tx_fixture(&secret, 2);
-    if let PayloadInner::VerifiedProof(vp) = &mut counted_failure.payload.inner {
-        vp.failed = true;
-    }
-    counted_failure
-        .sign(&secret, MOCK_CHAIN_ID)
-        .expect("re-sign after failed flag");
-    storage
-        .index_transaction(
-            &counted_failure,
-            200,
-            1,
-            TransactionStatus::Success,
             None,
             &[],
         )

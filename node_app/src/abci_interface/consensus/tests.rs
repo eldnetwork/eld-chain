@@ -12,7 +12,6 @@ use crate::content::sync::{MockP2pSyncCoordinator, P2pConfig, P2pSyncCoordinator
 use crate::node_identity::LocalNodeIdentity;
 use crate::storage::hybrid_storage::HybridStorage;
 use crate::storage::rocksdb::RocksDBStorage;
-use crate::wallet::VerifiedProofChainSubmitter;
 use abci::async_api::{Consensus, Mempool};
 use abci::types::{
     Header, PublicKey as AbciPublicKey, RequestBeginBlock, RequestCheckTx, RequestCommit,
@@ -87,13 +86,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         cli_config,
         eld_common::fee::FeeConfig::default(),
     ));
-    let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-        "wallet1".into(),
-        cli.clone(),
-        consensus_config.clone(),
-        ProtocolHandle::installed_local_dev(),
-        storage.clone(),
-    ));
     let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
     let local_identity_for_p2p = local_identity.clone();
     let (p2p_sync_coordinator, _rx) = std::thread::spawn(move || {
@@ -102,7 +94,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
             p2p_config,
             test_keypair,
             storage_clone,
-            verified_proof_submitter,
             local_identity_for_p2p,
         ))
         .map_err(|e| format!("Failed to create P2P coordinator: {e}"))

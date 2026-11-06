@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 /// Holds the next tx nonce to assign for one sender address.
 ///
 /// Not `Clone` — one instance per hot wallet that broadcasts sequentially.
+#[allow(dead_code)]
 pub struct SequentialOptimisticNonceSender {
     /// `None` until the first successful chain read; thereafter always `Some(next)`.
     next_tx_nonce: Mutex<Option<Nonce>>,
@@ -22,6 +23,7 @@ impl Default for SequentialOptimisticNonceSender {
     }
 }
 
+#[allow(dead_code)]
 impl SequentialOptimisticNonceSender {
     pub fn new() -> Self {
         Self {

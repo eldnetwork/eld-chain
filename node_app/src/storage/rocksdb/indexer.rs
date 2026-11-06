@@ -472,14 +472,11 @@ impl RocksDBStorage {
         if ix.status != TransactionStatus::Success {
             return Ok(false);
         }
-        let PayloadInner::VerifiedProof(vp_tx) = &ix.tx.payload.inner else {
+        let PayloadInner::CapacityProof(proof_tx) = &ix.tx.payload.inner else {
             return Ok(false);
         };
-        if vp_tx.failed {
-            return Ok(false);
-        }
 
-        let provider_key = vp_tx.capacity_provider.to_string().to_lowercase();
+        let provider_key = proof_tx.capacity_provider.to_string().to_lowercase();
         let vp_key =
             Self::verified_proof_reward_index_key(&provider_key, ix.block_height, ix.block_index);
         Ok(self
@@ -547,8 +544,8 @@ impl RocksDBStorage {
 
         // Verified-proof reward secondary: `vp:{provider}:{height:016x}:{index:08x}`.
         if row.had_vp_index {
-            if let PayloadInner::VerifiedProof(vp_tx) = &ix.tx.payload.inner {
-                let provider_key = vp_tx.capacity_provider.to_string().to_lowercase();
+            if let PayloadInner::CapacityProof(proof_tx) = &ix.tx.payload.inner {
+                let provider_key = proof_tx.capacity_provider.to_string().to_lowercase();
                 let vp_key = Self::verified_proof_reward_index_key(
                     &provider_key,
                     ix.block_height,
@@ -720,22 +717,20 @@ impl TransactionIndexerStorage for RocksDBStorage {
             })?;
 
         if status == TransactionStatus::Success {
-            if let PayloadInner::VerifiedProof(vp_tx) = &tx.payload.inner {
-                if !vp_tx.failed {
-                    let provider_key = vp_tx.capacity_provider.to_string().to_lowercase();
-                    let vp_key = Self::verified_proof_reward_index_key(
-                        &provider_key,
-                        block_height,
-                        block_index,
-                    );
-                    self.db
-                        .put_cf(cf, &vp_key, [])
-                        .map_err(|e| EldError::StorageError {
-                            operation: "put_verified_proof_reward_index".to_string(),
-                            details: format!("Failed to store verified proof reward index: {e}"),
-                        })?;
-                    self.bump_verified_proof_global_rewards_count(cf)?;
-                }
+            if let PayloadInner::CapacityProof(proof_tx) = &tx.payload.inner {
+                let provider_key = proof_tx.capacity_provider.to_string().to_lowercase();
+                let vp_key = Self::verified_proof_reward_index_key(
+                    &provider_key,
+                    block_height,
+                    block_index,
+                );
+                self.db
+                    .put_cf(cf, &vp_key, [])
+                    .map_err(|e| EldError::StorageError {
+                        operation: "put_verified_proof_reward_index".to_string(),
+                        details: format!("Failed to store verified proof reward index: {e}"),
+                    })?;
+                self.bump_verified_proof_global_rewards_count(cf)?;
             }
         }
 

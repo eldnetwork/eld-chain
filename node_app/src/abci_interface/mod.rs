@@ -236,7 +236,6 @@ mod tests {
     use crate::node_identity::LocalNodeIdentity;
     use crate::storage::hybrid_storage::HybridStorage;
     use crate::storage::rocksdb::RocksDBStorage;
-    use crate::wallet::VerifiedProofChainSubmitter;
     use eld_client::config::ClientConfig;
     use eld_common::capacity::CapacityConfig;
     use std::collections::HashMap;
@@ -285,13 +284,6 @@ mod tests {
             cli_config,
             eld_common::fee::FeeConfig::default(),
         ));
-        let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-            "wallet1".into(),
-            cli.clone(),
-            consensus_config_arc.clone(),
-            eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
-            storage.clone(),
-        ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
 
         // Create a mock P2P sync coordinator for tests (unique ports to avoid conflicts)
@@ -305,7 +297,6 @@ mod tests {
             p2p_config,
             test_keypair,
             storage.clone(),
-            verified_proof_submitter,
             local_identity.clone(),
         )
         .await
@@ -405,13 +396,6 @@ mod tests {
             cli_config,
             eld_common::fee::FeeConfig::default(),
         ));
-        let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-            "wallet1".into(),
-            cli.clone(),
-            consensus_config_arc.clone(),
-            eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
-            storage.clone(),
-        ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
 
         use std::sync::atomic::{AtomicU16, Ordering};
@@ -424,7 +408,6 @@ mod tests {
             p2p_config,
             test_keypair,
             storage.clone(),
-            verified_proof_submitter,
             local_identity.clone(),
         )
         .await

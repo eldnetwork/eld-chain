@@ -1,4 +1,4 @@
-//! Capacity proof types used in VerifiedProofTx and P2P messages.
+//! Capacity proof types used in capacity-proof transactions and P2P messages.
 //! `SlotState` matches `eld_common::capacity::slot_allocator` so proofs align with on-disk slot maps.
 
 use crate::address::Address;

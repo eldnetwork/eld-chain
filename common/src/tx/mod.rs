@@ -16,7 +16,7 @@ pub use payloads::{
     validate_post_message_content_type, validate_post_message_user_signature, AddNamespaceTx,
     CapacityProofSummaryTx, CapacityProofTx, PostMessageTx, PostMessageUserRequest,
     PostMessageUserRequestInput, RegisterCapacityTx, StakeTx, TransferTx, UnregisterCapacityTx,
-    UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx, POST_MESSAGE_ALLOWED_CONTENT_TYPES,
+    UnstakeTx, UpdateCapacityMerkleRootTx, POST_MESSAGE_ALLOWED_CONTENT_TYPES,
     POST_MESSAGE_MAX_TAGS, POST_MESSAGE_MAX_TAG_UTF8_BYTES,
 };
 
