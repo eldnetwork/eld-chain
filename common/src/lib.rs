@@ -40,8 +40,6 @@ pub mod public_key;
 pub mod staking_account;
 #[allow(missing_docs)]
 pub mod storage;
-#[allow(missing_docs)]
-pub mod sync_msg;
 pub mod tx;
 #[allow(missing_docs)]
 pub mod utils;

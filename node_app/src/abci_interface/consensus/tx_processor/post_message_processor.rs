@@ -32,11 +32,8 @@ where
         warn!(
             message_id = %post_message_tx.message_id,
             content_key = %post_message_tx.content_key,
-            "PostMessage blob missing locally; requesting via P2P"
+            "PostMessage blob missing locally"
         );
-        connection
-            .p2p_sync_coordinator
-            .broadcast_content_request(post_message_tx.content_key.clone());
     }
 
     let mut current_state_lock = connection

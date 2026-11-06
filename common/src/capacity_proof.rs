@@ -48,7 +48,7 @@ struct CapacityChallengeResponseSigningPayload<'a> {
     provider_pubkey: &'a str,
 }
 
-/// Canonical signing bytes for a signed [`SyncMsg::CapacityChallengeResponse`](crate::sync_msg::SyncMsg).
+/// Canonical signing bytes for a capacity challenge response.
 pub fn capacity_challenge_response_signing_bytes(
     challenge_id: &str,
     provider_id: &str,

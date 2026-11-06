@@ -21,26 +21,10 @@ pub mod pinboard {
     pub const MAX_CHUNK_SIZE: usize = 1024;
 }
 
-/// Libp2p / GossipSub topic strings (capacity challenges, proofs, content sync).
+/// Prefix stored on the epoch's active capacity validator as `subscribed_topics`.
 pub mod p2p {
-    /// P2P topic prefix for capacity provider challenge topics
-    /// Format: "{ELD_STORAGE_CHALLENGE_TOPIC_PREFIX}{provider_id}"
-    pub const ELD_STORAGE_CHALLENGE_TOPIC_PREFIX: &str = "eld-storage-challenge-topic-";
-
-    /// P2P topic prefix for capacity provider proof response topics
     /// Format: "{ELD_STORAGE_PROOF_TOPIC_PREFIX}{provider_id}"
     pub const ELD_STORAGE_PROOF_TOPIC_PREFIX: &str = "eld-storage-proof-topic-";
-
-    /// GossipSub topic for content sync between nodes (announce, inventory, heartbeats).
-    pub const P2P_TOPIC_CONTENT_SYNC: &str = "eld-content-sync";
-
-    /// GossipSub topic for content-sync responses from capacity providers.
-    pub const P2P_TOPIC_CONTENT_SYNC_RESPONSE: &str = "eld-content-sync-response";
-
-    /// Maximum GossipSub RPC / transmit size in bytes (must fit largest serialized
-    /// [`crate::sync_msg::SyncMsg`], e.g. pinboard `ContentResponse` with base64 payload).
-    /// All network participants should use a compatible value (same or higher).
-    pub const GOSSIPSUB_MAX_TRANSMIT_SIZE_BYTES: usize = 1024 * 1024;
 }
 
 pub mod test {

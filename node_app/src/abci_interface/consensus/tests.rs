@@ -8,7 +8,6 @@ use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::config::FeeConfig;
-use crate::content::sync::{MockP2pSyncCoordinator, P2pConfig, P2pSyncCoordinator};
 use crate::node_identity::LocalNodeIdentity;
 use crate::storage::hybrid_storage::HybridStorage;
 use crate::storage::rocksdb::RocksDBStorage;
@@ -53,18 +52,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
     let snapshot_manager = Arc::new(SnapshotManager::new(storage.clone()));
     let _reward_manager = ValidatorRewardManager::new(storage.clone());
 
-    // Create a mock P2P sync coordinator for tests
-    // Use a separate thread with its own runtime to avoid nested runtime issues
-    // Use random ports to avoid conflicts between parallel tests
-    use std::sync::atomic::{AtomicU16, Ordering};
-    static PORT_COUNTER: AtomicU16 = AtomicU16::new(5000);
-    let tcp_port = PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-    let udp_port = tcp_port + 1;
-
-    let p2p_config = P2pConfig { tcp_port, udp_port };
-    // Generate a random keypair for tests
-    let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let storage_clone = storage.clone();
     let cli_config = ClientConfig {
         node_host: "127.0.0.1".to_string(),
         node_port: "26657".to_string(),
@@ -82,22 +69,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         eld_common::fee::FeeConfig::default(),
     ));
     let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
-    let local_identity_for_p2p = local_identity.clone();
-    let (p2p_sync_coordinator, _rx) = std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage_clone,
-            local_identity_for_p2p,
-        ))
-        .map_err(|e| format!("Failed to create P2P coordinator: {e}"))
-    })
-    .join()
-    .map_err(|e| format!("Thread join error: {e:?}"))
-    .unwrap()
-    .unwrap();
-    let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
     let chain_tip = Arc::new(ChainTip::default());
 
     use eld_common::address::Address;
@@ -128,7 +99,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         current_state,
         storage,
         snapshot_manager,
-        p2p_sync_coordinator,
         ready_tx: None,
         capacity_manager,
         local_identity,
@@ -783,7 +753,7 @@ const TRANSFER_SENDER_SEED: [u8; 32] = [11u8; 32];
 #[cfg(test)]
 const TRANSFER_INITIAL_BALANCE: u128 = 10_000_000;
 
-/// Test-only: keeps RocksDB alive and wires consensus without libp2p or Tendermint.
+/// Test-only: keeps RocksDB alive and wires consensus without Tendermint.
 #[cfg(test)]
 struct InProcessHarness {
     _rocksdb_dir: TempDir,
@@ -835,7 +805,6 @@ fn in_process_harness() -> InProcessHarness {
     let rocksdb_storage = Arc::new(RocksDBStorage::new(rocksdb_dir.path()).expect("rocksdb"));
     let storage = Arc::new(HybridStorage::new(rocksdb_storage));
     let snapshot_manager = Arc::new(SnapshotManager::new(storage.clone()));
-    let (mock_p2p, _rx) = MockP2pSyncCoordinator::new();
     let cli = Arc::new(eld_client::facade::ChainClient::new(
         dummy_client_config(),
         eld_common::fee::FeeConfig::default(),
@@ -867,7 +836,6 @@ fn in_process_harness() -> InProcessHarness {
         current_state,
         storage: storage.clone(),
         snapshot_manager,
-        p2p_sync_coordinator: Arc::new(mock_p2p),
         ready_tx: None,
         capacity_manager,
         local_identity,

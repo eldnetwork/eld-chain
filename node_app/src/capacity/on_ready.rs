@@ -1,29 +1,26 @@
-//! After the first consensus commit: provider lookup, challenge topic, on-chain register.
+//! After the first consensus commit: provider lookup and on-chain register.
 
 use std::sync::Arc;
 
 use eld_client::api::abci::AbciHttpApi;
-use eld_common::address::Address;
 use eld_common::error::EldError;
 use tokio::sync::oneshot;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::capacity::capacity_manager::CapacityManager;
-use crate::content::sync::P2pCoordinatorTrait;
 use crate::errors::handle_fatal_eld_error;
 
-/// Wait for first commit, then subscribe and register capacity if allocated.
+/// Wait for first commit, then register capacity if allocated.
 pub async fn after_first_commit(
     ready_rx: oneshot::Receiver<()>,
     capacity_manager: Arc<CapacityManager>,
-    p2p_sync_coordinator: Arc<dyn P2pCoordinatorTrait>,
 ) {
     info!("Waiting for node to be ready (block height > 0)...");
     match ready_rx.await {
         Ok(_) => {
             info!("Node is READY: First consensus commit completed, block height > 0");
-            check_existing_registration(&capacity_manager, &p2p_sync_coordinator).await;
-            submit_registration_if_allocated(&capacity_manager, &p2p_sync_coordinator).await;
+            check_existing_registration(&capacity_manager).await;
+            submit_registration_if_allocated(&capacity_manager).await;
         }
         Err(_) => {
             warn!("Ready channel was closed before signaling - node may not be ready");
@@ -31,44 +28,7 @@ pub async fn after_first_commit(
     }
 }
 
-fn subscribe_to_challenge_topic(
-    coordinator: &Arc<dyn P2pCoordinatorTrait>,
-    provider_id: Address,
-    context: &'static str,
-) {
-    let challenge_topic = format!(
-        "{}{}",
-        eld_common::constants::p2p::ELD_STORAGE_CHALLENGE_TOPIC_PREFIX,
-        provider_id
-    );
-    debug!(
-        provider_id = %provider_id,
-        topic = %challenge_topic,
-        context,
-        "Subscribing to challenge topic"
-    );
-    if let Err(e) = coordinator.subscribe_to_topic(&challenge_topic) {
-        error!(
-            provider_id = %provider_id,
-            topic = %challenge_topic,
-            error = %e,
-            context,
-            "Failed to subscribe to challenge topic"
-        );
-    } else {
-        info!(
-            provider_id = %provider_id,
-            topic = %challenge_topic,
-            context,
-            "Successfully subscribed to challenge topic"
-        );
-    }
-}
-
-async fn check_existing_registration(
-    capacity_manager: &CapacityManager,
-    p2p_sync_coordinator: &Arc<dyn P2pCoordinatorTrait>,
-) {
+async fn check_existing_registration(capacity_manager: &CapacityManager) {
     let provider_id = capacity_manager.config().provider_id;
     let provider_id_str = provider_id.to_string();
     let tendermint_rpc_url = capacity_manager.config().tendermint_rpc_url.clone();
@@ -83,7 +43,6 @@ async fn check_existing_registration(
                     provider_id = %provider_id,
                     "Current node is registered as a capacity provider"
                 );
-                subscribe_to_challenge_topic(p2p_sync_coordinator, provider_id, "on startup");
             }
             Ok(false) => {
                 info!(
@@ -109,10 +68,7 @@ async fn check_existing_registration(
     }
 }
 
-async fn submit_registration_if_allocated(
-    capacity_manager: &CapacityManager,
-    p2p_sync_coordinator: &Arc<dyn P2pCoordinatorTrait>,
-) {
+async fn submit_registration_if_allocated(capacity_manager: &CapacityManager) {
     let slot_allocator = capacity_manager.slot_allocator();
     let slot_allocator_guard = slot_allocator.lock().await;
     let capacity_allocated = slot_allocator_guard.slot_map_exists();
@@ -145,12 +101,6 @@ async fn submit_registration_if_allocated(
                 );
             } else {
                 info!("Capacity registration transaction submitted successfully");
-                let provider_id = capacity_manager.config().provider_id;
-                subscribe_to_challenge_topic(
-                    p2p_sync_coordinator,
-                    provider_id,
-                    "after registration",
-                );
             }
         }
         Err(e) => {

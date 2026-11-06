@@ -8,7 +8,6 @@ mod content;
 pub mod errors;
 mod indexer;
 mod node_identity;
-mod p2p_keypair;
 mod process_logging;
 mod runtime;
 mod storage;
@@ -25,7 +24,7 @@ use tracing::info;
     name = "eld-node",
     author,
     version,
-    about = "Eld ABCI application, REST API, and libp2p content sync"
+    about = "Eld ABCI application and REST API"
 )]
 pub(crate) struct Args {
     /// Chain Id

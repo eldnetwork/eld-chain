@@ -42,7 +42,6 @@ where
     pub storage: Arc<S>,
     pub content_temp_storage: Arc<C>,
     pub snapshot_manager: Arc<SnapshotManager<S>>,
-    pub p2p_sync_coordinator: Arc<dyn crate::content::sync::P2pCoordinatorTrait>,
     pub init_data: bool,
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
@@ -78,7 +77,6 @@ where
         storage,
         content_temp_storage,
         snapshot_manager,
-        p2p_sync_coordinator,
         init_data,
         ready_tx,
         capacity_manager,
@@ -197,7 +195,6 @@ where
         current_state,
         storage: storage.clone(),
         snapshot_manager: snapshot_manager.clone(),
-        p2p_sync_coordinator,
         ready_tx,
         capacity_manager,
         local_identity,
@@ -286,23 +283,6 @@ mod tests {
         ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
 
-        // Create a mock P2P sync coordinator for tests (unique ports to avoid conflicts)
-        use std::sync::atomic::{AtomicU16, Ordering};
-        static TEST_PORT_COUNTER: AtomicU16 = AtomicU16::new(6000);
-        let tcp_port = TEST_PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-        let udp_port = tcp_port + 1;
-        let p2p_config = crate::content::sync::P2pConfig { tcp_port, udp_port };
-        let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-        let (p2p_sync_coordinator, _rx) = crate::content::sync::P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage.clone(),
-            local_identity.clone(),
-        )
-        .await
-        .unwrap();
-        let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
-
         use eld_common::address::Address;
 
         let test_provider =
@@ -331,7 +311,6 @@ mod tests {
             storage: storage.clone(),
             content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage)),
-            p2p_sync_coordinator,
             init_data: false,
             ready_tx: None,
             capacity_manager,
@@ -398,22 +377,6 @@ mod tests {
         ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
 
-        use std::sync::atomic::{AtomicU16, Ordering};
-        static FRESH_START_PORT_COUNTER: AtomicU16 = AtomicU16::new(7000);
-        let tcp_port = FRESH_START_PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-        let udp_port = tcp_port + 1;
-        let p2p_config = crate::content::sync::P2pConfig { tcp_port, udp_port };
-        let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-        let (p2p_sync_coordinator, _rx) = crate::content::sync::P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage.clone(),
-            local_identity.clone(),
-        )
-        .await
-        .unwrap();
-        let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
-
         let test_provider =
             Address::parse_hex_str("0xcccccccccccccccccccccccccccccccccccccccc").expect("provider");
         let capacity_config = CapacityConfig {
@@ -440,7 +403,6 @@ mod tests {
             storage: storage.clone(),
             content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage.clone())),
-            p2p_sync_coordinator,
             init_data: false,
             ready_tx: None,
             capacity_manager,

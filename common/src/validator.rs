@@ -168,7 +168,7 @@ pub struct ActiveCapacityValidator {
     pub epoch: i64,
     /// Capacity-validator addresses being challenged this epoch
     pub challenged_providers: Vec<Address>,
-    /// Response topics currently subscribed to (for receiving proof responses)
+    /// Proof-topic names recorded for the providers challenged this epoch.
     pub subscribed_topics: Vec<String>,
 }
 

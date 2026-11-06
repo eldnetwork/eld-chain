@@ -54,7 +54,7 @@ pub fn select_challenge_chunk_indices(
 /// Preimage (no wall-clock timestamp — every node must recompute this in `deliver_tx`):
 /// `validator_address || provider_id || block_height_be || chunk_index_0_be || …`
 ///
-/// Edge surfaces (tx / SyncMsg) still use the 64-char hex string; call [`ChallengeId::to_hex`]
+/// Transactions still use the 64-char hex string; call [`ChallengeId::to_hex`]
 /// when writing those fields.
 pub fn compute_challenge_id(
     validator_address: &Address,

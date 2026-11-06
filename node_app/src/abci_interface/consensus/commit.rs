@@ -488,10 +488,6 @@ where
             );
         }
 
-        // Announce pinboard blobs that were staged in this block (before clearing cache)
-        self.p2p_sync_coordinator
-            .find_pinboard_and_broadcast_announce(&current_state.envelope.pinboard_meta_cache);
-
         // Clear caches
         current_state.envelope.cado_cache.clear();
 

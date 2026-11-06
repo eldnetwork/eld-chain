@@ -1,17 +1,11 @@
-# Ignored advisories pinned by tendermint 0.40 or libp2p 0.53.
-# RUSTSEC-2026-0002 and RUSTSEC-2026-0253 are lru 0.12 unsoundness via libp2p-swarm.
-# cargo-deny does not flag those, so they are listed only here.
+# Ignored advisories pinned by tendermint 0.40.
 # RUSTSEC-2026-0346 / 0349: rustls 0.21 via tendermint-rpc 0.40 → reqwest 0.11.
 # RUSTSEC-2026-0382: rustls-webpki 0.101 cannot move; 0.103 is bumped in Cargo.lock.
 [advisories]
 ignore = [
-    "RUSTSEC-2025-0009",
-    "RUSTSEC-2026-0002",
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
-    "RUSTSEC-2026-0119",
-    "RUSTSEC-2026-0253",
     "RUSTSEC-2026-0258",
     "RUSTSEC-2026-0346",
     "RUSTSEC-2026-0349",
