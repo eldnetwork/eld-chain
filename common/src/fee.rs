@@ -294,6 +294,7 @@ fn get_complexity_multiplier(payload: &PayloadInner, fee_config: &FeeConfig) -> 
 
         // High complexity
         PayloadInner::VerifiedProof(_) => fee_config.verified_proof_multiplier,
+        PayloadInner::CapacityProof(_) => fee_config.verified_proof_multiplier,
         PayloadInner::CapacityProofSummary(_) => fee_config.verified_proof_multiplier,
         PayloadInner::PostMessage(_) => fee_config.content_manifest_multiplier,
         PayloadInner::AddNamespace(_) => fee_config.transfer_multiplier,
@@ -317,6 +318,7 @@ fn estimate_gas_usage(payload: &PayloadInner) -> Result<u64, EldError> {
         PayloadInner::PostMessage(_) => 120_000,
 
         PayloadInner::VerifiedProof(_) => 50_000, // Simpler than chunk proof, just recording verification
+        PayloadInner::CapacityProof(_) => 0,
         PayloadInner::CapacityProofSummary(_) => 0,
 
         // Device operations

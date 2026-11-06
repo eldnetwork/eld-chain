@@ -508,6 +508,7 @@ pub fn validate_transaction_structure(json_value: &serde_json::Value) -> Result<
         tx_type::TX_TYPE_UNSTAKE,
         tx_type::TX_TYPE_STAKE,
         tx_type::TX_TYPE_VERIFIED_PROOF,
+        tx_type::TX_TYPE_CAPACITY_PROOF,
         tx_type::TX_TYPE_REGISTER_CAPACITY,
         tx_type::TX_TYPE_UNREGISTER_CAPACITY,
         tx_type::TX_TYPE_UPDATE_CAPACITY_MERKLE_ROOT,
@@ -574,6 +575,7 @@ fn validate_payload_content(
             validate_update_capacity_merkle_root_payload(payload_obj)?
         }
         tx_type::TX_TYPE_VERIFIED_PROOF => validate_verified_proof_payload(payload_obj)?,
+        tx_type::TX_TYPE_CAPACITY_PROOF => validate_capacity_proof_payload(payload_obj)?,
         tx_type::TX_TYPE_POST_MESSAGE => validate_post_message_payload(payload_obj)?,
         tx_type::TX_TYPE_ADD_NAMESPACE => validate_add_namespace_payload(payload_obj)?,
         tx_type::TX_TYPE_CAPACITY_PROOF_SUMMARY => {
@@ -1159,6 +1161,140 @@ fn validate_update_capacity_merkle_root_payload(
 }
 
 /// Validate VerifiedProof payload fields (JSON)
+fn validate_capacity_proof_payload(
+    payload_obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), EldError> {
+    let required_fields = [
+        "sender",
+        "capacity_provider",
+        "challenge_id",
+        "block_height",
+        "proofs",
+        "generated_at",
+        "provider_pubkey",
+        "provider_signature",
+    ];
+    for field in &required_fields {
+        if !payload_obj.contains_key(*field) {
+            return Err(EldError::ValidationError {
+                field: "capacity proof payload".to_string(),
+                value: "missing".to_string(),
+                details: format!("CapacityProof payload missing required field: {field}"),
+            });
+        }
+    }
+    let sender = payload_obj["sender"]
+        .as_str()
+        .ok_or_else(|| EldError::ValidationError {
+            field: "capacity proof payload sender".to_string(),
+            value: payload_obj["sender"].to_string(),
+            details: "CapacityProof payload 'sender' field must be a string".to_string(),
+        })?;
+    parse_validated_address(sender)?;
+    let capacity_provider =
+        payload_obj["capacity_provider"]
+            .as_str()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload capacity_provider".to_string(),
+                value: payload_obj["capacity_provider"].to_string(),
+                details: "CapacityProof payload 'capacity_provider' field must be a string"
+                    .to_string(),
+            })?;
+    parse_validated_address(capacity_provider)?;
+    let challenge_id =
+        payload_obj["challenge_id"]
+            .as_str()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload challenge_id".to_string(),
+                value: payload_obj["challenge_id"].to_string(),
+                details: "CapacityProof payload 'challenge_id' field must be a string".to_string(),
+            })?;
+    validate_safe_string(challenge_id, 100)?;
+    let block_height =
+        payload_obj["block_height"]
+            .as_i64()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload block_height".to_string(),
+                value: payload_obj["block_height"].to_string(),
+                details: "CapacityProof payload 'block_height' field must be an integer"
+                    .to_string(),
+            })?;
+    if block_height <= 0 {
+        return Err(EldError::ValidationError {
+            field: "capacity proof payload block_height".to_string(),
+            value: block_height.to_string(),
+            details: "CapacityProof payload 'block_height' must be positive".to_string(),
+        });
+    }
+    let proofs = payload_obj["proofs"]
+        .as_array()
+        .ok_or_else(|| EldError::ValidationError {
+            field: "capacity proof payload proofs".to_string(),
+            value: payload_obj["proofs"].to_string(),
+            details: "CapacityProof payload 'proofs' field must be an array".to_string(),
+        })?;
+    if proofs.is_empty() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof payload proofs".to_string(),
+            value: "[]".to_string(),
+            details: "CapacityProof payload 'proofs' must be non-empty".to_string(),
+        });
+    }
+    const MIN_TIMESTAMP: u64 = 1_577_836_800;
+    const MAX_TIMESTAMP: u64 = 4_102_444_800;
+    let generated_at =
+        payload_obj["generated_at"]
+            .as_u64()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload generated_at".to_string(),
+                value: payload_obj["generated_at"].to_string(),
+                details: "CapacityProof payload 'generated_at' field must be a positive integer"
+                    .to_string(),
+            })?;
+    if !(MIN_TIMESTAMP..=MAX_TIMESTAMP).contains(&generated_at) {
+        return Err(EldError::ValidationError {
+            field: "capacity proof payload generated_at".to_string(),
+            value: generated_at.to_string(),
+            details: format!(
+                "CapacityProof payload 'generated_at' must be between {MIN_TIMESTAMP} and {MAX_TIMESTAMP}"
+            ),
+        });
+    }
+    let provider_pubkey =
+        payload_obj["provider_pubkey"]
+            .as_str()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload provider_pubkey".to_string(),
+                value: payload_obj["provider_pubkey"].to_string(),
+                details: "CapacityProof payload 'provider_pubkey' field must be a string"
+                    .to_string(),
+            })?;
+    if provider_pubkey.is_empty() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof payload provider_pubkey".to_string(),
+            value: provider_pubkey.to_string(),
+            details: "CapacityProof payload 'provider_pubkey' must be non-empty".to_string(),
+        });
+    }
+    let provider_signature =
+        payload_obj["provider_signature"]
+            .as_str()
+            .ok_or_else(|| EldError::ValidationError {
+                field: "capacity proof payload provider_signature".to_string(),
+                value: payload_obj["provider_signature"].to_string(),
+                details: "CapacityProof payload 'provider_signature' field must be a string"
+                    .to_string(),
+            })?;
+    if provider_signature.is_empty() {
+        return Err(EldError::ValidationError {
+            field: "capacity proof payload provider_signature".to_string(),
+            value: provider_signature.to_string(),
+            details: "CapacityProof payload 'provider_signature' must be non-empty".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn validate_verified_proof_payload(
     payload_obj: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), EldError> {

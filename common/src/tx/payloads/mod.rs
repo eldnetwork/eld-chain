@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 pub(crate) mod add_namespace;
+pub(crate) mod capacity_proof;
 pub(crate) mod capacity_proof_summary;
 pub(crate) mod post_message;
 pub(crate) mod register_capacity;
@@ -12,6 +13,7 @@ pub(crate) mod update_capacity_merkle_root;
 pub(crate) mod verified_proof;
 
 pub use add_namespace::AddNamespaceTx;
+pub use capacity_proof::CapacityProofTx;
 pub use capacity_proof_summary::CapacityProofSummaryTx;
 pub use post_message::{
     build_signed_post_message_user_request, calculate_message_content_key,

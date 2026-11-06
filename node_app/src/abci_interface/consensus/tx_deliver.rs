@@ -25,6 +25,9 @@ impl ConsensusTxDeliver for Tx {
             PayloadInner::VerifiedProof(verified_proof_tx) => {
                 conn.process_verified_proof(verified_proof_tx).await
             }
+            PayloadInner::CapacityProof(_) => response_deliver_tx_error_validation_failed(
+                "capacity proof transaction is not applied yet".to_string(),
+            ),
             PayloadInner::RegisterCapacity(register_capacity_tx) => {
                 conn.process_register_capacity(register_capacity_tx, self.public_key.clone())
                     .await
