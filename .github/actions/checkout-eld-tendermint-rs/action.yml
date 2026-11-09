@@ -15,8 +15,8 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: eldnetwork/eld-tendermint-rs
-        # v0.34.24-eld-tm-rs.8 (SummaryBody / AppStateSnapshot).
-        ref: 0e4f9d73a24d153094c4d57b5c46f8bce1cb853e
+        # v0.34.24-eld-tm-rs.12 (content channel messages, SummaryBody / AppStateSnapshot).
+        ref: 31f4f6603bb3e9b62f54baf718feccda6683ab5e
         path: eld-tendermint-rs-src
 
     # actions/checkout refuses a path outside $GITHUB_WORKSPACE. node_app's

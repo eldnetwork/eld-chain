@@ -1,6 +1,8 @@
 # Ignored advisories pinned by tendermint 0.40.
 # RUSTSEC-2026-0346 / 0349: rustls 0.21 via tendermint-rpc 0.40 → reqwest 0.11.
 # RUSTSEC-2026-0382: rustls-webpki 0.101 cannot move; 0.103 is bumped in Cargo.lock.
+# RUSTSEC-2026-0446 / 0448 / 0455: actix-http 3.19 is pinned because 3.20 needs Rust 1.89.
+# RUSTSEC-2026-0447: actix-web 4.17 is the newest 4.x that builds on Rust 1.88.
 [advisories]
 ignore = [
     "RUSTSEC-2026-0098",
@@ -10,4 +12,8 @@ ignore = [
     "RUSTSEC-2026-0346",
     "RUSTSEC-2026-0349",
     "RUSTSEC-2026-0382",
+    "RUSTSEC-2026-0446",
+    "RUSTSEC-2026-0447",
+    "RUSTSEC-2026-0448",
+    "RUSTSEC-2026-0455",
 ]
