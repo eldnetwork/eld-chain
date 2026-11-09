@@ -11,7 +11,7 @@ use eld_common::{CapacityMerkleRoot, ChallengeId};
 use eld_tendermint_proto::content::{self, ContentPushAck, ContentResponse, Message};
 use prost::Message as ProstMessage;
 use sha2::{Digest, Sha256};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::capacity::capacity_manager::CapacityProofGenerationParams;
 use crate::capacity::challenge_validator::validate_challenge_proof;
@@ -71,6 +71,7 @@ where
             );
             return None;
         }
+        info!(content_id = %msg.content_id, "content push stored");
         Some(Message {
             sum: Some(content::message::Sum::ContentPushAck(ContentPushAck {
                 request_id: msg.request_id,
@@ -103,6 +104,7 @@ where
                 None
             }
         }?;
+        info!(content_id = %msg.content_id, "content served");
         Some(Message {
             sum: Some(content::message::Sum::ContentResponse(ContentResponse {
                 request_id: msg.request_id,
@@ -144,6 +146,10 @@ where
             .iter()
             .map(chunk_proof_to_proto)
             .collect::<Option<Vec<_>>>()?;
+        info!(
+            challenge_id = %proof.challenge_id,
+            "capacity challenge answered"
+        );
         Some(Message {
             sum: Some(content::message::Sum::CapacityChallengeResponse(
                 content::CapacityChallengeResponse {
@@ -250,6 +256,11 @@ where
             );
             return None;
         }
+        info!(
+            challenge_id = %msg.challenge_id,
+            provider = %provider,
+            "capacity challenge response received"
+        );
         let Some(root) = self.provider_merkle_root(&provider) else {
             error!(
                 challenge_id = %msg.challenge_id,
@@ -263,7 +274,7 @@ where
         if checked.is_valid {
             match crate::node_identity::resolve_capacity_validator_wallet_name_from_env() {
                 Ok(wallet_name) => {
-                    if let Err(err) = self
+                    match self
                         .cli
                         .submit_capacity_proof(
                             wallet_name,
@@ -277,11 +288,20 @@ where
                         )
                         .await
                     {
-                        error!(
-                            challenge_id = %msg.challenge_id,
-                            error = %err,
-                            "capacity proof transaction was not submitted"
-                        );
+                        Ok(_) => {
+                            info!(
+                                challenge_id = %msg.challenge_id,
+                                provider = %provider,
+                                "capacity proof tx submitted"
+                            );
+                        }
+                        Err(err) => {
+                            error!(
+                                challenge_id = %msg.challenge_id,
+                                error = %err,
+                                "capacity proof transaction was not submitted"
+                            );
+                        }
                     }
                 }
                 Err(err) => {

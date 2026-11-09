@@ -12,7 +12,7 @@ use base64::Engine;
 use eld_common::Address;
 use eld_tendermint_proto::content::CapacityChallenge;
 use serde_json::Value;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::abci_interface::content::blob_matches_content_id;
 use crate::app_state::AppState;
@@ -71,6 +71,11 @@ pub(crate) async fn push_to_providers(
             .any(|selected| provider.as_slice() == selected.as_bytes())
         {
             acks += 1;
+            info!(
+                content_id,
+                peer_id = %peer_id,
+                "content uploaded"
+            );
         }
     }
     if acks == 0 {
@@ -122,6 +127,7 @@ pub(crate) async fn load_content(
             continue;
         };
         if blob_matches_content_id(content_id, &blob) {
+            info!(content_id, peer_id = %peer_id, "content synced");
             return Ok(Some(blob));
         }
     }
@@ -157,6 +163,11 @@ pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
             );
             continue;
         };
+        info!(
+            challenge_id = %challenge.challenge_id,
+            peer_id = %peer_id,
+            "capacity challenge sent"
+        );
         if send_challenge(&url, &peer_id, challenge).await.is_err() {
             warn!(
                 challenge_id = %challenge.challenge_id,

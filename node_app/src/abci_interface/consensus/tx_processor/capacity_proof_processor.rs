@@ -12,7 +12,7 @@ use abci::types::{Event, ResponseDeliverTx};
 use eld_common::coin::Coin;
 use eld_common::constants::tx_type;
 use eld_common::tx::{create_event_attribute, CapacityProofTx};
-use tracing::warn;
+use tracing::{info, warn};
 
 pub async fn process_capacity_proof_tx<S>(
     connection: &ConsensusConnection<S>,
@@ -157,6 +157,13 @@ where
         .envelope
         .verified_proof_rewarded_cache
         .insert(challenge_id.clone());
+
+    info!(
+        challenge_id = %challenge_id,
+        provider = %provider,
+        reward = %reward_amount,
+        "capacity proof tx processed"
+    );
 
     let events = vec![
         Event {
