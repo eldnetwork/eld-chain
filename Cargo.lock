@@ -1233,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "eld-node"
-version = "0.0.31"
+version = "0.0.32"
 dependencies = [
  "abci-rs",
  "async-trait",
