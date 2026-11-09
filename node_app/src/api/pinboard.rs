@@ -11,6 +11,7 @@ use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::PinboardGlobalFeedOrder;
+use axum::extract::FromRef;
 use axum::{
     extract::{self, State},
     http::HeaderMap,
@@ -149,17 +150,43 @@ async fn submit_transaction_to_tendermint(
     Ok(())
 }
 
+/// Shared pieces a pinboard submit reads from the HTTP app state.
+pub(crate) struct PinboardSubmitContext {
+    storage: Arc<RocksDBStorage>,
+    consensus_config: Arc<Mutex<ConsensusConfig>>,
+    rate_limit_state: Arc<RwLock<RateLimitState>>,
+    cli: Arc<ChainClient>,
+    capacity_manager: Arc<CapacityManager>,
+    committed_state: Arc<Mutex<AppState>>,
+}
+
+impl FromRef<super::ApiState> for PinboardSubmitContext {
+    fn from_ref(state: &super::ApiState) -> Self {
+        Self {
+            storage: state.storage.clone(),
+            consensus_config: state.consensus_config.clone(),
+            rate_limit_state: state.rate_limit_state.clone(),
+            cli: state.cli.clone(),
+            capacity_manager: state.capacity_manager.clone(),
+            committed_state: state.committed_state.clone(),
+        }
+    }
+}
+
 /// Pinboard: verify user-signed message, then broadcast validator-signed `PostMessage` tx.
 pub(crate) async fn handle_pinboard_submit(
-    State(storage): State<Arc<RocksDBStorage>>,
-    State(consensus_config): State<Arc<Mutex<ConsensusConfig>>>,
-    State(rate_limit_state): State<Arc<RwLock<RateLimitState>>>,
-    State(cli): State<Arc<ChainClient>>,
-    State(capacity_manager): State<Arc<CapacityManager>>,
-    State(committed_state): State<Arc<Mutex<AppState>>>,
+    State(ctx): State<PinboardSubmitContext>,
     headers: HeaderMap,
     Json(body): Json<PostMessageSubmitRequest>,
 ) -> Result<Json<PostMessageSubmitResponse>, ApiError> {
+    let PinboardSubmitContext {
+        storage,
+        consensus_config,
+        rate_limit_state,
+        cli,
+        capacity_manager,
+        committed_state,
+    } = ctx;
     check_rate_limit(&rate_limit_state, ApiEndpointType::Upload, &headers).await?;
 
     let protocol = capacity_manager.protocol_handle();
