@@ -196,7 +196,7 @@ where
         let mut pinboard_capacity_blobs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut pinboard_temp_blob_keys_to_delete: HashSet<String> = HashSet::new();
 
-        // Pre-validate temp blobs before any pinboard writes to keep commit all-or-nothing.
+        // Metadata is written either way. A temp blob is deleted only when this node has one.
         for (message_id, meta) in current_state.envelope.pinboard_meta_cache.iter() {
             match storage.get_pinboard_temp_blob(&meta.content_key) {
                 Ok(Some(temp_bytes)) => {
@@ -204,22 +204,19 @@ where
                     pinboard_temp_blob_keys_to_delete.insert(meta.content_key.clone());
                 }
                 Ok(None) => {
-                    handle_fatal_eld_error(EldError::StorageError {
-                        operation: "prevalidate_pinboard_temp_blob".to_string(),
-                        details: format!(
-                            "Missing pinboard temp blob for message_id={} content_key={}",
-                            message_id, meta.content_key
-                        ),
-                    });
+                    warn!(
+                        message_id = %message_id,
+                        content_key = %meta.content_key,
+                        "pinboard commit has no temp blob; metadata is still written"
+                    );
                 }
                 Err(e) => {
-                    handle_fatal_eld_error(EldError::StorageError {
-                        operation: "prevalidate_pinboard_temp_blob".to_string(),
-                        details: format!(
-                            "Failed reading pinboard temp blob for message_id={} content_key={}: {}",
-                            message_id, meta.content_key, e
-                        ),
-                    });
+                    warn!(
+                        message_id = %message_id,
+                        content_key = %meta.content_key,
+                        error = %e,
+                        "pinboard temp blob was not read; metadata is still written"
+                    );
                 }
             }
         }
