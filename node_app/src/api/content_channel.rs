@@ -158,6 +158,16 @@ pub(crate) async fn load_content(
             return Ok(Some(blob));
         }
     }
+    request_content_from_peers(content_id).await
+}
+
+/// Ask connected peers for `content_id` on the content channel.
+///
+/// The first reply whose SHA-256 matches is returned. The content connection stores that reply
+/// when it arrives, same as any other `content_request`.
+pub(crate) async fn request_content_from_peers(
+    content_id: &str,
+) -> Result<Option<Vec<u8>>, ApiError> {
     let url = tendermint_rpc_url();
     let Ok(peers) = connected_peers(&url).await else {
         return Ok(None);
@@ -173,6 +183,28 @@ pub(crate) async fn load_content(
         }
     }
     Ok(None)
+}
+
+/// Fetch each content key this commit did not already have. Runs off the consensus task.
+pub(crate) async fn sync_content_keys(content_ids: Vec<String>) {
+    for content_id in content_ids {
+        match request_content_from_peers(&content_id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                warn!(
+                    content_id,
+                    "pinboard content was not found on connected peers"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    content_id,
+                    error = ?err,
+                    "pinboard content sync failed"
+                );
+            }
+        }
+    }
 }
 
 /// Peer id for a provider. A Tendermint peer id is the lowercase hex of its 20-byte address.

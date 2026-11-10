@@ -195,6 +195,7 @@ where
 
         let mut pinboard_capacity_blobs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut pinboard_temp_blob_keys_to_delete: HashSet<String> = HashSet::new();
+        let mut pinboard_missing_content_keys: HashSet<String> = HashSet::new();
 
         // Metadata is written either way. A temp blob is deleted only when this node has one.
         for (message_id, meta) in current_state.envelope.pinboard_meta_cache.iter() {
@@ -204,6 +205,7 @@ where
                     pinboard_temp_blob_keys_to_delete.insert(meta.content_key.clone());
                 }
                 Ok(None) => {
+                    pinboard_missing_content_keys.insert(meta.content_key.clone());
                     warn!(
                         message_id = %message_id,
                         content_key = %meta.content_key,
@@ -211,6 +213,7 @@ where
                     );
                 }
                 Err(e) => {
+                    pinboard_missing_content_keys.insert(meta.content_key.clone());
                     warn!(
                         message_id = %message_id,
                         content_key = %meta.content_key,
@@ -541,6 +544,20 @@ where
             let store = self.frontier_snapshot_store.clone();
             tokio::task::spawn_blocking(move || {
                 frontier_snapshot::store_frontier_snapshot(&store, &state);
+            });
+        }
+
+        let missing_content_keys: Vec<String> = pinboard_missing_content_keys
+            .into_iter()
+            .filter(|content_key| !pinboard_capacity_blobs.contains_key(content_key))
+            .collect();
+        if !missing_content_keys.is_empty() {
+            info!(
+                count = missing_content_keys.len(),
+                "Commit: scheduling pinboard content sync after RocksDB commit"
+            );
+            tokio::spawn(async move {
+                crate::api::content_channel::sync_content_keys(missing_content_keys).await;
             });
         }
 
