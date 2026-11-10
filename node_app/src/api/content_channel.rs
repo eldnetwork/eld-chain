@@ -21,7 +21,13 @@ use crate::capacity::capacity_manager::CapacityManager;
 use super::error::ApiError;
 
 const CONTENT_RPC_TIMEOUT: Duration = Duration::from_secs(5);
+const CONTENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const CONTENT_CHALLENGE_TIMEOUT: Duration = Duration::from_secs(15);
+/// One push waits this long for a receipt. Slightly past the node's 30s wait so the timeout reply can be read.
+const PUSH_ACK_TIMEOUT: Duration = Duration::from_secs(35);
 const MAX_PEERS: usize = 3;
+/// Other capacity providers to push to. A four-node cluster is the whole rest of the set.
+const MAX_PROVIDERS: usize = 4;
 
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -29,7 +35,7 @@ pub(crate) fn tendermint_rpc_url() -> String {
     std::env::var("TENDERMINT_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:26657".to_string())
 }
 
-/// Capacity providers other than this node, at most three.
+/// Capacity providers other than this node, at most four.
 pub(crate) fn providers_to_push(state: &AppState, local: &Address) -> Vec<Address> {
     state
         .envelope
@@ -37,13 +43,15 @@ pub(crate) fn providers_to_push(state: &AppState, local: &Address) -> Vec<Addres
         .iter()
         .map(|provider| provider.address)
         .filter(|address| address != local)
-        .take(MAX_PEERS)
+        .take(MAX_PROVIDERS)
         .collect()
 }
 
-/// Push `blob` to connected peers. Returns once a selected provider has acked.
+/// Push `blob` to every selected provider and wait for each receipt.
 ///
-/// No other providers means this node is the only store, so the post can go out.
+/// The waits run together, so the budget is one 30s receipt wait, not 30s times the provider count.
+/// No peers, no receipts, or a node RPC the app cannot reach still returns `Ok`. The caller submits
+/// the post transaction either way. No other providers means this node is the only store.
 pub(crate) async fn push_to_providers(
     providers: &[Address],
     content_id: &str,
@@ -53,37 +61,70 @@ pub(crate) async fn push_to_providers(
         return Ok(());
     }
     let url = tendermint_rpc_url();
-    let peers = connected_peers(&url).await?;
-    if peers.is_empty() {
-        return Err(ApiError::ServiceUnavailable {
-            message: "no_content_peers".to_string(),
-            details: Some("No Tendermint peer is connected to receive the blob".to_string()),
-        });
-    }
-    let mut acks = 0usize;
-    for peer_id in peers.into_iter().take(MAX_PEERS) {
-        let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-        let Ok(provider) = push_one(&url, &peer_id, request_id, content_id, blob).await else {
+    let peers = match connected_peers(&url).await {
+        Ok(peers) => peers,
+        Err(err) => {
+            warn!(
+                content_id,
+                error = ?err,
+                "content push skipped; the node RPC is unreachable"
+            );
+            return Ok(());
+        }
+    };
+    let mut waits = Vec::new();
+    for provider in providers {
+        let Some(peer_id) = peer_id_for_provider(&peers, provider.as_bytes()) else {
+            warn!(
+                content_id,
+                provider = %provider,
+                "content push skipped; that provider is not a connected peer"
+            );
             continue;
         };
-        if providers
-            .iter()
-            .any(|selected| provider.as_slice() == selected.as_bytes())
-        {
+        let url = url.clone();
+        let content_id = content_id.to_owned();
+        let blob = blob.to_vec();
+        let expected = provider.as_bytes().to_vec();
+        waits.push(tokio::spawn(async move {
+            let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+            match push_one(&url, &peer_id, request_id, &content_id, &blob).await {
+                Ok(ack) if ack.as_slice() == expected.as_slice() => {
+                    info!(content_id, peer_id = %peer_id, "content uploaded");
+                    true
+                }
+                Ok(_) => {
+                    warn!(
+                        content_id,
+                        peer_id = %peer_id,
+                        "content push receipt was from another provider"
+                    );
+                    false
+                }
+                Err(err) => {
+                    warn!(
+                        content_id,
+                        peer_id = %peer_id,
+                        error = ?err,
+                        "content push was not acked"
+                    );
+                    false
+                }
+            }
+        }));
+    }
+    let mut acks = 0usize;
+    for wait in waits {
+        if wait.await.unwrap_or(false) {
             acks += 1;
-            info!(
-                content_id,
-                peer_id = %peer_id,
-                "content uploaded"
-            );
         }
     }
-    if acks == 0 {
-        return Err(ApiError::ServiceUnavailable {
-            message: "content_push_unacked".to_string(),
-            details: Some("No selected capacity provider accepted the blob".to_string()),
-        });
-    }
+    info!(
+        content_id,
+        acks,
+        providers = providers.len(),
+        "content push finished"
+    );
     Ok(())
 }
 
@@ -183,7 +224,7 @@ async fn send_challenge(
     peer_id: &str,
     challenge: &CapacityChallenge,
 ) -> Result<(), ApiError> {
-    let result = rpc(
+    let result = rpc_timeout(
         url,
         "content_challenge",
         serde_json::json!({
@@ -198,6 +239,7 @@ async fn send_challenge(
             "expiration_block": challenge.expiration_block,
             "timestamp": challenge.timestamp,
         }),
+        CONTENT_CHALLENGE_TIMEOUT,
     )
     .await?;
     let returned = result
@@ -220,7 +262,7 @@ async fn push_one(
     content_id: &str,
     blob: &[u8],
 ) -> Result<Vec<u8>, ApiError> {
-    let result = rpc(
+    let result = rpc_timeout(
         url,
         "content_push",
         serde_json::json!({
@@ -229,6 +271,7 @@ async fn push_one(
             "content_id": content_id,
             "blob": BASE64_STANDARD.encode(blob),
         }),
+        PUSH_ACK_TIMEOUT,
     )
     .await?;
     let provider = result
@@ -248,7 +291,7 @@ async fn request_one(
     request_id: u64,
     content_id: &str,
 ) -> Result<Vec<u8>, ApiError> {
-    let result = rpc(
+    let result = rpc_timeout(
         url,
         "content_request",
         serde_json::json!({
@@ -256,6 +299,7 @@ async fn request_one(
             "request_id": request_id,
             "content_id": content_id,
         }),
+        CONTENT_REQUEST_TIMEOUT,
     )
     .await?;
     result
@@ -285,8 +329,17 @@ async fn connected_peers(url: &str) -> Result<Vec<String>, ApiError> {
 }
 
 async fn rpc(url: &str, method: &str, params: Value) -> Result<Value, ApiError> {
+    rpc_timeout(url, method, params, CONTENT_RPC_TIMEOUT).await
+}
+
+async fn rpc_timeout(
+    url: &str,
+    method: &str,
+    params: Value,
+    timeout: Duration,
+) -> Result<Value, ApiError> {
     let client = reqwest::Client::builder()
-        .timeout(CONTENT_RPC_TIMEOUT)
+        .timeout(timeout)
         .build()
         .map_err(|err| ApiError::InternalServerError {
             message: "content_rpc_client".to_string(),
@@ -357,12 +410,12 @@ mod tests {
     }
 
     #[test]
-    fn providers_to_push_skips_this_node_and_keeps_three() {
+    fn providers_to_push_skips_this_node_and_keeps_four() {
         let local = Address::from_bytes([1; 20]);
         let mut state = AppState::default();
-        state.envelope.capacity_validators = (1..6).map(provider).collect();
+        state.envelope.capacity_validators = (1..7).map(provider).collect();
         let selected = providers_to_push(&state, &local);
-        assert_eq!(selected.len(), 3);
+        assert_eq!(selected.len(), 4);
         assert!(selected.iter().all(|address| address != &local));
     }
 
