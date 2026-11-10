@@ -21,6 +21,7 @@ ignore = [
     { id = "RUSTSEC-2026-0447", reason = "actix-web 4.17 is the newest 4.x that builds on Rust 1.88; fix is actix-web >= 4.18.2" },
     { id = "RUSTSEC-2026-0448", reason = "actix-http 3.19 is pinned because 3.20 needs Rust 1.89; fix is actix-http >= 3.20.1" },
     { id = "RUSTSEC-2026-0455", reason = "actix-http 3.19 is pinned because 3.20 needs Rust 1.89; fix is actix-http >= 3.20.3" },
+    { id = "RUSTSEC-2026-0459", reason = "libsqlite3-sys 0.30.1 is pinned by rusqlite 0.32; fix is libsqlite3-sys >= 0.39.0" },
 ]
 
 [licenses]

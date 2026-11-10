@@ -3,6 +3,7 @@
 # RUSTSEC-2026-0382: rustls-webpki 0.101 cannot move; 0.103 is bumped in Cargo.lock.
 # RUSTSEC-2026-0446 / 0448 / 0455: actix-http 3.19 is pinned because 3.20 needs Rust 1.89.
 # RUSTSEC-2026-0447: actix-web 4.17 is the newest 4.x that builds on Rust 1.88.
+# RUSTSEC-2026-0459: libsqlite3-sys 0.30.1 is pinned by rusqlite 0.32.
 [advisories]
 ignore = [
     "RUSTSEC-2026-0098",
@@ -16,4 +17,5 @@ ignore = [
     "RUSTSEC-2026-0447",
     "RUSTSEC-2026-0448",
     "RUSTSEC-2026-0455",
+    "RUSTSEC-2026-0459",
 ]
