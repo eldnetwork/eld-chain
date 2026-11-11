@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use eld_common::address::Address;
 use eld_common::error::EldError;
 use eld_common::wallet::Wallet;
+use eld_common::NodeId;
 use serde::Serialize;
 use tendermint_rpc::{Client, HttpClient};
 use tracing::{info, warn};
@@ -19,9 +20,9 @@ pub struct LocalNodeIdentity {
     pub consensus_validator_address: Option<Address>,
     /// Capacity-validator wallet address from `ELD_CAPACITY_VALIDATOR_WALLET_NAME` + `wallets.json`.
     pub capacity_validator_address: Option<Address>,
-    /// This node's id from Tendermint `/status` `node_info.id`. Lowercase hex, 40 characters.
-    /// Other nodes use this id for the connection. Empty until the first successful status call.
-    pub node_id: Option<String>,
+    /// This node's peer id from Tendermint `/status` `node_info.id`.
+    /// Unset until the first successful status call.
+    pub node_id: Option<NodeId>,
 }
 
 /// REST view of [`LocalNodeIdentity`] plus related local addresses.
@@ -131,11 +132,16 @@ pub async fn fetch_from_tendermint_status(
             operation: "fetch_node_identity".to_string(),
             details: format!("Invalid Tendermint validator address '{address_raw}': {e}"),
         })?;
+    let node_id =
+        NodeId::from_tendermint(&status.node_info.id).map_err(|e| EldError::NetworkError {
+            operation: "fetch_node_identity".to_string(),
+            details: format!("Invalid Tendermint node id: {e}"),
+        })?;
 
     Ok(LocalNodeIdentity {
         consensus_validator_address: Some(consensus_validator_address),
         capacity_validator_address: None,
-        node_id: Some(status.node_info.id.to_string()),
+        node_id: Some(node_id),
     })
 }
 

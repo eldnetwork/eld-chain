@@ -30,6 +30,7 @@ pub mod manifest_id;
 #[allow(missing_docs)]
 pub mod missing_content;
 pub mod namespace;
+pub mod node_id;
 pub mod nonce;
 #[allow(missing_docs)]
 pub mod pinboard;
@@ -54,6 +55,7 @@ pub use capacity_seed::CapacitySeed;
 pub use challenge_id::ChallengeId;
 pub use content_id::ContentId;
 pub use manifest_id::ManifestId;
+pub use node_id::NodeId;
 pub use public_key::PublicKey;
 use tendermint::Time; // Re-export Address
 

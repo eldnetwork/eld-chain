@@ -1,6 +1,6 @@
 use crate::error::EldError;
 use crate::tx::parts::{HasAmount, HasSender};
-use crate::Address;
+use crate::{Address, NodeId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -13,6 +13,8 @@ pub struct RegisterCapacityTx {
     #[serde(with = "crate::tx::parts::hex_array::hex_vec_u8_32")]
     pub seed: [u8; 32], // Seed for capacity proof
     pub chunk_count: u32,    // Number of chunks in the capacity proof
+    /// Tendermint peer id of the node that holds this provider's capacity.
+    pub node_id: NodeId,
 }
 
 #[derive(Deserialize)]
@@ -24,6 +26,7 @@ struct RegisterCapacityTxUnchecked {
     #[serde(with = "crate::tx::parts::hex_array::hex_vec_u8_32")]
     seed: [u8; 32],
     chunk_count: u32,
+    node_id: NodeId,
 }
 
 impl TryFrom<RegisterCapacityTxUnchecked> for RegisterCapacityTx {
@@ -36,6 +39,7 @@ impl TryFrom<RegisterCapacityTxUnchecked> for RegisterCapacityTx {
             unchecked.merkle_root,
             unchecked.seed,
             unchecked.chunk_count,
+            unchecked.node_id,
         )
     }
 }
@@ -47,6 +51,7 @@ impl RegisterCapacityTx {
         merkle_root: [u8; 32],
         seed: [u8; 32],
         chunk_count: u32,
+        node_id: NodeId,
     ) -> Result<Self, EldError> {
         if capacity_bytes == 0 {
             return Err(EldError::ValidationError {
@@ -63,6 +68,7 @@ impl RegisterCapacityTx {
             merkle_root,
             seed,
             chunk_count,
+            node_id,
         })
     }
 }
@@ -71,12 +77,13 @@ impl std::fmt::Display for RegisterCapacityTx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "RegisterCapacityTx {{\n sender: {}\n capacity_bytes: {}\n merkle_root: {}\n seed: {}\n chunk_count: {}\n }}",
+            "RegisterCapacityTx {{\n sender: {}\n capacity_bytes: {}\n merkle_root: {}\n seed: {}\n chunk_count: {}\n node_id: {}\n }}",
             self.sender,
             self.capacity_bytes,
             hex::encode(self.merkle_root),
             hex::encode(self.seed),
-            self.chunk_count
+            self.chunk_count,
+            self.node_id
         )
     }
 }

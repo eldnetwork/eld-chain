@@ -209,7 +209,8 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     )
     .await;
 
-    crate::capacity::on_ready::after_first_commit(ready_rx, capacity.manager).await;
+    let local_identity = capacity.local_identity.clone();
+    crate::capacity::on_ready::after_first_commit(ready_rx, capacity.manager, local_identity).await;
 
     shutdown::wait_and_shutdown(
         content_server_handle,

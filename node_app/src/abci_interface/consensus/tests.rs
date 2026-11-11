@@ -732,6 +732,7 @@ fn build_challenged_capacity_provider_data_skips_unregistered_providers() {
         last_merkle_root_update: Some(1),
         registered_block: 1,
         registration_duration: 1000,
+        node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
     }];
 
     let data = ConsensusConnection::<HybridStorage>::build_challenged_capacity_provider_data(

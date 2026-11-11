@@ -1,6 +1,6 @@
 //! After the first consensus commit: provider lookup and on-chain register.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use eld_client::api::abci::AbciHttpApi;
 use eld_common::error::EldError;
@@ -9,18 +9,20 @@ use tracing::{error, info, warn};
 
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::errors::handle_fatal_eld_error;
+use crate::node_identity::LocalNodeIdentity;
 
 /// Wait for first commit, then register capacity if allocated.
 pub async fn after_first_commit(
     ready_rx: oneshot::Receiver<()>,
     capacity_manager: Arc<CapacityManager>,
+    local_identity: Arc<RwLock<LocalNodeIdentity>>,
 ) {
     info!("Waiting for node to be ready (block height > 0)...");
     match ready_rx.await {
         Ok(_) => {
             info!("Node is READY: First consensus commit completed, block height > 0");
             check_existing_registration(&capacity_manager).await;
-            submit_registration_if_allocated(&capacity_manager).await;
+            submit_registration_if_allocated(&capacity_manager, &local_identity).await;
         }
         Err(_) => {
             warn!("Ready channel was closed before signaling - node may not be ready");
@@ -68,7 +70,10 @@ async fn check_existing_registration(capacity_manager: &CapacityManager) {
     }
 }
 
-async fn submit_registration_if_allocated(capacity_manager: &CapacityManager) {
+async fn submit_registration_if_allocated(
+    capacity_manager: &CapacityManager,
+    local_identity: &RwLock<LocalNodeIdentity>,
+) {
     let slot_allocator = capacity_manager.slot_allocator();
     let slot_allocator_guard = slot_allocator.lock().await;
     let capacity_allocated = slot_allocator_guard.slot_map_exists();
@@ -79,11 +84,26 @@ async fn submit_registration_if_allocated(capacity_manager: &CapacityManager) {
         return;
     }
 
+    let node_id = match local_identity.read() {
+        Ok(identity) => identity.node_id,
+        Err(err) => {
+            error!(
+                error = %err,
+                "Capacity registration skipped; local node identity could not be read"
+            );
+            return;
+        }
+    };
+    let Some(node_id) = node_id else {
+        error!("Capacity registration skipped; Tendermint node id is not loaded");
+        return;
+    };
+
     match capacity_manager.get_registration_info().await {
         Ok((capacity_bytes, seed, merkle_root)) => {
-            info!("Submitting capacity registration transaction...");
+            info!(%node_id, "Submitting capacity registration transaction...");
             if let Err(e) = capacity_manager
-                .register_capacity_onchain(capacity_bytes, seed, merkle_root)
+                .register_capacity_onchain(capacity_bytes, seed, merkle_root, node_id)
                 .await
             {
                 let wallet_missing = matches!(

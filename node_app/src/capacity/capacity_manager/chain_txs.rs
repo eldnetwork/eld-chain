@@ -2,7 +2,7 @@ use super::CapacityManager;
 use crate::capacity::capacity_registration::CapacityRegistrationTxParams;
 use eld_common::constants::pinboard::MAX_CHUNK_SIZE;
 use eld_common::error::EldError;
-use eld_common::{CapacityMerkleRoot, CapacitySeed};
+use eld_common::{CapacityMerkleRoot, CapacitySeed, NodeId};
 use tracing::{error, info};
 
 impl CapacityManager {
@@ -19,6 +19,7 @@ impl CapacityManager {
         capacity_bytes: u64,
         seed: CapacitySeed,
         merkle_root: CapacityMerkleRoot,
+        node_id: NodeId,
     ) -> Result<(), EldError> {
         info!(
             provider_id = %self.config.provider_id,
@@ -78,6 +79,7 @@ impl CapacityManager {
                 seed,
                 merkle_root,
                 chunk_count,
+                node_id,
                 wallet: &wallet,
                 cli: cli.as_ref(),
                 chain_id: &chain_id,

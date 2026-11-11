@@ -1,6 +1,7 @@
 use crate::address::Address;
 use crate::coin::Coin;
 use crate::public_key::PublicKey;
+use crate::NodeId;
 use bincode;
 use hex;
 use serde::{Deserialize, Serialize};
@@ -157,6 +158,8 @@ pub struct CapacityValidatorInfo {
     pub registered_block: u64,
     /// Registration duration in blocks; capacity expires when current_block > registered_block + registration_duration. Set when the RegisterCapacity tx is processed. 0 after expiry or before any registration.
     pub registration_duration: u64,
+    /// Tendermint peer id of the node that holds this provider's capacity.
+    pub node_id: NodeId,
 }
 
 /// Active capacity validator for the current epoch (issues challenges).

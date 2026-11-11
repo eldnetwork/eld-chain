@@ -7,6 +7,7 @@ use crate::address::Address;
 use crate::coin::Coin;
 use crate::constants::{cado::MAX_APP_STATE_SNAPSHOT_CADO_SIZE_BYTES, token::MAX_COIN, tx_type};
 use crate::error::EldError;
+use crate::node_id::NodeId;
 #[cfg(test)]
 use crate::tx::{StakeTx, TransferTx, UnstakeTx};
 use bincode;
@@ -936,6 +937,7 @@ fn validate_register_capacity_payload(
         "merkle_root",
         "seed",
         "chunk_count",
+        "node_id",
     ];
     for field in &required_fields {
         if !payload_obj.contains_key(*field) {
@@ -1004,6 +1006,15 @@ fn validate_register_capacity_payload(
                     .to_string(),
             })?;
     validate_positive_integer(chunk_count, Some(1u64), None, "chunk_count")?;
+
+    let node_id = payload_obj["node_id"]
+        .as_str()
+        .ok_or_else(|| EldError::ValidationError {
+            field: "register capacity payload node_id".to_string(),
+            value: payload_obj["node_id"].to_string(),
+            details: "RegisterCapacity payload 'node_id' field must be a hex string".to_string(),
+        })?;
+    NodeId::parse_hex(node_id)?;
 
     Ok(())
 }

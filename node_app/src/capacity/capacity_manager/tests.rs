@@ -100,6 +100,7 @@ async fn register_capacity_onchain_requires_capacity_validator_wallet() {
             1024,
             CapacitySeed::new([0x42; 32]),
             CapacityMerkleRoot::new([0xAA; 32]),
+            eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         )
         .await
         .expect_err("missing CV wallet must fail");

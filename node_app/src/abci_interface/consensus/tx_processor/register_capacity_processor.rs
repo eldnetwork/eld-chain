@@ -106,6 +106,7 @@ where
                 last_merkle_root_update: Some(current_block_height as u64),
                 registered_block,
                 registration_duration: connection.protocol_constants().registration_duration_blocks,
+                node_id: register_capacity_tx.node_id,
             });
     } else {
         info!(
@@ -139,6 +140,7 @@ where
                 provider.registered_block = registered_block;
                 provider.registration_duration =
                     connection.protocol_constants().registration_duration_blocks;
+                provider.node_id = register_capacity_tx.node_id;
 
                 found = true;
                 break;
@@ -173,6 +175,7 @@ where
                 hex::encode(register_capacity_tx.merkle_root),
             ),
             create_event_attribute("seed".into(), hex::encode(register_capacity_tx.seed)),
+            create_event_attribute("node_id".into(), register_capacity_tx.node_id.to_string()),
             create_event_attribute("registered_at".into(), current_block_height.to_string()),
         ],
     }];

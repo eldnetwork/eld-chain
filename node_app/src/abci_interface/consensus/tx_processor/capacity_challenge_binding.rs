@@ -266,6 +266,7 @@ mod tests {
             last_merkle_root_update: Some(1),
             registered_block: 1,
             registration_duration: 1000,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         }
     }
 
