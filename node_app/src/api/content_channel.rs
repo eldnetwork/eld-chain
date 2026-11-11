@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use eld_common::Address;
+use eld_common::{Address, NodeId};
 use eld_tendermint_proto::content::CapacityChallenge;
 use serde_json::Value;
 use tracing::{info, warn};
@@ -207,7 +207,7 @@ pub(crate) async fn sync_content_keys(content_ids: Vec<String>) {
     }
 }
 
-/// Peer id for a provider. A Tendermint peer id is the lowercase hex of its 20-byte address.
+/// Peer id for a provider wallet address.
 pub(crate) fn peer_id_for_provider(peers: &[String], provider: &[u8]) -> Option<String> {
     let bytes: [u8; 20] = provider.try_into().ok()?;
     let address = Address::from_bytes(bytes).hex();
@@ -217,7 +217,16 @@ pub(crate) fn peer_id_for_provider(peers: &[String], provider: &[u8]) -> Option<
         .cloned()
 }
 
-/// Queue each challenge to the peer for that provider and wait for its proof.
+/// Connected peer whose id is this provider's registered Tendermint node id.
+pub(crate) fn peer_id_for_node(peers: &[String], node_id: &NodeId) -> Option<String> {
+    let id = node_id.to_hex();
+    peers
+        .iter()
+        .find(|peer_id| peer_id.eq_ignore_ascii_case(&id))
+        .cloned()
+}
+
+/// Queue each challenge to the peer registered for that provider and wait for its proof.
 /// Call this off the consensus task. A provider with no connected peer is skipped.
 pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
     if challenges.is_empty() {
@@ -229,9 +238,17 @@ pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
         return;
     };
     for challenge in challenges {
-        let Some(peer_id) = peer_id_for_provider(&peers, &challenge.provider) else {
+        let Ok(node_id) = NodeId::from_slice(&challenge.node_id) else {
             warn!(
                 challenge_id = %challenge.challenge_id,
+                "capacity challenge was not sent; its node id is not 20 bytes"
+            );
+            continue;
+        };
+        let Some(peer_id) = peer_id_for_node(&peers, &node_id) else {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                node_id = %node_id,
                 "capacity challenge was not sent; that provider is not a connected peer"
             );
             continue;
@@ -270,6 +287,7 @@ async fn send_challenge(
             "seed": BASE64_STANDARD.encode(&challenge.seed),
             "expiration_block": challenge.expiration_block,
             "timestamp": challenge.timestamp,
+            "node_id": BASE64_STANDARD.encode(&challenge.node_id),
         }),
         CONTENT_CHALLENGE_TIMEOUT,
     )
@@ -465,6 +483,21 @@ mod tests {
         );
         assert!(peer_id_for_provider(&peers, &[1; 20]).is_none());
         assert!(peer_id_for_provider(&peers, &[1; 19]).is_none());
+    }
+
+    #[test]
+    fn peer_id_for_node_matches_the_registered_node_id() {
+        let node_id = NodeId::from_slice(&[0xAB; 20]).expect("node id");
+        let peers = vec![
+            "00112233445566778899aabbccddeeff00112233".to_owned(),
+            node_id.to_hex().to_ascii_uppercase(),
+        ];
+        assert_eq!(
+            peer_id_for_node(&peers, &node_id).as_deref(),
+            Some(peers[1].as_str())
+        );
+        let other = NodeId::from_slice(&[1; 20]).expect("other");
+        assert!(peer_id_for_node(&peers, &other).is_none());
     }
 
     #[test]

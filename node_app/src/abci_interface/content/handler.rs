@@ -161,6 +161,7 @@ where
                     generated_at: proof.generated_at,
                     provider_pubkey,
                     provider_signature,
+                    node_id: msg.node_id.clone(),
                 },
             )),
         })

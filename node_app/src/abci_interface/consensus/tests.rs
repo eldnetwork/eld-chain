@@ -745,6 +745,10 @@ fn build_challenged_capacity_provider_data_skips_unregistered_providers() {
     assert_eq!(data[0].1, Some([9u8; 32]));
     assert_eq!(data[0].2, Some([8u8; 32]));
     assert_eq!(data[0].3, Some(50));
+    assert_eq!(
+        data[0].4,
+        eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id")
+    );
 }
 
 #[cfg(test)]

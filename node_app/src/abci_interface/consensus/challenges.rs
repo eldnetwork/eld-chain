@@ -4,11 +4,17 @@ use crate::storage::traits::ConsensusConnectionStorage;
 use eld_common::address::Address;
 use eld_common::capacity_challenge::{compute_challenge_id, select_challenge_chunk_indices};
 use eld_common::error::EldError;
+use eld_common::NodeId;
 use eld_tendermint_proto::content::CapacityChallenge;
 use tracing::{info, warn};
 
-pub(crate) type ChallengedCapacityProviderData =
-    (Address, Option<[u8; 32]>, Option<[u8; 32]>, Option<u32>);
+pub(crate) type ChallengedCapacityProviderData = (
+    Address,
+    Option<[u8; 32]>,
+    Option<[u8; 32]>,
+    Option<u32>,
+    NodeId,
+);
 
 impl<S> ConsensusConnection<S>
 where
@@ -62,7 +68,15 @@ where
                     .capacity_validators
                     .iter()
                     .find(|cp| cp.address == *provider_id)
-                    .map(|cp| (*provider_id, cp.merkle_root, cp.seed, cp.chunk_count))
+                    .map(|cp| {
+                        (
+                            *provider_id,
+                            cp.merkle_root,
+                            cp.seed,
+                            cp.chunk_count,
+                            cp.node_id,
+                        )
+                    })
             })
             .collect()
     }
@@ -90,7 +104,7 @@ where
         let expiration_block = block_height + 100;
 
         let mut challenges = Vec::new();
-        for (provider_id, merkle_root_opt, seed_opt, chunk_count_opt) in providers_data {
+        for (provider_id, merkle_root_opt, seed_opt, chunk_count_opt, node_id) in providers_data {
             let merkle_root = merkle_root_opt.ok_or_else(|| EldError::ValidationError {
                 field: "merkle_root".to_string(),
                 value: "none".to_string(),
@@ -156,6 +170,7 @@ where
                 seed: seed.to_vec(),
                 expiration_block,
                 timestamp,
+                node_id: node_id.as_bytes().to_vec(),
             });
         }
 
@@ -172,8 +187,9 @@ mod tests {
     fn one_provider_becomes_one_capacity_challenge() {
         let validator = Address::from_bytes([1; 20]);
         let provider = Address::from_bytes([2; 20]);
+        let node_id = NodeId::from_slice(&[3; 20]).expect("node id");
         let challenges = ConsensusConnection::<HybridStorage>::generate_challenges_internal(
-            vec![(provider, Some([9; 32]), Some([8; 32]), Some(4))],
+            vec![(provider, Some([9; 32]), Some([8; 32]), Some(4), node_id)],
             3,
             100,
             validator,
@@ -196,5 +212,6 @@ mod tests {
         assert_eq!(challenge.expiration_block, 200);
         assert_eq!(challenge.chunk_indices.len(), 2);
         assert!(!challenge.challenge_id.is_empty());
+        assert_eq!(challenge.node_id, node_id.as_bytes());
     }
 }
