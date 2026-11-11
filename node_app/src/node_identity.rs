@@ -19,6 +19,9 @@ pub struct LocalNodeIdentity {
     pub consensus_validator_address: Option<Address>,
     /// Capacity-validator wallet address from `ELD_CAPACITY_VALIDATOR_WALLET_NAME` + `wallets.json`.
     pub capacity_validator_address: Option<Address>,
+    /// This node's id from Tendermint `/status` `node_info.id`. Lowercase hex, 40 characters.
+    /// Other nodes use this id for the connection. Empty until the first successful status call.
+    pub node_id: Option<String>,
 }
 
 /// REST view of [`LocalNodeIdentity`] plus related local addresses.
@@ -132,6 +135,7 @@ pub async fn fetch_from_tendermint_status(
     Ok(LocalNodeIdentity {
         consensus_validator_address: Some(consensus_validator_address),
         capacity_validator_address: None,
+        node_id: Some(status.node_info.id.to_string()),
     })
 }
 
@@ -153,12 +157,14 @@ pub async fn ensure_identity_from_status(
         Ok(fetched) => {
             info!(
                 consensus_validator_address = ?fetched.consensus_validator_address,
+                node_id = ?fetched.node_id,
                 rpc_url = %rpc_url,
                 "Local TM validator identity loaded from /status"
             );
             match local_identity.write() {
                 Ok(mut guard) => {
                     guard.consensus_validator_address = fetched.consensus_validator_address;
+                    guard.node_id = fetched.node_id;
                 }
                 Err(e) => warn!(
                     error = %e,
@@ -203,6 +209,7 @@ mod tests {
         let id = LocalNodeIdentity {
             consensus_validator_address: Some(Address::parse_hex_str(TM_RAW).expect("address")),
             capacity_validator_address: None,
+            node_id: None,
         };
         assert!(id.matches_address(TM_CANONICAL));
         assert!(id.matches_address(TM_RAW));
@@ -223,6 +230,7 @@ mod tests {
             &LocalNodeIdentity {
                 consensus_validator_address: Some(consensus),
                 capacity_validator_address: Some(capacity),
+                node_id: None,
             },
             &provider,
         );
@@ -248,6 +256,7 @@ mod tests {
         let id = LocalNodeIdentity {
             consensus_validator_address: None,
             capacity_validator_address: Some(local),
+            node_id: None,
         };
         assert!(id.matches_capacity_validator_wallet(&local));
         assert!(!id.matches_capacity_validator_wallet(
@@ -285,6 +294,7 @@ mod tests {
                 Address::parse_hex_str("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
                     .expect("address"),
             ),
+            node_id: None,
         };
         assert!(id.is_capacity_validator_configured());
     }

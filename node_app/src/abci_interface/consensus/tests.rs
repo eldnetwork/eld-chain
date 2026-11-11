@@ -784,6 +784,7 @@ fn configured_local_identity() -> LocalNodeIdentity {
             Address::parse_hex_str("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").expect("identity"),
         ),
         capacity_validator_address: None,
+        node_id: None,
     }
 }
 

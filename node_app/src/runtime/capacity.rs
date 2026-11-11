@@ -100,6 +100,7 @@ pub async fn init_capacity(
     let local_identity = Arc::new(RwLock::new(LocalNodeIdentity {
         consensus_validator_address: None,
         capacity_validator_address: Some(capacity_validator_wallet_address),
+        node_id: None,
     }));
 
     CapacityRuntime {
