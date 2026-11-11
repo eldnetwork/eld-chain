@@ -105,6 +105,21 @@ where
         }
     };
 
+    let Some(node_id) = current_state
+        .envelope
+        .capacity_validators
+        .iter()
+        .find(|info| info.address == binding.challenged_provider_id)
+        .map(|info| info.node_id)
+    else {
+        let reason = format!(
+            "capacity proof rejected: provider {} has no registered node id",
+            binding.challenged_provider_id
+        );
+        warn!(reason = %reason, "capacity proof rejected");
+        return response_deliver_tx_error_validation_failed(reason);
+    };
+
     if let Err(err) = eld_common::capacity_proof::verify_capacity_challenge_response(
         &challenge_id,
         &binding.challenged_provider_id,
@@ -114,6 +129,7 @@ where
         tx.generated_at,
         &tx.provider_pubkey,
         &tx.provider_signature,
+        &node_id,
     ) {
         let reason = format!("capacity proof rejected: provider signature invalid: {err}");
         warn!(reason = %reason, "capacity proof rejected");

@@ -225,6 +225,31 @@ where
     ) -> Option<Message> {
         let challenger = address_from(&msg.challenger)?;
         let provider = address_from(&msg.provider)?;
+        let Some(node_id) = eld_common::NodeId::from_slice(&msg.node_id).ok() else {
+            error!(
+                challenge_id = %msg.challenge_id,
+                "capacity challenge response node id is not 20 bytes"
+            );
+            return None;
+        };
+        let Some(registered_node_id) = self.provider_node_id(&provider) else {
+            error!(
+                challenge_id = %msg.challenge_id,
+                provider = %provider,
+                "capacity provider has no node id"
+            );
+            return None;
+        };
+        if node_id != registered_node_id {
+            error!(
+                challenge_id = %msg.challenge_id,
+                provider = %provider,
+                node_id = %node_id,
+                registered_node_id = %registered_node_id,
+                "capacity challenge response node id does not match the registered provider"
+            );
+            return None;
+        }
         let is_local = self
             .local_identity
             .read()
@@ -249,6 +274,7 @@ where
             msg.generated_at,
             &provider_pubkey,
             &provider_signature,
+            &node_id,
         ) {
             error!(
                 challenge_id = %msg.challenge_id,
@@ -418,6 +444,19 @@ where
             .is_some_and(|validator| validator.validator_address == *challenger)
     }
 
+    fn provider_node_id(&self, provider: &Address) -> Option<eld_common::NodeId> {
+        let state = self
+            .committed_state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        state
+            .envelope
+            .capacity_validators
+            .iter()
+            .find(|info| info.address == *provider)
+            .map(|info| info.node_id)
+    }
+
     fn provider_merkle_root(&self, provider: &Address) -> Option<CapacityMerkleRoot> {
         let state = self
             .committed_state
@@ -482,6 +521,7 @@ fn challenge_params(msg: &content::CapacityChallenge) -> Option<CapacityProofGen
         expected_merkle_root: CapacityMerkleRoot::new(merkle_root),
         expiration_block: msg.expiration_block,
         timestamp: msg.timestamp,
+        node_id: eld_common::NodeId::from_slice(&msg.node_id).ok()?,
     })
 }
 

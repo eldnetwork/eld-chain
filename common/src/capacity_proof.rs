@@ -2,6 +2,7 @@
 //! `SlotState` matches `eld_common::capacity::slot_allocator` so proofs align with on-disk slot maps.
 
 use crate::address::Address;
+use crate::NodeId;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +36,8 @@ pub struct ChallengeProof {
     pub block_height: i64,
     pub proofs: Vec<ChunkProof>,
     pub generated_at: u64, // Unix timestamp
+    /// Tendermint peer id of the capacity provider. Covered by the response signature.
+    pub node_id: NodeId,
 }
 
 #[derive(Serialize)]
@@ -46,9 +49,13 @@ struct CapacityChallengeResponseSigningPayload<'a> {
     proofs: &'a [ChunkProof],
     generated_at: u64,
     provider_pubkey: &'a str,
+    /// Lowercase hex, 40 digits, no `0x` prefix.
+    node_id: &'a str,
 }
 
 /// Canonical signing bytes for a capacity challenge response.
+/// Arguments match the signed fields; grouping them would hide that wire shape.
+#[allow(clippy::too_many_arguments)]
 pub fn capacity_challenge_response_signing_bytes(
     challenge_id: &str,
     provider_id: &str,
@@ -57,7 +64,9 @@ pub fn capacity_challenge_response_signing_bytes(
     proofs: &[ChunkProof],
     generated_at: u64,
     provider_pubkey: &str,
+    node_id: &NodeId,
 ) -> Result<Vec<u8>, String> {
+    let node_id = node_id.to_hex();
     let payload = CapacityChallengeResponseSigningPayload {
         challenge_id,
         provider_id,
@@ -66,6 +75,7 @@ pub fn capacity_challenge_response_signing_bytes(
         proofs,
         generated_at,
         provider_pubkey,
+        node_id: &node_id,
     };
 
     serde_json::to_vec(&payload).map_err(|e| {
@@ -87,6 +97,7 @@ pub fn sign_capacity_challenge_response(
         &challenge_proof.proofs,
         challenge_proof.generated_at,
         &provider_pubkey,
+        &challenge_proof.node_id,
     )?;
     let signature = hex::encode(signing_key.sign(&signing_bytes).to_bytes());
     Ok((provider_pubkey, signature))
@@ -104,6 +115,7 @@ pub fn verify_capacity_challenge_response(
     generated_at: u64,
     provider_pubkey: &str,
     provider_signature: &str,
+    node_id: &NodeId,
 ) -> Result<(), String> {
     if provider_pubkey.is_empty() || provider_signature.is_empty() {
         return Err("capacity challenge response missing provider signature".to_string());
@@ -132,6 +144,7 @@ pub fn verify_capacity_challenge_response(
         proofs,
         generated_at,
         provider_pubkey,
+        node_id,
     )?;
 
     let signature_bytes = hex::decode(provider_signature)
@@ -170,6 +183,7 @@ mod tests {
                 slot_state: SlotState::Proof,
             }],
             generated_at: 1_710_000_000,
+            node_id: NodeId::from_slice(&[0x33; 20]).expect("node id"),
         }
     }
 
@@ -202,6 +216,7 @@ mod tests {
             challenge_proof.generated_at,
             &provider_pubkey,
             &provider_signature,
+            &challenge_proof.node_id,
         )
         .expect("verify response");
     }
@@ -226,6 +241,7 @@ mod tests {
             challenge_proof.generated_at,
             &provider_pubkey,
             &provider_signature,
+            &challenge_proof.node_id,
         )
         .expect_err("tampered proofs should fail verification");
 
@@ -254,6 +270,7 @@ mod tests {
             challenge_proof.generated_at,
             &wrong_pubkey,
             &provider_signature,
+            &challenge_proof.node_id,
         )
         .expect_err("wrong pubkey should fail");
 
