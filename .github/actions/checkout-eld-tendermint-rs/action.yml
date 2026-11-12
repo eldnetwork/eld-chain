@@ -15,8 +15,8 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: eldnetwork/eld-tendermint-rs
-        # v0.34.24-eld-tm-rs.14 (node id on capacity challenge and proof).
-        ref: 5af561c48afe2834518ef774df6573cb9a8e1954
+        # v0.34.24-eld-tm-rs.16 (0.0.16).
+        ref: d0df22b8f1603e8584920a17be7810ecd8a4c9cb
         path: eld-tendermint-rs-src
 
     # actions/checkout refuses a path outside $GITHUB_WORKSPACE. node_app's
