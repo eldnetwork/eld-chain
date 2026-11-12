@@ -306,19 +306,22 @@ impl AbciHttpApi {
     ///
     /// Uses raw JSON-RPC so both Go Tendermint (string heights/gas) and
     /// eld-tendermint-rs (numeric heights/gas) parse successfully.
+    ///
+    /// `params.hash` is uppercase hex. eld-tendermint-rs rejects base64
+    /// (`params.hash is not hex`).
     pub async fn get_tx_by_hash(
         &self,
         hash: tendermint::Hash,
     ) -> Result<crate::api::abci::tx_by_hash::TxByHashResult, EldError> {
         use crate::api::abci::tx_by_hash::parse_tx_by_hash_response;
 
-        let hash_b64 = BASE64_STANDARD.encode(hash.as_bytes());
+        let hash_hex = hex::encode_upper(hash.as_bytes());
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tx",
             "params": {
-                "hash": hash_b64,
+                "hash": hash_hex,
                 "prove": false
             }
         });
