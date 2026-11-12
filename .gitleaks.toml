@@ -27,3 +27,9 @@ paths = [
   '''(^|/)cli/wallets/''',
   '''(^|/)faucet/wallets/''',
 ]
+
+[[allowlists]]
+description = "Gitignored local notes"
+paths = [
+  '''(^|/)_dev-docs/''',
+]
