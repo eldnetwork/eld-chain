@@ -174,7 +174,10 @@ where
             }
         };
 
-        if provided_fee < required_fee {
+        if !eld_common::fee::provided_fee_is_sufficient(
+            provided_fee.amount(),
+            required_fee.amount(),
+        ) {
             warn!(
                 required_fee = %required_fee,
                 provided_fee = %provided_fee,

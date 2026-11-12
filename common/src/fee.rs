@@ -108,6 +108,14 @@ pub const MAX_GAS_USAGE: u64 = 110_000_000; // 110M gas
 /// Maximum allowed fee to prevent overflow attacks
 pub const MAX_FEE: u128 = u128::MAX / 4; // Quarter of max u128 to leave room for calculations
 
+/// Shortfall `check_tx` and `deliver_tx` still accept below the calculated fee.
+pub const FEE_CHECK_BUFFER: u128 = 300;
+
+/// True when `provided` is at least the calculated fee, or short by at most [`FEE_CHECK_BUFFER`].
+pub fn provided_fee_is_sufficient(provided: u128, required: u128) -> bool {
+    provided.saturating_add(FEE_CHECK_BUFFER) >= required
+}
+
 /// Calculates dynamic fee for a transaction with overflow protection
 pub fn calculate_dynamic_fee(tx: &Tx, fee_config: &FeeConfig) -> Result<Coin, EldError> {
     // Add detailed logging of inputs
@@ -403,6 +411,14 @@ mod tests {
         assert!(result.is_ok());
         let fee = result.unwrap();
         assert!(fee > Coin::zero());
+    }
+
+    #[test]
+    fn test_fee_check_buffer_allows_a_shortfall_of_300() {
+        assert!(provided_fee_is_sufficient(7500, 7600));
+        assert!(provided_fee_is_sufficient(7600, 7600));
+        assert!(provided_fee_is_sufficient(7300, 7600));
+        assert!(!provided_fee_is_sufficient(7299, 7600));
     }
 
     #[test]

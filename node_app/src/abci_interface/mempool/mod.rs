@@ -265,7 +265,10 @@ where
         };
 
         // Validate fee against required dynamic fee.
-        if provided_fee < required_fee {
+        if !eld_common::fee::provided_fee_is_sufficient(
+            provided_fee.amount(),
+            required_fee.amount(),
+        ) {
             warn!(
                 nonce = %tx.nonce,
                 tx_type = %tx.payload.r#type,
