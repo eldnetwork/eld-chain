@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Open an interactive SSH session on the EC2 host.
-# Host, user, key, and port come from deploy/docker/remote/cluster/.env.
+# Host, user, key, and port come from deploy/.env.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ENV_FILE="${SCRIPT_DIR}/../docker/remote/cluster/.env"
+ENV_FILE="${SCRIPT_DIR}/../.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing env file: $ENV_FILE" >&2
