@@ -179,4 +179,4 @@ Same three actions as the cluster, against the single Compose project (`eld-sing
 
 ## EC2 release
 
-A tag push publishes the GHCR image and does not deploy. Local image tags stay in `deploy/.env` and are not the EC2 tag. One-time host setup, the manual release deploy, and the env var tables are in [`../deploy.md`](../deploy.md).
+A tag push publishes the GHCR image and does not deploy. Local image tags stay in `deploy/.env` and are not the EC2 tag. Copying the cluster to the host is in [`../deploy.md`](../deploy.md).
