@@ -10,6 +10,7 @@ Local development infrastructure for [`eld-chain`](../README.md): CI scripts, Do
 | [`docker/Dockerfile.app`](docker/Dockerfile.app), [`Dockerfile.eld-base`](docker/Dockerfile.eld-base), [`Dockerfile.tendermint`](docker/Dockerfile.tendermint) | Local image build |
 | [`docker/Dockerfile.release`](docker/Dockerfile.release) | GHCR release image (`linux/amd64`, `linux/arm64`) |
 | [`docker/local/cluster/`](docker/local/cluster/) | Four `eld-app` + four Tendermint pairs. Checked-in config is `nodes/N/{app,tendermint}` |
+| [`docker/remote/cluster/`](docker/remote/cluster/) | Same tree copied to `~/cluster` on EC2. [`compose.ghcr.tm-rs.yaml`](docker/remote/cluster/compose.ghcr.tm-rs.yaml) pulls the GHCR app and rust-Tendermint images |
 | [`docker/local/single/`](docker/local/single/) | One app + one Tendermint. Own one-validator Tendermint config; app files and keys from cluster node 1 |
 | [`.env.example`](.env.example) | Template for image tags and external paths used by build scripts |
 
