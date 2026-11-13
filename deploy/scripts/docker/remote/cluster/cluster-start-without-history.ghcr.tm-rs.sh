@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Wipe this cluster's volumes and start the 4-node rust-Tendermint compose from genesis.
-# Run on the EC2 host from ~/cluster. Image tags and the snapshot token come from .env
-# in this directory (written by deploy/scripts/copy-cluster-to-ec2.sh).
+# Wipe volumes and start the 4-node rust-Tendermint compose from genesis.
+# Compose file, nodes, wallets, and faucet live in deploy/docker/remote/cluster.
+# Image tags and the snapshot token come from deploy/.env.
 #
 # Optional flags (combinable):
 #   --with-faucet      enable the faucet Compose profile
@@ -10,8 +10,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SCRIPT_DIR}/.env"
-COMPOSE_FILE="${SCRIPT_DIR}/compose.ghcr.tm-rs.yaml"
+DEPLOY_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+ENV_FILE="${DEPLOY_DIR}/.env"
+CLUSTER_DIR="${DEPLOY_DIR}/docker/remote/cluster"
+COMPOSE_FILE="${CLUSTER_DIR}/compose.ghcr.tm-rs.yaml"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing env file: $ENV_FILE" >&2
@@ -40,7 +42,7 @@ for arg in "$@"; do
   case "$arg" in
     --with-faucet)
       require_env FAUCET_VERSION_TAG
-      WALLET="${SCRIPT_DIR}/faucet/wallets.json"
+      WALLET="${CLUSTER_DIR}/faucet/wallets.json"
       if [[ ! -f "$WALLET" ]]; then
         echo "Missing faucet wallet: $WALLET" >&2
         echo "Create wallet-faucet-1 there before --with-faucet." >&2

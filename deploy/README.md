@@ -14,7 +14,7 @@ Local development infrastructure for [`eld-chain`](../README.md): CI scripts, Do
 | [`docker/local/single/`](docker/local/single/) | One app + one Tendermint. Own one-validator Tendermint config; app files and keys from cluster node 1 |
 | [`.env.example`](.env.example) | Template for image tags and external paths used by build scripts |
 
-Image builds and CI stay in [`scripts/`](scripts/). Start and stop scripts live next to the stack they run: [`scripts/docker/local/cluster/`](scripts/docker/local/cluster/) and [`scripts/docker/local/single/`](scripts/docker/local/single/). Supported runtime is Docker Compose (single node or 4-node).
+Image builds and CI stay in [`scripts/`](scripts/). Start and stop scripts live next to the stack they run: [`scripts/docker/local/cluster/`](scripts/docker/local/cluster/), [`scripts/docker/local/single/`](scripts/docker/local/single/), and [`scripts/docker/remote/cluster/`](scripts/docker/remote/cluster/). Supported runtime is Docker Compose (single node or 4-node).
 
 ## CI
 

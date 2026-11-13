@@ -4,12 +4,15 @@
 # network. Chain / Tendermint / faucet named volumes are left in place.
 # The analytics-data volume is removed so the next --with-analytics start
 # does not reuse an old CollectionRun store.
-# Run on the EC2 host from ~/cluster. Image tags come from .env in this directory.
+# Compose file is deploy/docker/remote/cluster/compose.ghcr.tm-rs.yaml.
+# Image tags come from deploy/.env.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SCRIPT_DIR}/.env"
-COMPOSE_FILE="${SCRIPT_DIR}/compose.ghcr.tm-rs.yaml"
+DEPLOY_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+ENV_FILE="${DEPLOY_DIR}/.env"
+CLUSTER_DIR="${DEPLOY_DIR}/docker/remote/cluster"
+COMPOSE_FILE="${CLUSTER_DIR}/compose.ghcr.tm-rs.yaml"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing env file: $ENV_FILE" >&2

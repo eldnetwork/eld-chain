@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Copy deploy/docker/remote/cluster to ~/cluster on the EC2 host.
 # SSH settings and image tags come from deploy/.env.
-# Writes ~/cluster/.env with the tags the remote start and stop scripts read.
+# Writes ~/cluster/.env with the tags Compose reads on the host.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ENV_FILE="${SCRIPT_DIR}/../.env"
-CLUSTER_DIR="${REPO_ROOT}/deploy/docker/remote/cluster"
+DEPLOY_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+REPO_ROOT="$(cd "${DEPLOY_DIR}/.." && pwd)"
+ENV_FILE="${DEPLOY_DIR}/.env"
+CLUSTER_DIR="${DEPLOY_DIR}/docker/remote/cluster"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing env file: $ENV_FILE" >&2
@@ -60,7 +61,7 @@ RSYNC_RSH="ssh -i ${EC2_SSH_KEY_FILE} -p ${EC2_SSH_PORT} -o StrictHostKeyCheckin
 
 rsync -a --exclude '.DS_Store' -e "$RSYNC_RSH" "${CLUSTER_DIR}/" "${REMOTE}:cluster/"
 
-"${SSH[@]}" "$REMOTE" "cat > cluster/.env && chmod 600 cluster/.env cluster/wallets/wallets.json cluster/faucet/wallets.json cluster/nodes/*/app/p2p_keypair.json cluster/nodes/*/tendermint/node_key.json cluster/nodes/*/tendermint/priv_validator_key.json && chmod +x cluster/*.sh" <<EOF
+"${SSH[@]}" "$REMOTE" "cat > cluster/.env && chmod 600 cluster/.env cluster/wallets/wallets.json cluster/faucet/wallets.json cluster/nodes/*/app/p2p_keypair.json cluster/nodes/*/tendermint/node_key.json cluster/nodes/*/tendermint/priv_validator_key.json" <<EOF
 NODE_APP_VERSION_TAG_GHCR=${NODE_APP_VERSION_TAG_GHCR}
 TM_RS_IMAGE=${TM_RS_IMAGE}
 ELD_SNAPSHOT_QUERY_TOKEN=${ELD_SNAPSHOT_QUERY_TOKEN}
