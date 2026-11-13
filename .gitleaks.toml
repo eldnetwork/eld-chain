@@ -26,6 +26,7 @@ paths = [
   '''(^|/)deploy/docker/local/single/tendermint/addrbook\.json$''',
   '''(^|/)cli/wallets/''',
   '''(^|/)faucet/wallets/''',
+  '''(^|/)deploy/scripts/eld-node-keypair\.pem$''',
 ]
 
 [[allowlists]]
