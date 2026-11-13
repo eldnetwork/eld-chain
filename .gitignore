@@ -32,6 +32,10 @@ _dev-docs/
 .cursor/
 
 # Local cluster compose secrets (not committed)
+deploy/docker/remote/cluster/nodes/*/app/p2p_keypair.json
+deploy/docker/remote/cluster/nodes/*/tendermint/node_key.json
+deploy/docker/remote/cluster/nodes/*/tendermint/priv_validator_key.json
+deploy/docker/remote/cluster/nodes/*/tendermint/addrbook.json
 deploy/docker/local/cluster/nodes/*/app/p2p_keypair.json
 deploy/docker/local/cluster/nodes/*/tendermint/node_key.json
 deploy/docker/local/cluster/nodes/*/tendermint/priv_validator_key.json
