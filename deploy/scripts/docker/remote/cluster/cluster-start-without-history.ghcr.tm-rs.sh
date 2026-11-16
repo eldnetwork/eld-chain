@@ -1,22 +1,65 @@
 #!/usr/bin/env bash
-# Wipe volumes and start the 4-node rust-Tendermint compose from genesis.
-# Compose file, nodes, wallets, and faucet live in deploy/docker/remote/cluster.
-# Image tags and the snapshot token come from deploy/.env.
+# SSH to the EC2 host, wipe ~/cluster volumes, and start the 4-node
+# rust-Tendermint compose from genesis.
+# Connection settings come from deploy/.env.
+# On the host, compose, nodes, and image tags come from ~/cluster
+# (written by copy-cluster-to-ec2.sh).
 #
-# Optional flags (combinable):
+# Optional flags (combinable), applied on the host:
 #   --with-faucet      enable the faucet Compose profile
 #   --with-analytics   enable the analytics sidecar profile
-#                      (ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR})
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+REPO_ROOT="$(cd "${DEPLOY_DIR}/.." && pwd)"
 ENV_FILE="${DEPLOY_DIR}/.env"
-CLUSTER_DIR="${DEPLOY_DIR}/docker/remote/cluster"
-COMPOSE_FILE="${CLUSTER_DIR}/compose.ghcr.tm-rs.yaml"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "missing env file: $ENV_FILE" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+require_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "$value" ]]; then
+    echo "$name is not set in $ENV_FILE" >&2
+    exit 1
+  fi
+}
+
+require_env EC2_HOST
+require_env EC2_USER
+require_env EC2_SSH_KEY_FILE
+require_env EC2_SSH_PORT
+
+if [[ "$EC2_SSH_KEY_FILE" != /* ]]; then
+  EC2_SSH_KEY_FILE="${REPO_ROOT}/${EC2_SSH_KEY_FILE}"
+fi
+if [[ ! -f "$EC2_SSH_KEY_FILE" ]]; then
+  echo "missing SSH key file: $EC2_SSH_KEY_FILE" >&2
+  exit 1
+fi
+
+REMOTE="${EC2_USER}@${EC2_HOST}"
+SSH=(ssh -i "$EC2_SSH_KEY_FILE" -p "$EC2_SSH_PORT" -o StrictHostKeyChecking=accept-new)
+
+"${SSH[@]}" "$REMOTE" bash -s -- "$@" <<'EOF'
+set -euo pipefail
+
+CLUSTER_DIR="${HOME}/cluster"
+ENV_FILE="${CLUSTER_DIR}/.env"
+COMPOSE_FILE="${CLUSTER_DIR}/compose.ghcr.tm-rs.yaml"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "missing env file on host: $ENV_FILE" >&2
+  exit 1
+fi
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  echo "missing compose file on host: $COMPOSE_FILE" >&2
   exit 1
 fi
 # shellcheck disable=SC1090
@@ -64,13 +107,14 @@ done
 
 compose() {
   # Bash 3.2 + set -u treats an empty "${arr[@]}" as unbound.
+  # stdin is the remote script. Compose must not read it, or `up` never runs.
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
     ${FAUCET_PROFILE[@]+"${FAUCET_PROFILE[@]}"} \
     ${ANALYTICS_PROFILE[@]+"${ANALYTICS_PROFILE[@]}"} \
-    "$@"
+    "$@" </dev/null
 }
 
-echo "Starting 4-node compose without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ${TM_RS_IMAGE}"
+echo "Starting 4-node compose on ${HOSTNAME} without history using ghcr.io/eldnetwork/eld-chain:${NODE_APP_VERSION_TAG_GHCR} and ${TM_RS_IMAGE}"
 if [[ ${#ANALYTICS_PROFILE[@]} -gt 0 ]]; then
   echo "Analytics image ghcr.io/eldnetwork/eld-analytics:${ANALYTICS_TAG_GHCR}"
 fi
@@ -84,4 +128,5 @@ done
 
 compose up -d
 
-echo "Started 4-node rust-Tendermint compose with fresh state (history wiped)."
+echo "Started 4-node rust-Tendermint compose on ${HOSTNAME} with fresh state (history wiped)."
+EOF

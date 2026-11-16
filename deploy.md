@@ -9,7 +9,7 @@ Copy `deploy/docker/remote/cluster` to `~/cluster` on the host. SSH settings and
 ./deploy/scripts/docker/remote/cluster/connect-ec2.sh
 ```
 
-Start and stop use `deploy/docker/remote/cluster/compose.ghcr.tm-rs.yaml` and `deploy/.env`:
+Start and stop SSH to the host and run Compose in `~/cluster`:
 
 ```sh
 ./deploy/scripts/docker/remote/cluster/cluster-start-without-history.ghcr.tm-rs.sh
