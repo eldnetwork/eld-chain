@@ -15,10 +15,12 @@ x-app-eld: &app-eld
   pull_policy: always
   restart: unless-stopped
   logging:
-    driver: json-file
+    driver: awslogs
     options:
-      max-size: "50m"
-      max-file: "2"
+      awslogs-region: us-east-1
+      awslogs-group: /eld-node/docker
+      awslogs-create-group: "true"
+      tag: "{{.Name}}"
   networks:
     - eld-network
   environment:
@@ -29,10 +31,12 @@ x-tendermint: &tendermint-common
   pull_policy: always
   restart: unless-stopped
   logging:
-    driver: json-file
+    driver: awslogs
     options:
-      max-size: "50m"
-      max-file: "2"
+      awslogs-region: us-east-1
+      awslogs-group: /eld-node/docker
+      awslogs-create-group: "true"
+      tag: "{{.Name}}"
   networks:
     - eld-network
 
@@ -214,6 +218,13 @@ services:
       - faucet-data:/app/data
       - ./faucet/config:/app/config:ro
       - ./faucet/wallets.json:/app/wallets/wallets.json:ro
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /eld-node/docker
+        awslogs-create-group: "true"
+        tag: "{{.Name}}"
 
   eld-analytics:
     profiles: ["analytics"]
@@ -247,10 +258,12 @@ services:
       - eld-data-4:/eld-4:ro
       - analytics-data:/data
     logging:
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "50m"
-        max-file: "2"
+        awslogs-region: us-east-1
+        awslogs-group: /eld-node/docker
+        awslogs-create-group: "true"
+        tag: "{{.Name}}"
 
 volumes:
   eld-data-1:
