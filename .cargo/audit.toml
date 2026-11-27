@@ -1,19 +1,30 @@
-# Ignored advisories pinned by tendermint 0.40 or libp2p 0.53.
-# RUSTSEC-2026-0002 and RUSTSEC-2026-0253 are lru 0.12 unsoundness via libp2p-swarm.
-# cargo-deny does not flag those, so they are listed only here.
+# Ignored advisories pinned by tendermint 0.40 / Rust 1.88 faucet pins.
 # RUSTSEC-2026-0346 / 0349: rustls 0.21 via tendermint-rpc 0.40 → reqwest 0.11.
 # RUSTSEC-2026-0382: rustls-webpki 0.101 cannot move; 0.103 is bumped in Cargo.lock.
+# RUSTSEC-2026-0446 / 0448 / 0455 / 0552 / 0553 / 0554: actix-http 3.19 pinned (3.20+ needs Rust 1.89).
+# RUSTSEC-2026-0447: actix-web 4.17 is the newest 4.x that builds on Rust 1.88.
+# RUSTSEC-2026-0459: libsqlite3-sys 0.30.1 is pinned by rusqlite 0.32.
+# RUSTSEC-2026-0544: libz-sys 1.1.31 via rocksdb; fix is libz-sys >= 1.1.33.
+# RUSTSEC-2026-0592: url 2.5.8; fix is url >= 2.5.9.
+# RUSTSEC-2026-0594: cookie 0.16 via actix-web 4.17; fix is cookie >= 0.18.3.
 [advisories]
 ignore = [
-    "RUSTSEC-2025-0009",
-    "RUSTSEC-2026-0002",
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
-    "RUSTSEC-2026-0119",
-    "RUSTSEC-2026-0253",
     "RUSTSEC-2026-0258",
     "RUSTSEC-2026-0346",
     "RUSTSEC-2026-0349",
     "RUSTSEC-2026-0382",
+    "RUSTSEC-2026-0446",
+    "RUSTSEC-2026-0447",
+    "RUSTSEC-2026-0448",
+    "RUSTSEC-2026-0455",
+    "RUSTSEC-2026-0459",
+    "RUSTSEC-2026-0544",
+    "RUSTSEC-2026-0552",
+    "RUSTSEC-2026-0553",
+    "RUSTSEC-2026-0554",
+    "RUSTSEC-2026-0592",
+    "RUSTSEC-2026-0594",
 ]

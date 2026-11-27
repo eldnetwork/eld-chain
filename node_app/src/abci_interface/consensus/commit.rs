@@ -195,8 +195,9 @@ where
 
         let mut pinboard_capacity_blobs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut pinboard_temp_blob_keys_to_delete: HashSet<String> = HashSet::new();
+        let mut pinboard_missing_content_keys: HashSet<String> = HashSet::new();
 
-        // Pre-validate temp blobs before any pinboard writes to keep commit all-or-nothing.
+        // Metadata is written either way. A temp blob is deleted only when this node has one.
         for (message_id, meta) in current_state.envelope.pinboard_meta_cache.iter() {
             match storage.get_pinboard_temp_blob(&meta.content_key) {
                 Ok(Some(temp_bytes)) => {
@@ -204,22 +205,21 @@ where
                     pinboard_temp_blob_keys_to_delete.insert(meta.content_key.clone());
                 }
                 Ok(None) => {
-                    handle_fatal_eld_error(EldError::StorageError {
-                        operation: "prevalidate_pinboard_temp_blob".to_string(),
-                        details: format!(
-                            "Missing pinboard temp blob for message_id={} content_key={}",
-                            message_id, meta.content_key
-                        ),
-                    });
+                    pinboard_missing_content_keys.insert(meta.content_key.clone());
+                    warn!(
+                        message_id = %message_id,
+                        content_key = %meta.content_key,
+                        "pinboard commit has no temp blob; metadata is still written"
+                    );
                 }
                 Err(e) => {
-                    handle_fatal_eld_error(EldError::StorageError {
-                        operation: "prevalidate_pinboard_temp_blob".to_string(),
-                        details: format!(
-                            "Failed reading pinboard temp blob for message_id={} content_key={}: {}",
-                            message_id, meta.content_key, e
-                        ),
-                    });
+                    pinboard_missing_content_keys.insert(meta.content_key.clone());
+                    warn!(
+                        message_id = %message_id,
+                        content_key = %meta.content_key,
+                        error = %e,
+                        "pinboard temp blob was not read; metadata is still written"
+                    );
                 }
             }
         }
@@ -488,10 +488,6 @@ where
             );
         }
 
-        // Announce pinboard blobs that were staged in this block (before clearing cache)
-        self.p2p_sync_coordinator
-            .find_pinboard_and_broadcast_announce(&current_state.envelope.pinboard_meta_cache);
-
         // Clear caches
         current_state.envelope.cado_cache.clear();
 
@@ -548,6 +544,20 @@ where
             let store = self.frontier_snapshot_store.clone();
             tokio::task::spawn_blocking(move || {
                 frontier_snapshot::store_frontier_snapshot(&store, &state);
+            });
+        }
+
+        let missing_content_keys: Vec<String> = pinboard_missing_content_keys
+            .into_iter()
+            .filter(|content_key| !pinboard_capacity_blobs.contains_key(content_key))
+            .collect();
+        if !missing_content_keys.is_empty() {
+            info!(
+                count = missing_content_keys.len(),
+                "Commit: scheduling pinboard content sync after RocksDB commit"
+            );
+            tokio::spawn(async move {
+                crate::api::content_channel::sync_content_keys(missing_content_keys).await;
             });
         }
 

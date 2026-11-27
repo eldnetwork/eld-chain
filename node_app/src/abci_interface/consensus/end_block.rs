@@ -255,19 +255,31 @@ where
                         challenged_capacity_provider_count = providers_data.len(),
                         "Active capacity validator sending capacity challenges"
                     );
-                    if let Err(e) = Self::generate_challenges_internal(
+                    match Self::generate_challenges_internal(
                         providers_data,
                         new_epoch,
                         block_height,
                         selected_capacity_validator,
-                        self.p2p_sync_coordinator.clone(),
                         self.protocol_constants().chunks_per_challenge,
                     ) {
-                        warn!(
-                            epoch = new_epoch,
-                            error = %e,
-                            "Failed to generate and send capacity challenges"
-                        );
+                        Ok(challenges) => {
+                            let challenge_count = challenges.len();
+                            tokio::spawn(async move {
+                                crate::api::content_channel::send_challenges(&challenges).await;
+                            });
+                            info!(
+                                epoch = new_epoch,
+                                challenges = challenge_count,
+                                "Capacity challenges handed to a background task"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                epoch = new_epoch,
+                                error = %e,
+                                "Failed to build capacity challenges"
+                            );
+                        }
                     }
                 }
             } else {
@@ -318,6 +330,7 @@ mod tests {
             last_merkle_root_update: None,
             registered_block,
             registration_duration,
+            node_id: eld_common::NodeId::from_slice(&[address_byte; 20]).expect("node id"),
         }
     }
 

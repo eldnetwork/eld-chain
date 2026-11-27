@@ -1,6 +1,6 @@
 mod capacity;
 mod content_server;
-mod p2p;
+mod content_sync;
 mod shutdown;
 
 use std::{
@@ -92,16 +92,7 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     )
     .await;
 
-    let p2p = p2p::init_p2p(
-        &node_config,
-        capacity.manager.clone(),
-        cli.clone(),
-        consensus_config.clone(),
-        node_storage.clone(),
-        capacity.local_identity.clone(),
-        capacity.validator_wallet_name.clone(),
-    )
-    .await?;
+    content_sync::init_content_sync(capacity.manager.clone());
 
     let transaction_indexer: Option<Arc<crate::indexer::TransactionIndexer>> = {
         if node_config.indexer {
@@ -159,12 +150,13 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     let (consensus_server, chain_tip) = init_abci_server(AbciServerInitContext {
         consensus_config,
         protocol,
-        storage: node_storage,
+        storage: node_storage.clone(),
+        content_temp_storage: node_storage,
         snapshot_manager,
-        p2p_sync_coordinator: p2p.coordinator.clone(),
         init_data: args.init_data,
         ready_tx: Some(ready_tx),
         capacity_manager: capacity.manager.clone(),
+        cli,
         local_identity: capacity.local_identity.clone(),
         committed_state: committed_state.clone(),
         current_state,
@@ -185,8 +177,6 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
         capacity.manager.clone(),
         pinboard_prune_rx,
     );
-
-    p2p::start_proof_validation_and_heartbeats(p2p.real_coordinator, committed_state);
 
     let consensus_server = async move {
         let consensus_server_future =
@@ -219,8 +209,8 @@ pub(crate) async fn run(args: Args) -> Result<(), EldError> {
     )
     .await;
 
-    crate::capacity::on_ready::after_first_commit(ready_rx, capacity.manager, p2p.coordinator)
-        .await;
+    let local_identity = capacity.local_identity.clone();
+    crate::capacity::on_ready::after_first_commit(ready_rx, capacity.manager, local_identity).await;
 
     shutdown::wait_and_shutdown(
         content_server_handle,

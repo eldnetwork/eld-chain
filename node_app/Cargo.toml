@@ -1,6 +1,6 @@
 [package]
 name = "eld-node"
-version = "0.0.31"
+version = "0.0.38"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -22,8 +22,8 @@ async-trait = "0.1.77"
 axum = { version = "0.8.1", features = ["ws"] }
 eld_common = { path = "../common", version = "0.0.1", package = "eld-common" }
 eld_client = { path = "../client", version = "0.0.1", package = "eld-client" }
-# Sibling of this repo. CI checks out v0.34.24-eld-tm-rs.8
-# (0e4f9d73a24d153094c4d57b5c46f8bce1cb853e) there.
+# Sibling of this repo. CI checks out v0.34.24-eld-tm-rs.16 (0.0.16)
+# (d0df22b8f1603e8584920a17be7810ecd8a4c9cb) there.
 eld-tendermint-proto = { path = "../../eld-tendermint-rs/crates/proto", version = "0.0.1" }
 base64.workspace = true
 bincode.workspace = true
@@ -57,16 +57,6 @@ memory-db = "0.32"
 hash-db = "0.16"
 reference-trie = "=0.29.2"
 hash256-std-hasher = "0.15.2"
-libp2p = { version = "0.53.2", features = [
-    "tcp",
-    "noise",
-    "yamux",
-    "gossipsub",
-    "mdns",
-    "quic",
-    "tokio",
-    "macros",
-] }
 
 [dev-dependencies]
 tempfile.workspace = true

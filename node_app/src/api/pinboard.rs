@@ -11,6 +11,7 @@ use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::storage::rocksdb::RocksDBStorage;
 use crate::storage::traits::PinboardGlobalFeedOrder;
+use axum::extract::FromRef;
 use axum::{
     extract::{self, State},
     http::HeaderMap,
@@ -149,16 +150,43 @@ async fn submit_transaction_to_tendermint(
     Ok(())
 }
 
+/// Shared pieces a pinboard submit reads from the HTTP app state.
+pub(crate) struct PinboardSubmitContext {
+    storage: Arc<RocksDBStorage>,
+    consensus_config: Arc<Mutex<ConsensusConfig>>,
+    rate_limit_state: Arc<RwLock<RateLimitState>>,
+    cli: Arc<ChainClient>,
+    capacity_manager: Arc<CapacityManager>,
+    committed_state: Arc<Mutex<AppState>>,
+}
+
+impl FromRef<super::ApiState> for PinboardSubmitContext {
+    fn from_ref(state: &super::ApiState) -> Self {
+        Self {
+            storage: state.storage.clone(),
+            consensus_config: state.consensus_config.clone(),
+            rate_limit_state: state.rate_limit_state.clone(),
+            cli: state.cli.clone(),
+            capacity_manager: state.capacity_manager.clone(),
+            committed_state: state.committed_state.clone(),
+        }
+    }
+}
+
 /// Pinboard: verify user-signed message, then broadcast validator-signed `PostMessage` tx.
 pub(crate) async fn handle_pinboard_submit(
-    State(storage): State<Arc<RocksDBStorage>>,
-    State(consensus_config): State<Arc<Mutex<ConsensusConfig>>>,
-    State(rate_limit_state): State<Arc<RwLock<RateLimitState>>>,
-    State(cli): State<Arc<ChainClient>>,
-    State(capacity_manager): State<Arc<CapacityManager>>,
+    State(ctx): State<PinboardSubmitContext>,
     headers: HeaderMap,
     Json(body): Json<PostMessageSubmitRequest>,
 ) -> Result<Json<PostMessageSubmitResponse>, ApiError> {
+    let PinboardSubmitContext {
+        storage,
+        consensus_config,
+        rate_limit_state,
+        cli,
+        capacity_manager,
+        committed_state,
+    } = ctx;
     check_rate_limit(&rate_limit_state, ApiEndpointType::Upload, &headers).await?;
 
     let protocol = capacity_manager.protocol_handle();
@@ -400,8 +428,26 @@ pub(crate) async fn handle_pinboard_submit(
     hasher.update(tx_json.as_bytes());
     let tx_hash = hex::encode(hasher.finalize());
 
-    let tendermint_rpc_url = std::env::var("TENDERMINT_RPC_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:26657".to_string());
+    let providers = {
+        let committed = committed_state
+            .lock()
+            .map_err(|err| ApiError::InternalServerError {
+                message: "committed_state_lock".to_string(),
+                details: Some(err.to_string()),
+            })?;
+        crate::api::content_channel::providers_to_push(
+            &committed,
+            &capacity_manager.config().provider_id,
+        )
+    };
+    crate::api::content_channel::push_to_providers(
+        &providers,
+        &body.user.content_key,
+        &message_bytes,
+    )
+    .await?;
+
+    let tendermint_rpc_url = crate::api::content_channel::tendermint_rpc_url();
     submit_transaction_to_tendermint(&tendermint_rpc_url, &signed_tx).await?;
 
     let content_path = match resolve_optional_namespace(body.user.namespace.clone()) {
@@ -621,8 +667,12 @@ pub(crate) async fn handle_get_pinboard_posts(
         let blob_bytes = if is_expired {
             None
         } else {
-            load_pinboard_blob_from_capacity_slots(capacity_manager.as_ref(), &meta.content_key)
-                .await?
+            crate::api::content_channel::load_content(
+                capacity_manager.as_ref(),
+                storage.as_ref(),
+                &meta.content_key,
+            )
+            .await?
         };
         let (message_b64, blob_status) = pinboard_blob_fields(&meta, current_height, blob_bytes);
         items.push(PinboardRestPostItem {
@@ -717,7 +767,12 @@ pub(crate) async fn handle_get_pinboard_post_by_path(
     let blob_bytes = if current_height >= meta.expires_height {
         None
     } else {
-        load_pinboard_blob_from_capacity_slots(capacity_manager.as_ref(), &meta.content_key).await?
+        crate::api::content_channel::load_content(
+            capacity_manager.as_ref(),
+            storage.as_ref(),
+            &meta.content_key,
+        )
+        .await?
     };
     let (message_b64, blob_status) = pinboard_blob_fields(&meta, current_height, blob_bytes);
 

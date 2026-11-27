@@ -3,7 +3,7 @@ use eld_common::address::Address;
 use eld_common::capacity::{CapacityConfig, CapacityProofMerkleTree, SlotAllocator};
 use eld_common::error::EldError;
 use eld_common::protocol_constants::ProtocolHandle;
-use eld_common::{CapacityMerkleRoot, ChallengeId};
+use eld_common::{CapacityMerkleRoot, ChallengeId, NodeId};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -28,6 +28,7 @@ pub struct CapacityProofGenerationParams {
     pub expected_merkle_root: CapacityMerkleRoot,
     pub expiration_block: i64,
     pub timestamp: u64,
+    pub node_id: NodeId,
 }
 
 /// Main manager for capacity proof lifecycle

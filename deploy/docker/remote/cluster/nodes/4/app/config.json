@@ -1,0 +1,18 @@
+{
+    "node_host": "tendermint-4",
+    "node_port": "26657",
+    "faucet_host": "eld-faucet",
+    "faucet_port": "8080",
+    "faucet_end_point": "/faucet/request",
+    "app_port": "9001",
+    "capacity_size_mb": 50,
+    "capacity_storage_path": "/app/data/capacity",
+    "http_cors": {
+        "allow_origins": [
+            "https://explorer.eld.network",
+            "https://www.eld.network",
+            "https://eld.network",
+            "https://docs.eld.network"
+        ]
+    }
+}

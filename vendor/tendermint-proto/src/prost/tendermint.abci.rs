@@ -7,7 +7,7 @@
 
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Request {
-    #[prost(oneof="request::Value", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15")]
+    #[prost(oneof="request::Value", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
     pub value: ::core::option::Option<request::Value>,
 }
 /// Nested message and enum types in `Request`.
@@ -44,6 +44,8 @@ pub mod request {
         LoadSnapshotChunk(super::RequestLoadSnapshotChunk),
         #[prost(message, tag="15")]
         ApplySnapshotChunk(super::RequestApplySnapshotChunk),
+        #[prost(message, tag="16")]
+        Content(super::RequestContent),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -162,12 +164,22 @@ pub struct RequestApplySnapshotChunk {
     #[prost(string, tag="3")]
     pub sender: ::prost::alloc::string::String,
 }
+/// One content-channel message for the ABCI app.
+/// `peer_id` is the p2p switch id of the peer that sent it.
+/// `message` is the protobuf encoding of `tendermint.content.Message`.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestContent {
+    #[prost(string, tag="1")]
+    pub peer_id: ::prost::alloc::string::String,
+    #[prost(bytes="vec", tag="2")]
+    pub message: ::prost::alloc::vec::Vec<u8>,
+}
 //----------------------------------------
 // Response types
 
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
-    #[prost(oneof="response::Value", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
+    #[prost(oneof="response::Value", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
     pub value: ::core::option::Option<response::Value>,
 }
 /// Nested message and enum types in `Response`.
@@ -206,6 +218,8 @@ pub mod response {
         LoadSnapshotChunk(super::ResponseLoadSnapshotChunk),
         #[prost(message, tag="16")]
         ApplySnapshotChunk(super::ResponseApplySnapshotChunk),
+        #[prost(message, tag="17")]
+        Content(super::ResponseContent),
     }
 }
 /// nondeterministic
@@ -213,6 +227,13 @@ pub mod response {
 pub struct ResponseException {
     #[prost(string, tag="1")]
     pub error: ::prost::alloc::string::String,
+}
+/// Reply to `RequestContent`. Empty `message` means nothing is sent back.
+/// A refusal is `ResponseException`.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResponseContent {
+    #[prost(bytes="vec", tag="1")]
+    pub message: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseEcho {

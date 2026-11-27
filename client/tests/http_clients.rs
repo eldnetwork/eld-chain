@@ -129,6 +129,9 @@ async fn get_tx_by_hash_accepts_go_string_height_and_gas() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(body_string_contains("\"method\":\"tx\""))
+        .and(body_string_contains(
+            "6518740BDC98339841F9DEC4303FD7547A8E10E79F6151FB8AED039D0CADB740",
+        ))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_json(tendermint_tx_response_go_dialect("2", "42", &tx_b64)),
@@ -155,6 +158,9 @@ async fn get_tx_by_hash_accepts_rs_numeric_height_and_gas() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(body_string_contains("\"method\":\"tx\""))
+        .and(body_string_contains(
+            "6518740BDC98339841F9DEC4303FD7547A8E10E79F6151FB8AED039D0CADB740",
+        ))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_json(tendermint_tx_response_rs_dialect(2, 7, &tx_b64)),

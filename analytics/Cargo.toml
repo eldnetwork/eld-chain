@@ -1,6 +1,6 @@
 [package]
 name = "eld-analytics"
-version = "0.0.6"
+version = "0.0.9"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", features = ["json"] }
+tower-http = { version = "0.5", features = ["cors"] }
 bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -30,6 +31,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 
 [dev-dependencies]
 tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
 
 [lints]
 workspace = true

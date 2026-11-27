@@ -27,4 +27,6 @@ pub(crate) use pinboard::{
     post_pinboard_message,
 };
 pub(crate) use summary::view_summary;
-pub(crate) use transactions::{list_all_transactions, stake, transfer, unstake};
+pub(crate) use transactions::{
+    list_all_transactions, stake, submit_capacity_proof, transfer, unstake,
+};

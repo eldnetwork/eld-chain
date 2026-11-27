@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod api_rate_limiting;
 pub mod cado;
+pub(crate) mod content_channel;
 pub mod cors;
 pub mod epoch;
 pub mod error;

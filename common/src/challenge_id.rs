@@ -33,7 +33,7 @@ impl ChallengeId {
     /// Parses 64 hexadecimal digits (case-insensitive). Optional `0x` / `0X` prefix is accepted.
     ///
     /// Canonical [`fmt::Display`] / [`Self::to_hex`] output is lowercase hex **without** `0x`,
-    /// matching `VerifiedProofTx` / SyncMsg challenge id encoding.
+    /// matching the capacity-challenge id encoding.
     ///
     /// # Errors
     ///

@@ -1,6 +1,5 @@
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::capacity::missing_content_tracker::MissingContentTracker;
-use crate::content::sync::sync_coordinator::P2pCoordinatorTrait;
 use eld_common::error::EldError;
 use eld_common::missing_content::MissingContentRecord;
 use std::sync::{Arc, Mutex};
@@ -8,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Duration;
 use tracing::{error, info};
 
-/// Maximum missing-content records requested in one periodic sync pass.
+/// Maximum missing-content records checked in one periodic sync pass.
 const MAX_MISSING_CONTENT_PER_PASS: usize = 32;
 
 /// Oldest attempts first, so a backlog larger than `limit` rotates across passes.
@@ -36,32 +35,25 @@ impl Default for PeriodicSyncConfig {
     }
 }
 
-/// Periodic sync service that checks for missing content and requests it
+/// Periodic sync service that checks for missing content and clears entries now in slots.
 pub struct PeriodicSyncService {
     missing_content_tracker: Arc<Mutex<MissingContentTracker>>,
     capacity_manager: Arc<CapacityManager>,
-    p2p_coordinator: Arc<dyn P2pCoordinatorTrait>,
     config: PeriodicSyncConfig,
 }
 
 impl PeriodicSyncService {
-    /// Create a new periodic sync service
+    /// Create a new periodic sync service.
     pub fn new(
         capacity_manager: Arc<CapacityManager>,
-        p2p_coordinator: Arc<dyn P2pCoordinatorTrait>,
+        missing_content_tracker: Arc<Mutex<MissingContentTracker>>,
         config: PeriodicSyncConfig,
-    ) -> Result<Self, EldError> {
-        // Get capacity directory from capacity manager config
-        let capacity_dir = capacity_manager.config().capacity_dir.as_path();
-        let mut tracker = MissingContentTracker::new(capacity_dir);
-        tracker.load()?;
-
-        Ok(Self {
-            missing_content_tracker: Arc::new(Mutex::new(tracker)),
+    ) -> Self {
+        Self {
+            missing_content_tracker,
             capacity_manager,
-            p2p_coordinator,
             config,
-        })
+        }
     }
 
     /// Start the periodic sync service
@@ -80,14 +72,14 @@ impl PeriodicSyncService {
             interval_timer.tick().await;
             info!("Running periodic content sync check");
 
-            if let Err(e) = self.check_and_request_missing().await {
+            if let Err(e) = self.check_missing_content().await {
                 error!(error = %e, "Error in periodic sync check");
             }
         }
     }
 
-    /// Check missing content and request it
-    async fn check_and_request_missing(&self) -> Result<(), EldError> {
+    /// Drop tracker rows whose bytes are now in slots, and record another look at the rest.
+    async fn check_missing_content(&self) -> Result<(), EldError> {
         // Get all missing content
         let missing = {
             let tracker = self.missing_content_tracker.lock().unwrap();
@@ -103,7 +95,7 @@ impl PeriodicSyncService {
         let batch = select_missing_for_pass(missing, MAX_MISSING_CONTENT_PER_PASS);
         info!(
             count = total,
-            requesting = batch.len(),
+            checking = batch.len(),
             "Found missing content entries"
         );
 
@@ -124,25 +116,12 @@ impl PeriodicSyncService {
                     tracker.mark_content_synced(&record.manifest_id.hex_with_prefix())?;
                 }
                 Ok(None) => {
-                    // Still missing - request it
                     info!(
                         manifest_id = %record.manifest_id,
                         content_id = %record.content_id,
                         attempt_count = record.attempt_count,
-                        "Requesting missing content"
+                        "Content still missing from capacity slots"
                     );
-
-                    // Request from all peers
-                    let content_key = record
-                        .content_id
-                        .hex_with_prefix()
-                        .trim_start_matches("0x")
-                        .to_string();
-                    info!(
-                        content_key = %content_key,
-                        "Periodic sync broadcasting ContentRequest"
-                    );
-                    self.p2p_coordinator.broadcast_content_request(content_key);
 
                     // Update attempt tracking
                     let mut updated_record = record;

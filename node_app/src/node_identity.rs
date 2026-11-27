@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use eld_common::address::Address;
 use eld_common::error::EldError;
 use eld_common::wallet::Wallet;
+use eld_common::NodeId;
 use serde::Serialize;
 use tendermint_rpc::{Client, HttpClient};
 use tracing::{info, warn};
@@ -19,6 +20,9 @@ pub struct LocalNodeIdentity {
     pub consensus_validator_address: Option<Address>,
     /// Capacity-validator wallet address from `ELD_CAPACITY_VALIDATOR_WALLET_NAME` + `wallets.json`.
     pub capacity_validator_address: Option<Address>,
+    /// This node's peer id from Tendermint `/status` `node_info.id`.
+    /// Unset until the first successful status call.
+    pub node_id: Option<NodeId>,
 }
 
 /// REST view of [`LocalNodeIdentity`] plus related local addresses.
@@ -128,10 +132,16 @@ pub async fn fetch_from_tendermint_status(
             operation: "fetch_node_identity".to_string(),
             details: format!("Invalid Tendermint validator address '{address_raw}': {e}"),
         })?;
+    let node_id =
+        NodeId::from_tendermint(&status.node_info.id).map_err(|e| EldError::NetworkError {
+            operation: "fetch_node_identity".to_string(),
+            details: format!("Invalid Tendermint node id: {e}"),
+        })?;
 
     Ok(LocalNodeIdentity {
         consensus_validator_address: Some(consensus_validator_address),
         capacity_validator_address: None,
+        node_id: Some(node_id),
     })
 }
 
@@ -153,12 +163,14 @@ pub async fn ensure_identity_from_status(
         Ok(fetched) => {
             info!(
                 consensus_validator_address = ?fetched.consensus_validator_address,
+                node_id = ?fetched.node_id,
                 rpc_url = %rpc_url,
                 "Local TM validator identity loaded from /status"
             );
             match local_identity.write() {
                 Ok(mut guard) => {
                     guard.consensus_validator_address = fetched.consensus_validator_address;
+                    guard.node_id = fetched.node_id;
                 }
                 Err(e) => warn!(
                     error = %e,
@@ -203,6 +215,7 @@ mod tests {
         let id = LocalNodeIdentity {
             consensus_validator_address: Some(Address::parse_hex_str(TM_RAW).expect("address")),
             capacity_validator_address: None,
+            node_id: None,
         };
         assert!(id.matches_address(TM_CANONICAL));
         assert!(id.matches_address(TM_RAW));
@@ -223,6 +236,7 @@ mod tests {
             &LocalNodeIdentity {
                 consensus_validator_address: Some(consensus),
                 capacity_validator_address: Some(capacity),
+                node_id: None,
             },
             &provider,
         );
@@ -248,6 +262,7 @@ mod tests {
         let id = LocalNodeIdentity {
             consensus_validator_address: None,
             capacity_validator_address: Some(local),
+            node_id: None,
         };
         assert!(id.matches_capacity_validator_wallet(&local));
         assert!(!id.matches_capacity_validator_wallet(
@@ -285,6 +300,7 @@ mod tests {
                 Address::parse_hex_str("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
                     .expect("address"),
             ),
+            node_id: None,
         };
         assert!(id.is_capacity_validator_configured());
     }

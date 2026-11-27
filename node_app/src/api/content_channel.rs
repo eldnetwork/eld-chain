@@ -1,0 +1,510 @@
+//! Pinboard upload and fetch over the Tendermint content channel.
+//!
+//! The app asks the local node, on the RPC port it already uses for
+//! `broadcast_tx_sync`, to queue a push or a request. The node sends that on
+//! channel `0x50`. The receipt or blob comes back through the content connection.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
+use eld_common::{Address, NodeId};
+use eld_tendermint_proto::content::CapacityChallenge;
+use serde_json::Value;
+use tracing::{info, warn};
+
+use crate::abci_interface::content::blob_matches_content_id;
+use crate::app_state::AppState;
+use crate::capacity::capacity_manager::CapacityManager;
+
+use super::error::ApiError;
+
+const CONTENT_RPC_TIMEOUT: Duration = Duration::from_secs(5);
+const CONTENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const CONTENT_CHALLENGE_TIMEOUT: Duration = Duration::from_secs(15);
+/// One push waits this long for a receipt. Slightly past the node's 30s wait so the timeout reply can be read.
+const PUSH_ACK_TIMEOUT: Duration = Duration::from_secs(35);
+const MAX_PEERS: usize = 3;
+/// Other capacity providers to push to. A four-node cluster is the whole rest of the set.
+const MAX_PROVIDERS: usize = 4;
+
+static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+pub(crate) fn tendermint_rpc_url() -> String {
+    std::env::var("TENDERMINT_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:26657".to_string())
+}
+
+/// Capacity providers other than this node, at most four.
+pub(crate) fn providers_to_push(state: &AppState, local: &Address) -> Vec<Address> {
+    state
+        .envelope
+        .capacity_validators
+        .iter()
+        .map(|provider| provider.address)
+        .filter(|address| address != local)
+        .take(MAX_PROVIDERS)
+        .collect()
+}
+
+/// Push `blob` to every selected provider and wait for each receipt.
+///
+/// The waits run together, so the budget is one 30s receipt wait, not 30s times the provider count.
+/// No peers, no receipts, or a node RPC the app cannot reach still returns `Ok`. The caller submits
+/// the post transaction either way. No other providers means this node is the only store.
+pub(crate) async fn push_to_providers(
+    providers: &[Address],
+    content_id: &str,
+    blob: &[u8],
+) -> Result<(), ApiError> {
+    if providers.is_empty() {
+        return Ok(());
+    }
+    let url = tendermint_rpc_url();
+    let peers = match connected_peers(&url).await {
+        Ok(peers) => peers,
+        Err(err) => {
+            warn!(
+                content_id,
+                error = ?err,
+                "content push skipped; the node RPC is unreachable"
+            );
+            return Ok(());
+        }
+    };
+    let mut waits = Vec::new();
+    for provider in providers {
+        let Some(peer_id) = peer_id_for_provider(&peers, provider.as_bytes()) else {
+            warn!(
+                content_id,
+                provider = %provider,
+                "content push skipped; that provider is not a connected peer"
+            );
+            continue;
+        };
+        let url = url.clone();
+        let content_id = content_id.to_owned();
+        let blob = blob.to_vec();
+        let expected = provider.as_bytes().to_vec();
+        waits.push(tokio::spawn(async move {
+            let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+            match push_one(&url, &peer_id, request_id, &content_id, &blob).await {
+                Ok(ack) if ack.as_slice() == expected.as_slice() => {
+                    info!(content_id, peer_id = %peer_id, "content uploaded");
+                    true
+                }
+                Ok(_) => {
+                    warn!(
+                        content_id,
+                        peer_id = %peer_id,
+                        "content push receipt was from another provider"
+                    );
+                    false
+                }
+                Err(err) => {
+                    warn!(
+                        content_id,
+                        peer_id = %peer_id,
+                        error = ?err,
+                        "content push was not acked"
+                    );
+                    false
+                }
+            }
+        }));
+    }
+    let mut acks = 0usize;
+    for wait in waits {
+        if wait.await.unwrap_or(false) {
+            acks += 1;
+        }
+    }
+    info!(
+        content_id,
+        acks,
+        providers = providers.len(),
+        "content push finished"
+    );
+    Ok(())
+}
+
+/// Slots, then the temp blob, then one fetch from a connected peer.
+pub(crate) async fn load_content(
+    capacity: &CapacityManager,
+    storage: &crate::storage::rocksdb::RocksDBStorage,
+    content_id: &str,
+) -> Result<Option<Vec<u8>>, ApiError> {
+    if let Some(blob) = capacity
+        .get_content_from_slots(content_id)
+        .await
+        .map_err(|err| ApiError::InternalServerError {
+            message: "content_slot_read_failed".to_string(),
+            details: Some(err.to_string()),
+        })?
+    {
+        if blob_matches_content_id(content_id, &blob) {
+            return Ok(Some(blob));
+        }
+    }
+    if let Some(blob) =
+        storage
+            .get_pinboard_temp_blob(content_id)
+            .map_err(|err| ApiError::InternalServerError {
+                message: "content_temp_read_failed".to_string(),
+                details: Some(err.to_string()),
+            })?
+    {
+        if blob_matches_content_id(content_id, &blob) {
+            return Ok(Some(blob));
+        }
+    }
+    request_content_from_peers(content_id).await
+}
+
+/// Ask connected peers for `content_id` on the content channel.
+///
+/// The first reply whose SHA-256 matches is returned. The content connection stores that reply
+/// when it arrives, same as any other `content_request`.
+pub(crate) async fn request_content_from_peers(
+    content_id: &str,
+) -> Result<Option<Vec<u8>>, ApiError> {
+    let url = tendermint_rpc_url();
+    let Ok(peers) = connected_peers(&url).await else {
+        return Ok(None);
+    };
+    for peer_id in peers.into_iter().take(MAX_PEERS) {
+        let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let Ok(blob) = request_one(&url, &peer_id, request_id, content_id).await else {
+            continue;
+        };
+        if blob_matches_content_id(content_id, &blob) {
+            info!(content_id, peer_id = %peer_id, "content synced");
+            return Ok(Some(blob));
+        }
+    }
+    Ok(None)
+}
+
+/// Fetch each content key this commit did not already have. Runs off the consensus task.
+pub(crate) async fn sync_content_keys(content_ids: Vec<String>) {
+    for content_id in content_ids {
+        match request_content_from_peers(&content_id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                warn!(
+                    content_id,
+                    "pinboard content was not found on connected peers"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    content_id,
+                    error = ?err,
+                    "pinboard content sync failed"
+                );
+            }
+        }
+    }
+}
+
+/// Peer id for a provider wallet address.
+pub(crate) fn peer_id_for_provider(peers: &[String], provider: &[u8]) -> Option<String> {
+    let bytes: [u8; 20] = provider.try_into().ok()?;
+    let address = Address::from_bytes(bytes).hex();
+    peers
+        .iter()
+        .find(|peer_id| peer_id.eq_ignore_ascii_case(&address))
+        .cloned()
+}
+
+/// Connected peer whose id is this provider's registered Tendermint node id.
+pub(crate) fn peer_id_for_node(peers: &[String], node_id: &NodeId) -> Option<String> {
+    let id = node_id.to_hex();
+    peers
+        .iter()
+        .find(|peer_id| peer_id.eq_ignore_ascii_case(&id))
+        .cloned()
+}
+
+/// Queue each challenge to the peer registered for that provider and wait for its proof.
+/// Call this off the consensus task. A provider with no connected peer is skipped.
+pub(crate) async fn send_challenges(challenges: &[CapacityChallenge]) {
+    if challenges.is_empty() {
+        return;
+    }
+    let url = tendermint_rpc_url();
+    let Ok(peers) = connected_peers(&url).await else {
+        warn!("capacity challenges were not sent; the node RPC is unreachable");
+        return;
+    };
+    for challenge in challenges {
+        let Ok(node_id) = NodeId::from_slice(&challenge.node_id) else {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                "capacity challenge was not sent; its node id is not 20 bytes"
+            );
+            continue;
+        };
+        let Some(peer_id) = peer_id_for_node(&peers, &node_id) else {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                node_id = %node_id,
+                "capacity challenge was not sent; that provider is not a connected peer"
+            );
+            continue;
+        };
+        info!(
+            challenge_id = %challenge.challenge_id,
+            peer_id = %peer_id,
+            "capacity challenge sent"
+        );
+        if send_challenge(&url, &peer_id, challenge).await.is_err() {
+            warn!(
+                challenge_id = %challenge.challenge_id,
+                peer_id = %peer_id,
+                "capacity challenge received no proof"
+            );
+        }
+    }
+}
+
+async fn send_challenge(
+    url: &str,
+    peer_id: &str,
+    challenge: &CapacityChallenge,
+) -> Result<(), ApiError> {
+    let result = rpc_timeout(
+        url,
+        "content_challenge",
+        serde_json::json!({
+            "peer_id": peer_id,
+            "challenge_id": challenge.challenge_id,
+            "challenger": BASE64_STANDARD.encode(&challenge.challenger),
+            "provider": BASE64_STANDARD.encode(&challenge.provider),
+            "chunk_indices": challenge.chunk_indices,
+            "block_height": challenge.block_height,
+            "merkle_root": BASE64_STANDARD.encode(&challenge.merkle_root),
+            "seed": BASE64_STANDARD.encode(&challenge.seed),
+            "expiration_block": challenge.expiration_block,
+            "timestamp": challenge.timestamp,
+            "node_id": BASE64_STANDARD.encode(&challenge.node_id),
+        }),
+        CONTENT_CHALLENGE_TIMEOUT,
+    )
+    .await?;
+    let returned = result
+        .get("challenge_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if returned != challenge.challenge_id {
+        return Err(ApiError::InternalServerError {
+            message: "content_challenge_reply".to_string(),
+            details: Some("proof was for a different challenge".to_string()),
+        });
+    }
+    Ok(())
+}
+
+async fn push_one(
+    url: &str,
+    peer_id: &str,
+    request_id: u64,
+    content_id: &str,
+    blob: &[u8],
+) -> Result<Vec<u8>, ApiError> {
+    let result = rpc_timeout(
+        url,
+        "content_push",
+        serde_json::json!({
+            "peer_id": peer_id,
+            "request_id": request_id,
+            "content_id": content_id,
+            "blob": BASE64_STANDARD.encode(blob),
+        }),
+        PUSH_ACK_TIMEOUT,
+    )
+    .await?;
+    let provider = result
+        .get("provider")
+        .and_then(Value::as_str)
+        .and_then(|text| BASE64_STANDARD.decode(text).ok())
+        .ok_or_else(|| ApiError::InternalServerError {
+            message: "content_push_receipt".to_string(),
+            details: Some("receipt did not include a provider".to_string()),
+        })?;
+    Ok(provider)
+}
+
+async fn request_one(
+    url: &str,
+    peer_id: &str,
+    request_id: u64,
+    content_id: &str,
+) -> Result<Vec<u8>, ApiError> {
+    let result = rpc_timeout(
+        url,
+        "content_request",
+        serde_json::json!({
+            "peer_id": peer_id,
+            "request_id": request_id,
+            "content_id": content_id,
+        }),
+        CONTENT_REQUEST_TIMEOUT,
+    )
+    .await?;
+    result
+        .get("blob")
+        .and_then(Value::as_str)
+        .and_then(|text| BASE64_STANDARD.decode(text).ok())
+        .ok_or_else(|| ApiError::InternalServerError {
+            message: "content_request_blob".to_string(),
+            details: Some("content response did not include a blob".to_string()),
+        })
+}
+
+async fn connected_peers(url: &str) -> Result<Vec<String>, ApiError> {
+    let result = rpc(url, "net_info", Value::Null).await?;
+    let Some(peers) = result.get("peers").and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    Ok(peers
+        .iter()
+        .filter_map(|peer| {
+            peer.get("node_info")
+                .and_then(|info| info.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect())
+}
+
+async fn rpc(url: &str, method: &str, params: Value) -> Result<Value, ApiError> {
+    rpc_timeout(url, method, params, CONTENT_RPC_TIMEOUT).await
+}
+
+async fn rpc_timeout(
+    url: &str,
+    method: &str,
+    params: Value,
+    timeout: Duration,
+) -> Result<Value, ApiError> {
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|err| ApiError::InternalServerError {
+            message: "content_rpc_client".to_string(),
+            details: Some(err.to_string()),
+        })?;
+    let response = client
+        .post(url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        }))
+        .send()
+        .await
+        .map_err(|err| ApiError::ServiceUnavailable {
+            message: "content_rpc_unreachable".to_string(),
+            details: Some(err.to_string()),
+        })?;
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|err| ApiError::InternalServerError {
+            message: "content_rpc_response".to_string(),
+            details: Some(err.to_string()),
+        })?;
+    if let Some(error) = body.get("error") {
+        let message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("content rpc failed");
+        return Err(ApiError::ServiceUnavailable {
+            message: "content_rpc_failed".to_string(),
+            details: Some(message.to_string()),
+        });
+    }
+    body.get("result")
+        .cloned()
+        .ok_or_else(|| ApiError::InternalServerError {
+            message: "content_rpc_result".to_string(),
+            details: Some("Tendermint content RPC returned no result".to_string()),
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+    use eld_common::coin::Coin;
+    use eld_common::public_key::PublicKey;
+    use eld_common::validator::CapacityValidatorInfo;
+    use sha2::{Digest, Sha256};
+
+    fn provider(byte: u8) -> CapacityValidatorInfo {
+        CapacityValidatorInfo {
+            address: Address::from_bytes([byte; 20]),
+            stake: Coin::zero(),
+            public_key: PublicKey::from(SigningKey::from_bytes(&[byte; 32]).verifying_key()),
+            storage_capacity: 1,
+            merkle_root: None,
+            seed: None,
+            chunk_count: None,
+            registered_at: None,
+            last_merkle_root_update: None,
+            registered_block: 0,
+            registration_duration: 0,
+            node_id: eld_common::NodeId::from_slice(&[byte; 20]).expect("node id"),
+        }
+    }
+
+    #[test]
+    fn providers_to_push_skips_this_node_and_keeps_four() {
+        let local = Address::from_bytes([1; 20]);
+        let mut state = AppState::default();
+        state.envelope.capacity_validators = (1..7).map(provider).collect();
+        let selected = providers_to_push(&state, &local);
+        assert_eq!(selected.len(), 4);
+        assert!(selected.iter().all(|address| address != &local));
+    }
+
+    #[test]
+    fn peer_id_for_provider_matches_the_address_hex() {
+        let provider = Address::from_bytes([0xAB; 20]);
+        let peers = vec![
+            "00112233445566778899aabbccddeeff00112233".to_owned(),
+            provider.hex().to_ascii_uppercase(),
+        ];
+        assert_eq!(
+            peer_id_for_provider(&peers, provider.as_bytes()).as_deref(),
+            Some(peers[1].as_str())
+        );
+        assert!(peer_id_for_provider(&peers, &[1; 20]).is_none());
+        assert!(peer_id_for_provider(&peers, &[1; 19]).is_none());
+    }
+
+    #[test]
+    fn peer_id_for_node_matches_the_registered_node_id() {
+        let node_id = NodeId::from_slice(&[0xAB; 20]).expect("node id");
+        let peers = vec![
+            "00112233445566778899aabbccddeeff00112233".to_owned(),
+            node_id.to_hex().to_ascii_uppercase(),
+        ];
+        assert_eq!(
+            peer_id_for_node(&peers, &node_id).as_deref(),
+            Some(peers[1].as_str())
+        );
+        let other = NodeId::from_slice(&[1; 20]).expect("other");
+        assert!(peer_id_for_node(&peers, &other).is_none());
+    }
+
+    #[test]
+    fn a_blob_matches_its_content_id() {
+        let blob = b"hello";
+        let id = hex::encode(Sha256::digest(blob));
+        assert!(blob_matches_content_id(&id, blob));
+        assert!(!blob_matches_content_id("id", blob));
+    }
+}

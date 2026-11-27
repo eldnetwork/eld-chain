@@ -100,6 +100,7 @@ async fn register_capacity_onchain_requires_capacity_validator_wallet() {
             1024,
             CapacitySeed::new([0x42; 32]),
             CapacityMerkleRoot::new([0xAA; 32]),
+            eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         )
         .await
         .expect_err("missing CV wallet must fail");
@@ -721,6 +722,7 @@ async fn test_generate_capacity_proof() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -811,6 +813,7 @@ async fn test_validate_challenge_proof() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -859,6 +862,7 @@ async fn test_validate_challenge_proof_invalid_hash() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -910,6 +914,7 @@ async fn test_validate_challenge_proof_invalid_merkle() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -963,6 +968,7 @@ async fn test_validate_challenge_proof_wrong_index() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -1014,6 +1020,7 @@ async fn test_validate_challenge_proof_wrong_count() {
             expected_merkle_root: merkle_root,
             expiration_block,
             timestamp,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await
         .unwrap();
@@ -1055,6 +1062,7 @@ async fn test_generate_capacity_proof_wrong_provider() {
             expected_merkle_root: merkle_root,
             expiration_block: 200,
             timestamp: 1234567890,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await;
 
@@ -1088,6 +1096,7 @@ async fn test_generate_capacity_proof_wrong_merkle_root() {
             expected_merkle_root: wrong_root, // Wrong merkle root
             expiration_block: 200,
             timestamp: 1234567890,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         })
         .await;
 

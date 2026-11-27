@@ -2,6 +2,7 @@
 
 pub mod chain_tip;
 pub mod consensus;
+pub mod content;
 pub mod info;
 pub mod mempool;
 pub mod snapshot;
@@ -24,32 +25,35 @@ use crate::config::ConsensusConfig;
 use crate::errors::handle_fatal_eld_error;
 use crate::storage::traits::ConsensusConnectionStorage;
 use chain_tip::ChainTip;
+use content::{ContentConnection, ContentContext, ContentTempStorage};
 use eld_common::protocol_constants::ProtocolHandle;
 use info::InfoConnection;
 use mempool::MempoolConnection;
 use snapshot::{SnapshotConnection, SnapshotManager};
 
 /// Inputs for [`init_abci_server`].
-pub struct AbciServerInitContext<S>
+pub struct AbciServerInitContext<S, C>
 where
     S: ConsensusConnectionStorage,
+    C: ContentTempStorage + 'static,
 {
     pub consensus_config: Arc<Mutex<ConsensusConfig>>,
     pub protocol: ProtocolHandle,
     pub storage: Arc<S>,
+    pub content_temp_storage: Arc<C>,
     pub snapshot_manager: Arc<SnapshotManager<S>>,
-    pub p2p_sync_coordinator: Arc<dyn crate::content::sync::P2pCoordinatorTrait>,
     pub init_data: bool,
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
+    pub cli: Arc<eld_client::facade::ChainClient>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
     pub committed_state: Arc<Mutex<AppState>>,
     pub current_state: Arc<Mutex<Option<AppState>>>,
     pub pinboard_prune_tx: mpsc::UnboundedSender<Vec<LivePin>>,
 }
 
-pub async fn init_abci_server<S>(
-    ctx: AbciServerInitContext<S>,
+pub async fn init_abci_server<S, C>(
+    ctx: AbciServerInitContext<S, C>,
 ) -> Result<
     (
         Server<
@@ -57,6 +61,7 @@ pub async fn init_abci_server<S>(
             MempoolConnection<S>,
             InfoConnection<S>,
             SnapshotConnection<S>,
+            ContentConnection<C>,
         >,
         Arc<ChainTip>,
     ),
@@ -64,16 +69,18 @@ pub async fn init_abci_server<S>(
 >
 where
     S: ConsensusConnectionStorage,
+    C: ContentTempStorage + 'static,
 {
     let AbciServerInitContext {
         consensus_config,
         protocol,
         storage,
+        content_temp_storage,
         snapshot_manager,
-        p2p_sync_coordinator,
         init_data,
         ready_tx,
         capacity_manager,
+        cli,
         local_identity,
         committed_state: committed_state_mutex,
         current_state,
@@ -173,6 +180,13 @@ where
     drop(committed_state);
 
     let frontier_snapshot_store = FrontierSnapshotStore::new();
+    let content = ContentConnection::new(ContentContext {
+        capacity: Arc::clone(&capacity_manager),
+        blobs: content_temp_storage,
+        committed_state: Arc::clone(&committed_state_mutex),
+        local_identity: Arc::clone(&local_identity),
+        cli,
+    });
     let consensus = ConsensusConnection::new(ConsensusConnectionNewContext {
         consensus_config: consensus_config.clone(),
         protocol: protocol.clone(),
@@ -181,7 +195,6 @@ where
         current_state,
         storage: storage.clone(),
         snapshot_manager: snapshot_manager.clone(),
-        p2p_sync_coordinator,
         ready_tx,
         capacity_manager,
         local_identity,
@@ -205,7 +218,10 @@ where
     );
     let snapshot = SnapshotConnection::new(snapshot_manager);
 
-    Ok((Server::new(consensus, mempool, info, snapshot), chain_tip))
+    Ok((
+        Server::new(consensus, mempool, info, snapshot, content),
+        chain_tip,
+    ))
 }
 
 #[cfg(test)]
@@ -217,7 +233,6 @@ mod tests {
     use crate::node_identity::LocalNodeIdentity;
     use crate::storage::hybrid_storage::HybridStorage;
     use crate::storage::rocksdb::RocksDBStorage;
-    use crate::wallet::VerifiedProofChainSubmitter;
     use eld_client::config::ClientConfig;
     use eld_common::capacity::CapacityConfig;
     use std::collections::HashMap;
@@ -266,32 +281,7 @@ mod tests {
             cli_config,
             eld_common::fee::FeeConfig::default(),
         ));
-        let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-            "wallet1".into(),
-            cli.clone(),
-            consensus_config_arc.clone(),
-            eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
-            storage.clone(),
-        ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
-
-        // Create a mock P2P sync coordinator for tests (unique ports to avoid conflicts)
-        use std::sync::atomic::{AtomicU16, Ordering};
-        static TEST_PORT_COUNTER: AtomicU16 = AtomicU16::new(6000);
-        let tcp_port = TEST_PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-        let udp_port = tcp_port + 1;
-        let p2p_config = crate::content::sync::P2pConfig { tcp_port, udp_port };
-        let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-        let (p2p_sync_coordinator, _rx) = crate::content::sync::P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage.clone(),
-            verified_proof_submitter,
-            local_identity.clone(),
-        )
-        .await
-        .unwrap();
-        let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
 
         use eld_common::address::Address;
 
@@ -305,6 +295,7 @@ mod tests {
             registration_retry_interval_secs: 60,
             tendermint_rpc_url: "http://127.0.0.1:26657".to_string(),
         };
+        let content_cli = Arc::clone(&cli);
         let capacity_manager = Arc::new(CapacityManager::new(
             capacity_config,
             "wallet1".to_string(),
@@ -318,11 +309,12 @@ mod tests {
             consensus_config: consensus_config_arc,
             protocol: eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
             storage: storage.clone(),
+            content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage)),
-            p2p_sync_coordinator,
             init_data: false,
             ready_tx: None,
             capacity_manager,
+            cli: content_cli,
             local_identity,
             committed_state: Arc::new(Mutex::new(AppState::default())),
             current_state: Arc::new(Mutex::new(None)),
@@ -383,31 +375,7 @@ mod tests {
             cli_config,
             eld_common::fee::FeeConfig::default(),
         ));
-        let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-            "wallet1".into(),
-            cli.clone(),
-            consensus_config_arc.clone(),
-            eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
-            storage.clone(),
-        ));
         let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
-
-        use std::sync::atomic::{AtomicU16, Ordering};
-        static FRESH_START_PORT_COUNTER: AtomicU16 = AtomicU16::new(7000);
-        let tcp_port = FRESH_START_PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-        let udp_port = tcp_port + 1;
-        let p2p_config = crate::content::sync::P2pConfig { tcp_port, udp_port };
-        let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-        let (p2p_sync_coordinator, _rx) = crate::content::sync::P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage.clone(),
-            verified_proof_submitter,
-            local_identity.clone(),
-        )
-        .await
-        .unwrap();
-        let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
 
         let test_provider =
             Address::parse_hex_str("0xcccccccccccccccccccccccccccccccccccccccc").expect("provider");
@@ -419,6 +387,7 @@ mod tests {
             registration_retry_interval_secs: 60,
             tendermint_rpc_url: "http://127.0.0.1:26657".to_string(),
         };
+        let content_cli = Arc::clone(&cli);
         let capacity_manager = Arc::new(CapacityManager::new(
             capacity_config,
             "wallet1".to_string(),
@@ -432,11 +401,12 @@ mod tests {
             consensus_config: consensus_config_arc,
             protocol: eld_common::protocol_constants::ProtocolHandle::installed_local_dev(),
             storage: storage.clone(),
+            content_temp_storage: storage.clone(),
             snapshot_manager: Arc::new(SnapshotManager::new(storage.clone())),
-            p2p_sync_coordinator,
             init_data: false,
             ready_tx: None,
             capacity_manager,
+            cli: content_cli,
             local_identity,
             committed_state: committed_state.clone(),
             current_state: Arc::new(Mutex::new(None)),

@@ -4,7 +4,6 @@ use crate::abci_interface::snapshot::SnapshotManager;
 use crate::app_state::{AppState, FrontierSnapshotStore, LivePin, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
-use crate::content::sync::P2pCoordinatorTrait;
 use crate::node_identity::LocalNodeIdentity;
 use crate::storage::traits::ConsensusConnectionStorage;
 use eld_common::protocol_constants::ProtocolHandle;
@@ -25,7 +24,6 @@ where
     pub storage: Arc<S>,
     pub reward_manager: ValidatorRewardManager<S>,
     pub snapshot_manager: Arc<SnapshotManager<S>>,
-    pub p2p_sync_coordinator: Arc<dyn P2pCoordinatorTrait>,
     pub(crate) last_commit_time: Arc<Mutex<Instant>>,
     pub(crate) cado_type_counts: Arc<Mutex<HashMap<String, usize>>>,
     pub(crate) ready_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
@@ -54,7 +52,6 @@ where
     pub current_state: Arc<Mutex<Option<AppState>>>,
     pub storage: Arc<S>,
     pub snapshot_manager: Arc<SnapshotManager<S>>,
-    pub p2p_sync_coordinator: Arc<dyn P2pCoordinatorTrait>,
     pub ready_tx: Option<oneshot::Sender<()>>,
     pub capacity_manager: Arc<CapacityManager>,
     pub local_identity: Arc<RwLock<LocalNodeIdentity>>,
@@ -77,7 +74,6 @@ where
             storage: ctx.storage.clone(),
             reward_manager: ValidatorRewardManager::new(ctx.storage),
             snapshot_manager: ctx.snapshot_manager,
-            p2p_sync_coordinator: ctx.p2p_sync_coordinator,
             last_commit_time: Arc::new(Mutex::new(Instant::now())),
             cado_type_counts: Arc::new(Mutex::new(HashMap::new())),
             ready_tx: Arc::new(Mutex::new(ctx.ready_tx)),

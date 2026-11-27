@@ -8,15 +8,13 @@ use crate::app_state::{AppState, FrontierSnapshotStore, LivePinSet};
 use crate::capacity::capacity_manager::CapacityManager;
 use crate::config::ConsensusConfig;
 use crate::config::FeeConfig;
-use crate::content::sync::{MockP2pSyncCoordinator, P2pConfig, P2pSyncCoordinator};
 use crate::node_identity::LocalNodeIdentity;
 use crate::storage::hybrid_storage::HybridStorage;
 use crate::storage::rocksdb::RocksDBStorage;
-use crate::wallet::VerifiedProofChainSubmitter;
 use abci::async_api::{Consensus, Mempool};
 use abci::types::{
-    Header, PublicKey, RequestBeginBlock, RequestCheckTx, RequestCommit, RequestDeliverTx,
-    RequestEndBlock, ValidatorUpdate,
+    Header, PublicKey as AbciPublicKey, RequestBeginBlock, RequestCheckTx, RequestCommit,
+    RequestDeliverTx, RequestEndBlock, ValidatorUpdate,
 };
 use ed25519_dalek::SigningKey;
 use eld_client::config::ClientConfig;
@@ -54,18 +52,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
     let snapshot_manager = Arc::new(SnapshotManager::new(storage.clone()));
     let _reward_manager = ValidatorRewardManager::new(storage.clone());
 
-    // Create a mock P2P sync coordinator for tests
-    // Use a separate thread with its own runtime to avoid nested runtime issues
-    // Use random ports to avoid conflicts between parallel tests
-    use std::sync::atomic::{AtomicU16, Ordering};
-    static PORT_COUNTER: AtomicU16 = AtomicU16::new(5000);
-    let tcp_port = PORT_COUNTER.fetch_add(2, Ordering::Relaxed);
-    let udp_port = tcp_port + 1;
-
-    let p2p_config = P2pConfig { tcp_port, udp_port };
-    // Generate a random keypair for tests
-    let test_keypair = libp2p::identity::Keypair::generate_ed25519();
-    let storage_clone = storage.clone();
     let cli_config = ClientConfig {
         node_host: "127.0.0.1".to_string(),
         node_port: "26657".to_string(),
@@ -82,31 +68,7 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         cli_config,
         eld_common::fee::FeeConfig::default(),
     ));
-    let verified_proof_submitter = Arc::new(VerifiedProofChainSubmitter::new(
-        "wallet1".into(),
-        cli.clone(),
-        consensus_config.clone(),
-        ProtocolHandle::installed_local_dev(),
-        storage.clone(),
-    ));
     let local_identity = Arc::new(RwLock::new(LocalNodeIdentity::default()));
-    let local_identity_for_p2p = local_identity.clone();
-    let (p2p_sync_coordinator, _rx) = std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(P2pSyncCoordinator::new(
-            p2p_config,
-            test_keypair,
-            storage_clone,
-            verified_proof_submitter,
-            local_identity_for_p2p,
-        ))
-        .map_err(|e| format!("Failed to create P2P coordinator: {e}"))
-    })
-    .join()
-    .map_err(|e| format!("Thread join error: {e:?}"))
-    .unwrap()
-    .unwrap();
-    let p2p_sync_coordinator = Arc::new(p2p_sync_coordinator);
     let chain_tip = Arc::new(ChainTip::default());
 
     use eld_common::address::Address;
@@ -137,7 +99,6 @@ fn mock_consensus_connection() -> ConsensusConnection<HybridStorage> {
         current_state,
         storage,
         snapshot_manager,
-        p2p_sync_coordinator,
         ready_tx: None,
         capacity_manager,
         local_identity,
@@ -481,7 +442,7 @@ async fn init_chain_stages_validator_accounts_until_first_commit() {
         .init_chain(RequestInitChain {
             chain_id: "test-chain".into(),
             validators: vec![ValidatorUpdate {
-                pub_key: Some(PublicKey {
+                pub_key: Some(AbciPublicKey {
                     sum: Some(Sum::Ed25519(
                         signing_key.verifying_key().to_bytes().to_vec(),
                     )),
@@ -771,6 +732,7 @@ fn build_challenged_capacity_provider_data_skips_unregistered_providers() {
         last_merkle_root_update: Some(1),
         registered_block: 1,
         registration_duration: 1000,
+        node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
     }];
 
     let data = ConsensusConnection::<HybridStorage>::build_challenged_capacity_provider_data(
@@ -783,6 +745,10 @@ fn build_challenged_capacity_provider_data_skips_unregistered_providers() {
     assert_eq!(data[0].1, Some([9u8; 32]));
     assert_eq!(data[0].2, Some([8u8; 32]));
     assert_eq!(data[0].3, Some(50));
+    assert_eq!(
+        data[0].4,
+        eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id")
+    );
 }
 
 #[cfg(test)]
@@ -792,7 +758,7 @@ const TRANSFER_SENDER_SEED: [u8; 32] = [11u8; 32];
 #[cfg(test)]
 const TRANSFER_INITIAL_BALANCE: u128 = 10_000_000;
 
-/// Test-only: keeps RocksDB alive and wires consensus without libp2p or Tendermint.
+/// Test-only: keeps RocksDB alive and wires consensus without Tendermint.
 #[cfg(test)]
 struct InProcessHarness {
     _rocksdb_dir: TempDir,
@@ -823,6 +789,7 @@ fn configured_local_identity() -> LocalNodeIdentity {
             Address::parse_hex_str("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").expect("identity"),
         ),
         capacity_validator_address: None,
+        node_id: None,
     }
 }
 
@@ -844,7 +811,6 @@ fn in_process_harness() -> InProcessHarness {
     let rocksdb_storage = Arc::new(RocksDBStorage::new(rocksdb_dir.path()).expect("rocksdb"));
     let storage = Arc::new(HybridStorage::new(rocksdb_storage));
     let snapshot_manager = Arc::new(SnapshotManager::new(storage.clone()));
-    let (mock_p2p, _rx) = MockP2pSyncCoordinator::new();
     let cli = Arc::new(eld_client::facade::ChainClient::new(
         dummy_client_config(),
         eld_common::fee::FeeConfig::default(),
@@ -876,7 +842,6 @@ fn in_process_harness() -> InProcessHarness {
         current_state,
         storage: storage.clone(),
         snapshot_manager,
-        p2p_sync_coordinator: Arc::new(mock_p2p),
         ready_tx: None,
         capacity_manager,
         local_identity,

@@ -17,7 +17,7 @@ pub struct FeeConfig {
     pub transfer_multiplier: f64,
     pub stake_multiplier: f64,
     pub content_manifest_multiplier: f64,
-    /// Fee multiplier for [`PayloadInner::VerifiedProof`](crate::tx::PayloadInner::VerifiedProof).
+    /// Fee multiplier for a capacity proof.
     #[serde(alias = "chunk_proof_multiplier")]
     pub verified_proof_multiplier: f64,
     pub device_operation_multiplier: f64,
@@ -107,6 +107,14 @@ pub const MAX_TRANSACTION_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
 pub const MAX_GAS_USAGE: u64 = 110_000_000; // 110M gas
 /// Maximum allowed fee to prevent overflow attacks
 pub const MAX_FEE: u128 = u128::MAX / 4; // Quarter of max u128 to leave room for calculations
+
+/// Shortfall `check_tx` and `deliver_tx` still accept below the calculated fee.
+pub const FEE_CHECK_BUFFER: u128 = 300;
+
+/// True when `provided` is at least the calculated fee, or short by at most [`FEE_CHECK_BUFFER`].
+pub fn provided_fee_is_sufficient(provided: u128, required: u128) -> bool {
+    provided.saturating_add(FEE_CHECK_BUFFER) >= required
+}
 
 /// Calculates dynamic fee for a transaction with overflow protection
 pub fn calculate_dynamic_fee(tx: &Tx, fee_config: &FeeConfig) -> Result<Coin, EldError> {
@@ -293,7 +301,7 @@ fn get_complexity_multiplier(payload: &PayloadInner, fee_config: &FeeConfig) -> 
         PayloadInner::UpdateCapacityMerkleRoot(_) => fee_config.device_operation_multiplier,
 
         // High complexity
-        PayloadInner::VerifiedProof(_) => fee_config.verified_proof_multiplier,
+        PayloadInner::CapacityProof(_) => fee_config.verified_proof_multiplier,
         PayloadInner::PostMessage(_) => fee_config.content_manifest_multiplier,
         PayloadInner::AddNamespace(_) => fee_config.transfer_multiplier,
     }
@@ -315,7 +323,7 @@ fn estimate_gas_usage(payload: &PayloadInner) -> Result<u64, EldError> {
         // Fixed local-dev estimate; not scaled by message size.
         PayloadInner::PostMessage(_) => 120_000,
 
-        PayloadInner::VerifiedProof(_) => 50_000, // Simpler than chunk proof, just recording verification
+        PayloadInner::CapacityProof(_) => 0,
 
         // Device operations
         PayloadInner::RegisterCapacity(_) => 60_000,
@@ -403,6 +411,14 @@ mod tests {
         assert!(result.is_ok());
         let fee = result.unwrap();
         assert!(fee > Coin::zero());
+    }
+
+    #[test]
+    fn test_fee_check_buffer_allows_a_shortfall_of_300() {
+        assert!(provided_fee_is_sufficient(7500, 7600));
+        assert!(provided_fee_is_sufficient(7600, 7600));
+        assert!(provided_fee_is_sufficient(7300, 7600));
+        assert!(!provided_fee_is_sufficient(7299, 7600));
     }
 
     #[test]

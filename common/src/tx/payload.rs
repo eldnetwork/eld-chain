@@ -2,8 +2,8 @@
 
 use crate::tx::parts::{HasAmount, HasSender};
 use crate::tx::payloads::{
-    AddNamespaceTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx, UnregisterCapacityTx,
-    UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
+    AddNamespaceTx, CapacityProofTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx,
+    UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx,
 };
 use crate::Address;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub enum TxType {
     Transfer,
     Unstake,
     Stake,
-    VerifiedProof,
+    CapacityProof,
     RegisterCapacity,
     UnregisterCapacity,
     UpdateCapacityMerkleRoot,
@@ -44,7 +44,7 @@ impl TxType {
             TxType::Transfer => crate::constants::tx_type::TX_TYPE_TRANSFER,
             TxType::Unstake => crate::constants::tx_type::TX_TYPE_UNSTAKE,
             TxType::Stake => crate::constants::tx_type::TX_TYPE_STAKE,
-            TxType::VerifiedProof => crate::constants::tx_type::TX_TYPE_VERIFIED_PROOF,
+            TxType::CapacityProof => crate::constants::tx_type::TX_TYPE_CAPACITY_PROOF,
             TxType::RegisterCapacity => crate::constants::tx_type::TX_TYPE_REGISTER_CAPACITY,
             TxType::UnregisterCapacity => crate::constants::tx_type::TX_TYPE_UNREGISTER_CAPACITY,
             TxType::UpdateCapacityMerkleRoot => {
@@ -62,7 +62,7 @@ pub enum PayloadInner {
     Transfer(TransferTx),
     Unstake(UnstakeTx), // needs to fo before stake
     Stake(StakeTx),
-    VerifiedProof(VerifiedProofTx), // Capacity challenge proof verification
+    CapacityProof(CapacityProofTx), // Signed challenge response, checked when delivered
     RegisterCapacity(RegisterCapacityTx), // Capacity proof registration
     UnregisterCapacity(UnregisterCapacityTx), // Capacity proof unregistration
     UpdateCapacityMerkleRoot(UpdateCapacityMerkleRootTx), // Update merkle root after content storage
@@ -88,9 +88,9 @@ impl From<StakeTx> for PayloadInner {
     }
 }
 
-impl From<VerifiedProofTx> for PayloadInner {
-    fn from(tx: VerifiedProofTx) -> Self {
-        PayloadInner::VerifiedProof(tx)
+impl From<CapacityProofTx> for PayloadInner {
+    fn from(tx: CapacityProofTx) -> Self {
+        PayloadInner::CapacityProof(tx)
     }
 }
 
@@ -130,7 +130,7 @@ impl PayloadInner {
             PayloadInner::Transfer(_) => TxType::Transfer,
             PayloadInner::Unstake(_) => TxType::Unstake,
             PayloadInner::Stake(_) => TxType::Stake,
-            PayloadInner::VerifiedProof(_) => TxType::VerifiedProof,
+            PayloadInner::CapacityProof(_) => TxType::CapacityProof,
             PayloadInner::RegisterCapacity(_) => TxType::RegisterCapacity,
             PayloadInner::UnregisterCapacity(_) => TxType::UnregisterCapacity,
             PayloadInner::UpdateCapacityMerkleRoot(_) => TxType::UpdateCapacityMerkleRoot,
@@ -159,7 +159,7 @@ impl std::fmt::Display for PayloadInner {
             PayloadInner::Transfer(tx) => write!(f, "Transfer({tx})"),
             PayloadInner::Unstake(tx) => write!(f, "Unstake({tx})"),
             PayloadInner::Stake(tx) => write!(f, "Stake({tx})"),
-            PayloadInner::VerifiedProof(tx) => write!(f, "VerifiedProof({tx})"),
+            PayloadInner::CapacityProof(tx) => write!(f, "CapacityProof({tx})"),
             PayloadInner::RegisterCapacity(tx) => write!(f, "RegisterCapacity({tx})"),
             PayloadInner::UnregisterCapacity(tx) => write!(f, "UnregisterCapacity({tx})"),
             PayloadInner::UpdateCapacityMerkleRoot(tx) => {
@@ -181,7 +181,7 @@ impl HasSender for PayloadInner {
             PayloadInner::UnregisterCapacity(tx) => tx.sender(),
             PayloadInner::UpdateCapacityMerkleRoot(tx) => tx.sender(),
             PayloadInner::PostMessage(tx) => tx.sender(),
-            PayloadInner::VerifiedProof(tx) => tx.sender,
+            PayloadInner::CapacityProof(tx) => tx.sender(),
             PayloadInner::AddNamespace(tx) => tx.sender(),
         }
     }
@@ -197,7 +197,7 @@ impl HasAmount for PayloadInner {
             PayloadInner::UnregisterCapacity(tx) => tx.amount(),
             PayloadInner::UpdateCapacityMerkleRoot(tx) => tx.amount(),
             PayloadInner::PostMessage(tx) => tx.amount(),
-            PayloadInner::VerifiedProof(_tx) => 0, // VerifiedProof has no amount
+            PayloadInner::CapacityProof(_) => 0,
             PayloadInner::AddNamespace(tx) => tx.amount(),
         }
     }

@@ -22,8 +22,8 @@ impl ConsensusTxDeliver for Tx {
         C: TransactionProcessor + Send + Sync,
     {
         match self.payload.inner.clone() {
-            PayloadInner::VerifiedProof(verified_proof_tx) => {
-                conn.process_verified_proof(verified_proof_tx).await
+            PayloadInner::CapacityProof(capacity_proof_tx) => {
+                conn.process_capacity_proof(capacity_proof_tx).await
             }
             PayloadInner::RegisterCapacity(register_capacity_tx) => {
                 conn.process_register_capacity(register_capacity_tx, self.public_key.clone())

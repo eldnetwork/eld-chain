@@ -294,6 +294,7 @@ mod tests {
             last_merkle_root_update: Some(40),
             registered_block: 30,
             registration_duration: 100,
+            node_id: eld_common::NodeId::from_slice(&[0x11; 20]).expect("node id"),
         };
         state.envelope.capacity_validators = vec![capacity_provider];
 

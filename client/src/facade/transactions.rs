@@ -4,9 +4,10 @@ use super::submitted_tx::SubmittedTx;
 use super::ChainClient;
 use crate::api::abci::AbciHttpApi;
 use eld_common::address::Address;
+use eld_common::capacity_proof::ChunkProof;
 use eld_common::constants::tx_type;
 use eld_common::error::{EldError, ErrorBuilder};
-use eld_common::tx::{Payload, StakeTx, TransferTx, Tx, UnstakeTx};
+use eld_common::tx::{CapacityProofTx, Payload, StakeTx, TransferTx, Tx, UnstakeTx};
 
 pub(crate) async fn transfer(
     client: &ChainClient,
@@ -51,6 +52,67 @@ pub(crate) async fn transfer(
     if !wallet.verify(&tx, &client.config.chain_id)? {
         return Err(ErrorBuilder::transaction_error(
             "Transfer",
+            "Transaction verification failed",
+        ));
+    }
+
+    let response = client.send_tx_rpc(&hex).await?;
+    SubmittedTx::from_broadcast(&hex, json, dynamic_fee, next_nonce, response)
+}
+
+/// Sign a capacity-proof transaction with `wallet_name` and broadcast it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn submit_capacity_proof(
+    client: &ChainClient,
+    wallet_name: String,
+    capacity_provider: Address,
+    challenge_id: String,
+    block_height: i64,
+    proofs: Vec<ChunkProof>,
+    generated_at: u64,
+    provider_pubkey: String,
+    provider_signature: String,
+) -> Result<SubmittedTx, EldError> {
+    let wallet = super::util::require_wallet(client, &wallet_name).await?;
+    let next_nonce = super::util::require_nonce(
+        client
+            .get_next_nonce_for_account_cado(wallet.address.hex_with_prefix())
+            .await,
+    )?;
+
+    let proof = CapacityProofTx::new(
+        wallet.address,
+        capacity_provider,
+        challenge_id,
+        block_height,
+        proofs,
+        generated_at,
+        provider_pubkey,
+        provider_signature,
+    )?;
+    let mut tx = Tx::new(next_nonce, Payload::new(proof), wallet.verifying_key());
+
+    let dynamic_fee =
+        eld_common::fee::calculate_dynamic_fee(&tx, &client.fee_config).map_err(|e| {
+            ErrorBuilder::transaction_error(
+                tx_type::TX_TYPE_CAPACITY_PROOF,
+                &format!("Failed to calculate dynamic fee: {e}"),
+            )
+        })?;
+    tx.fee = dynamic_fee.into();
+
+    wallet.sign(&mut tx, &client.config.chain_id)?;
+    let json = serde_json::to_string(&tx).map_err(|e| {
+        ErrorBuilder::transaction_error(
+            tx_type::TX_TYPE_CAPACITY_PROOF,
+            &format!("Failed to serialize transaction: {e}"),
+        )
+    })?;
+    let hex = hex::encode(&json);
+
+    if !wallet.verify(&tx, &client.config.chain_id)? {
+        return Err(ErrorBuilder::transaction_error(
+            tx_type::TX_TYPE_CAPACITY_PROOF,
             "Transaction verification failed",
         ));
     }

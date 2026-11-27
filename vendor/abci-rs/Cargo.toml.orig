@@ -1,0 +1,60 @@
+[package]
+name = "abci-rs"
+version = "0.11.3"
+authors = ["Devashish Dixit <devashishdxt@gmail.com>"]
+license = "MIT/Apache-2.0"
+description = "A Rust crate for creating ABCI applications"
+homepage = "https://github.com/devashishdxt/abci-rs"
+repository = "https://github.com/devashishdxt/abci-rs"
+categories = ["network-programming"]
+keywords = ["blockchain", "tendermint", "abci"]
+readme = "README.md"
+include = ["Cargo.toml", "src/**/*.rs", "README.md"]
+edition = "2021"
+
+[lib]
+name = "abci"
+path = "src/lib.rs"
+
+[package.metadata.docs.rs]
+features = ["doc"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = { version = "1.11.0", features = ["unstable"], optional = true }
+async-trait = "0.1.53"
+bytes = "1.1.0"
+cfg-if = "1.0.0"
+integer-encoding = "3.0.3"
+prost = "0.10.4"
+prost-types = "0.10.1"
+smol = { version = "1.2.5", optional = true }
+tendermint-proto = "=0.23.7"
+tokio = { version = "1.18.2", features = [
+    "io-util",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+], optional = true }
+tracing = { version = "0.1.34", features = ["log"] }
+
+[dev-dependencies]
+mock-io = { version = "0.3.2", default-features = false, features = [
+    "async-tokio",
+] }
+tokio = { version = "1.18.2", features = ["macros", "time"] }
+tracing-subscriber = { version = "0.3.11", default-features = false, features = [
+    "fmt",
+    "ansi",
+] }
+
+[features]
+default = ["async-api", "sync-api", "use-tokio"]
+doc = []
+async-api = []
+sync-api = []
+use-async-std = ["async-std"]
+use-smol = ["smol"]
+use-tokio = ["tokio"]

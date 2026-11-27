@@ -20,6 +20,7 @@ impl CapacityManager {
             expected_merkle_root,
             expiration_block: _expiration_block,
             timestamp: _timestamp,
+            node_id,
         } = params;
 
         // Verify this challenge is for us
@@ -159,6 +160,7 @@ impl CapacityManager {
             block_height,
             proofs,
             generated_at,
+            node_id,
         };
 
         info!(

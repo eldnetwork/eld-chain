@@ -328,6 +328,33 @@ impl ChainClient {
         crate::facade::unstake(self, wallet_name, amount).await
     }
 
+    /// Sign a capacity-proof transaction with `wallet_name` and broadcast it.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn submit_capacity_proof(
+        &self,
+        wallet_name: String,
+        capacity_provider: eld_common::Address,
+        challenge_id: String,
+        block_height: i64,
+        proofs: Vec<eld_common::capacity_proof::ChunkProof>,
+        generated_at: u64,
+        provider_pubkey: String,
+        provider_signature: String,
+    ) -> Result<SubmittedTx, EldError> {
+        crate::facade::submit_capacity_proof(
+            self,
+            wallet_name,
+            capacity_provider,
+            challenge_id,
+            block_height,
+            proofs,
+            generated_at,
+            provider_pubkey,
+            provider_signature,
+        )
+        .await
+    }
+
     /// Active validator set for the current epoch.
     pub async fn view_active_validators(&self) -> Result<Option<ActiveValidatorsInfo>, EldError> {
         crate::facade::view_active_validators(self).await

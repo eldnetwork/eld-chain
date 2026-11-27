@@ -3,7 +3,7 @@ use eld_common::error::EldError;
 use eld_common::fee::{calculate_dynamic_fee, FeeConfig};
 use eld_common::tx::{Payload, RegisterCapacityTx, Tx};
 use eld_common::wallet::Wallet;
-use eld_common::{Address, CapacityMerkleRoot, CapacitySeed};
+use eld_common::{Address, CapacityMerkleRoot, CapacitySeed, NodeId};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -31,6 +31,7 @@ pub struct CapacityRegistrationTxParams<'a> {
     pub seed: CapacitySeed,
     pub merkle_root: CapacityMerkleRoot,
     pub chunk_count: u32,
+    pub node_id: NodeId,
     pub wallet: &'a Wallet,
     pub cli: &'a ChainClient,
     pub chain_id: &'a str,
@@ -67,6 +68,7 @@ impl CapacityRegistrationService {
             seed,
             merkle_root,
             chunk_count,
+            node_id,
             wallet,
             cli,
             chain_id,
@@ -105,6 +107,7 @@ impl CapacityRegistrationService {
             *merkle_root.as_bytes(),
             *seed.as_bytes(),
             chunk_count,
+            node_id,
         )?;
 
         let mut tx = Tx::new(
@@ -230,6 +233,7 @@ mod tests {
                     seed: CapacitySeed::new([0x42; 32]),
                     merkle_root: CapacityMerkleRoot::new([0xAA; 32]),
                     chunk_count: 10,
+                    node_id: NodeId::from_slice(&[0x11; 20]).expect("node id"),
                     wallet: &wallet,
                     cli: &cli,
                     chain_id: "test-chain",

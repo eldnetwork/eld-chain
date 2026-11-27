@@ -71,4 +71,8 @@ jobs:
           "$HOME/.local/bin/gitleaks" version
 
       - name: Run CI scans
+        env:
+          # Ubuntu's g++ no longer includes <cstdint> through other headers.
+          # RocksDB 8.1.1 (librocksdb-sys 0.11) uses uint64_t without that include.
+          CXXFLAGS: "-include cstdint"
         run: ./deploy/scripts/ci.sh

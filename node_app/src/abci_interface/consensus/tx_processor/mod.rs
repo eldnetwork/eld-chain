@@ -3,11 +3,13 @@ use crate::storage::traits::ConsensusConnectionStorage;
 use abci::types::ResponseDeliverTx;
 use async_trait::async_trait;
 use eld_common::tx::{
-    AddNamespaceTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx, TxPublicKey,
-    UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx, VerifiedProofTx,
+    AddNamespaceTx, CapacityProofTx, PostMessageTx, RegisterCapacityTx, StakeTx, TransferTx,
+    TxPublicKey, UnregisterCapacityTx, UnstakeTx, UpdateCapacityMerkleRootTx,
 };
 
 pub mod add_namespace_processor;
+pub mod capacity_challenge_binding;
+pub mod capacity_proof_processor;
 pub mod post_message_processor;
 pub mod register_capacity_processor;
 pub mod stake_processor;
@@ -15,13 +17,9 @@ pub mod transfer_processor;
 pub mod unregister_capacity_processor;
 pub mod unstake_processor;
 pub mod update_capacity_merkle_root_processor;
-pub mod verified_proof_processor;
 
 #[async_trait]
 pub trait TransactionProcessor: Send + Sync {
-    async fn process_verified_proof(&self, verified_proof_tx: VerifiedProofTx)
-        -> ResponseDeliverTx;
-
     async fn process_register_capacity(
         &self,
         register_capacity_tx: RegisterCapacityTx,
@@ -47,6 +45,8 @@ pub trait TransactionProcessor: Send + Sync {
     async fn process_post_message(&self, post_message_tx: PostMessageTx) -> ResponseDeliverTx;
 
     async fn process_add_namespace(&self, add_namespace_tx: AddNamespaceTx) -> ResponseDeliverTx;
+
+    async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx;
 }
 
 #[async_trait]
@@ -54,13 +54,6 @@ impl<S> TransactionProcessor for ConsensusConnection<S>
 where
     S: ConsensusConnectionStorage,
 {
-    async fn process_verified_proof(
-        &self,
-        verified_proof_tx: VerifiedProofTx,
-    ) -> ResponseDeliverTx {
-        verified_proof_processor::process_verified_proof_tx(self, verified_proof_tx).await
-    }
-
     async fn process_register_capacity(
         &self,
         register_capacity_tx: RegisterCapacityTx,
@@ -110,5 +103,9 @@ where
 
     async fn process_add_namespace(&self, add_namespace_tx: AddNamespaceTx) -> ResponseDeliverTx {
         add_namespace_processor::process_add_namespace_tx(self, add_namespace_tx).await
+    }
+
+    async fn process_capacity_proof(&self, tx: CapacityProofTx) -> ResponseDeliverTx {
+        capacity_proof_processor::process_capacity_proof_tx(self, tx).await
     }
 }
